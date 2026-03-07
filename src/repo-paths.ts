@@ -44,7 +44,7 @@ export enum ObsidianDevUtilsRepoPaths {
   CurrentFolder = '.',
 
   /** Dataview types. */
-  DataviewTypes = 'src/obsidian/@types/Dataview/**',
+  DataviewTypes = 'src/obsidian/@types/dataview/**',
 
   /** CommonJS TypeScript declaration file extension. */
   DctsExtension = '.d.cts',
@@ -92,10 +92,10 @@ export enum ObsidianDevUtilsRepoPaths {
   JsExtension = '.js',
 
   /** Library CommonJS file. */
-  LibraryCjs = 'Library.cjs',
+  LibraryCjs = 'library.cjs',
 
   /** Library ESM JavaScript file. */
-  LibraryMjs = 'Library.mjs',
+  LibraryMjs = 'library.mjs',
 
   /** ESM Markdownlint CLI2 configuration file. */
   MarkdownlintCli2ConfigMjs = '.markdownlint-cli2.mjs',
@@ -119,7 +119,7 @@ export enum ObsidianDevUtilsRepoPaths {
   Scripts = 'scripts',
 
   /** ScriptUtils folder. */
-  ScriptUtils = 'ScriptUtils',
+  ScriptUtils = 'script-utils',
 
   /** Source folder. */
   Src = 'src',

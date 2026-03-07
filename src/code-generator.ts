@@ -4,7 +4,7 @@
  * Contains utility functions for code generation.
  */
 
-import { writeFile } from './NodeModules.ts';
+import { writeFile } from './node-modules.ts';
 
 /**
  * Generates a file at the specified path with the provided lines of code.

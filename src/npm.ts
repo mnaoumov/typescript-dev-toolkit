@@ -9,11 +9,11 @@ import type {
   Promisable
 } from 'type-fest';
 
-import type { EditJsonOptions } from './JSON.ts';
+import type { EditJsonOptions } from './json.ts';
 
-import { normalizeOptionalProperties } from '../ObjectUtils.ts';
-import { ObsidianPluginRepoPaths } from '../obsidian/Plugin/ObsidianPluginRepoPaths.ts';
-import { ensureNonNullable } from '../TypeGuards.ts';
+import { normalizeOptionalProperties } from '../object-utils.ts';
+import { ObsidianPluginRepoPaths } from '../obsidian/plugin/obsidian-plugin-repo-paths.ts';
+import { ensureNonNullable } from '../type-guards.ts';
 import {
   editJson,
   editJsonSync,
@@ -21,8 +21,8 @@ import {
   readJsonSync,
   writeJson,
   writeJsonSync
-} from './JSON.ts';
-import { resolvePathFromRoot } from './Root.ts';
+} from './json.ts';
+import { resolvePathFromRoot } from './root.ts';
 
 /**
  * Options for {@link editPackageJson}.

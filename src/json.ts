@@ -6,14 +6,14 @@
 
 import type { Promisable } from 'type-fest';
 
-import { toJson } from '../ObjectUtils.ts';
+import { toJson } from '../object-utils.ts';
 import {
   existsSync,
   readFile,
   readFileSync,
   writeFile,
   writeFileSync
-} from './NodeModules.ts';
+} from './node-modules.ts';
 
 /**
  * Options for {@link editJson}.

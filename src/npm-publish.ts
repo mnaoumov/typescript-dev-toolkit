@@ -8,11 +8,11 @@ import {
   existsSync,
   loadEnvFile,
   process
-} from './NodeModules.ts';
+} from './node-modules.ts';
 import {
   execFromRoot,
   resolvePathFromRoot
-} from './Root.ts';
+} from './root.ts';
 
 interface NpmEnv {
   NPM_TOKEN: string;

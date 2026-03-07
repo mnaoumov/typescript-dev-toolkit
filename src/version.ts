@@ -7,18 +7,18 @@
  * Git operations such as tagging and pushing.
  */
 
-import type { PackageLockJson } from './Npm.ts';
+import type { PackageLockJson } from './npm.ts';
 
-import { getLibDebugger } from '../Debug.ts';
-import { ObsidianPluginRepoPaths } from '../obsidian/Plugin/ObsidianPluginRepoPaths.ts';
-import { join } from '../Path.ts';
-import { replaceAll } from '../String.ts';
+import { getLibDebugger } from '../debug.ts';
+import { ObsidianPluginRepoPaths } from '../obsidian/plugin/obsidian-plugin-repo-paths.ts';
+import { join } from '../path.ts';
+import { replaceAll } from '../string.ts';
 import {
   assertNonNullable,
   ensureNonNullable
-} from '../TypeGuards.ts';
-import { readdirPosix } from './Fs.ts';
-import { editJson } from './JSON.ts';
+} from '../type-guards.ts';
+import { readdirPosix } from './fs.ts';
+import { editJson } from './json.ts';
 import {
   cp,
   createInterface,
@@ -26,22 +26,22 @@ import {
   readFile,
   rm,
   writeFile
-} from './NodeModules.ts';
+} from './node-modules.ts';
 import {
   editNpmShrinkWrapJson,
   editPackageJson,
   editPackageLockJson,
   readPackageJson
-} from './Npm.ts';
+} from './npm.ts';
 import {
   npmRun,
   npmRunOptional
-} from './NpmRun.ts';
-import { ObsidianDevUtilsRepoPaths } from './ObsidianDevUtilsRepoPaths.ts';
+} from './npm-run.ts';
+import { ObsidianDevUtilsRepoPaths } from './obsidian-dev-utils-repo-paths.ts';
 import {
   execFromRoot,
   resolvePathFromRootSafe
-} from './Root.ts';
+} from './root.ts';
 
 /**
  * Enum representing different types of version updates.

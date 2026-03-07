@@ -8,7 +8,7 @@
 import type {
   ExecOption,
   ExecResult
-} from './Exec.ts';
+} from './exec.ts';
 
 import {
   dirname,
@@ -16,10 +16,10 @@ import {
   relative,
   resolve,
   toPosixPath
-} from '../Path.ts';
-import { exec } from './Exec.ts';
-import { existsSync } from './NodeModules.ts';
-import { ObsidianDevUtilsRepoPaths } from './ObsidianDevUtilsRepoPaths.ts';
+} from '../path.ts';
+import { exec } from './exec.ts';
+import { existsSync } from './node-modules.ts';
+import { ObsidianDevUtilsRepoPaths } from './obsidian-dev-utils-repo-paths.ts';
 
 /**
  * Executes a command from the root folder of the project.

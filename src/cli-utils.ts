@@ -7,13 +7,13 @@
 
 import type { Promisable } from 'type-fest';
 
-import type { MaybeReturn } from '../Type.ts';
+import type { MaybeReturn } from '../type.ts';
 
-import { enableLibraryDebuggers } from '../Debug.ts';
-import { printError } from '../Error.ts';
-import { noop } from '../Function.ts';
-import { replaceAll } from '../String.ts';
-import { process } from './NodeModules.ts';
+import { enableLibraryDebuggers } from '../debug.ts';
+import { printError } from '../error.ts';
+import { noop } from '../function.ts';
+import { replaceAll } from '../string.ts';
+import { process } from './node-modules.ts';
 
 /**
  * Abstract class representing the result of a task. Includes methods for handling success,

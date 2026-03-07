@@ -4,8 +4,8 @@
  * NPM run utilities.
  */
 
-import { readPackageJson } from './Npm.ts';
-import { execFromRoot } from './Root.ts';
+import { readPackageJson } from './npm.ts';
+import { execFromRoot } from './root.ts';
 
 /**
  * Runs a command using npm checking if the command is overridden in the package.json.

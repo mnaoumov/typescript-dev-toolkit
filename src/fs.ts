@@ -8,13 +8,13 @@ import type {
   Dirent,
   ObjectEncodingOptions,
   PathLike
-} from './NodeModules.ts';
+} from './node-modules.ts';
 
 import {
   toPosixBuffer,
   toPosixPath
-} from '../Path.ts';
-import { readdir } from './NodeModules.ts';
+} from '../path.ts';
+import { readdir } from './node-modules.ts';
 
 /**
  * Options for controlling the format of the result when returning buffers.

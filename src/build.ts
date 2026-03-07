@@ -8,23 +8,23 @@
 
 import type { TsConfigJson } from 'type-fest';
 
-import { toArray } from '../Async.ts';
-import { getLibDebugger } from '../Debug.ts';
-import { join } from '../Path.ts';
-import { trimStart } from '../String.ts';
-import { readdirPosix } from './Fs.ts';
-import { readJson } from './JSON.ts';
+import { toArray } from '../async.ts';
+import { getLibDebugger } from '../debug.ts';
+import { join } from '../path.ts';
+import { trimStart } from '../string.ts';
+import { readdirPosix } from './fs.ts';
+import { readJson } from './json.ts';
 import {
   cp,
   glob,
   rm
-} from './NodeModules.ts';
-import { npmRun } from './NpmRun.ts';
-import { ObsidianDevUtilsRepoPaths } from './ObsidianDevUtilsRepoPaths.ts';
+} from './node-modules.ts';
+import { npmRun } from './npm-run.ts';
+import { ObsidianDevUtilsRepoPaths } from './obsidian-dev-utils-repo-paths.ts';
 import {
   execFromRoot,
   resolvePathFromRootSafe
-} from './Root.ts';
+} from './root.ts';
 
 /**
  * Removes the distribution folder and its contents.
