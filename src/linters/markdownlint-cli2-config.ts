@@ -8,7 +8,7 @@
 
 import relativeLinksRule from 'markdownlint-rule-relative-links';
 
-import type { MarkdownlintCli2ConfigurationSchema } from './@types/markdownlint-cli2-config-schema.d.ts';
+import type { MarkdownlintCli2ConfigurationSchema } from './markdownlint-types/@types/markdownlint-cli2-config-schema.d.ts';
 
 /**
  * Default markdownlint-cli2 configuration for the Obsidian Dev Utils.

@@ -7,15 +7,15 @@
 import {
   getFolderName,
   join
-} from '../../../path.ts';
-import { assertNonNullable } from '../../../type-guards.ts';
-import { existsSync } from '../../node-modules.ts';
-import { ObsidianDevUtilsRepoPaths } from '../../obsidian-dev-utils-repo-paths.ts';
+} from '../../path.ts';
+import { assertNonNullable } from '../../type-guards.ts';
+import { existsSync } from '../node-modules.ts';
+import { ObsidianDevUtilsRepoPaths } from '../obsidian-dev-utils-repo-paths.ts';
 import {
   execFromRoot,
   getRootFolder,
   resolvePathFromRootSafe
-} from '../../root.ts';
+} from '../root.ts';
 
 /**
  * Format the source code.
