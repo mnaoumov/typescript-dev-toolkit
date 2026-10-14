@@ -16,7 +16,7 @@ const { mockExecFromRoot, mockResolveToolCommand } = vi.hoisted(() => ({
   mockResolveToolCommand: vi.fn<(params: ResolveToolCommandParams) => string[]>()
 }));
 
-vi.mock('../script-utils/root.ts', async (importOriginal) => {
+vi.mock('./root.ts', async (importOriginal) => {
   const $module = await importOriginal<typeof import('./root.ts')>();
   return {
     ...$module,
@@ -24,7 +24,7 @@ vi.mock('../script-utils/root.ts', async (importOriginal) => {
   };
 });
 
-vi.mock('../script-utils/package-manager.ts', () => ({
+vi.mock('./package-manager.ts', () => ({
   resolveToolCommand: mockResolveToolCommand
 }));
 

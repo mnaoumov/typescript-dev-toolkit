@@ -22,8 +22,9 @@
  * would lose all of that, which is why it is not used.
  */
 
-import { getLibDebugger } from '../../debug.ts';
-import { toPosixPath } from '../../path.ts';
+import { getLibDebugger } from '@mnaoumov/typescript-lib/debug';
+import { toPosixPath } from '@mnaoumov/typescript-lib/path';
+
 import { resolveToolCommand } from '../package-manager.ts';
 import { execFromRoot } from '../root.ts';
 

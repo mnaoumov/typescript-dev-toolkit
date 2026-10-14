@@ -1,3 +1,4 @@
+import { noopAsync } from '@mnaoumov/typescript-lib/function';
 import {
   beforeEach,
   describe,
@@ -6,7 +7,6 @@ import {
   vi
 } from 'vitest';
 
-import { noopAsync } from '../function.ts';
 import {
   gate,
   parseGateArguments

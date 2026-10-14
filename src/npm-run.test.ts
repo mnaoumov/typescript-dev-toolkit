@@ -22,15 +22,15 @@ const {
   mockReadPackageJson: vi.fn()
 }));
 
-vi.mock('../script-utils/npm.ts', () => ({
+vi.mock('./npm.ts', () => ({
   readPackageJson: mockReadPackageJson
 }));
 
-vi.mock('../script-utils/package-manager.ts', () => ({
+vi.mock('./package-manager.ts', () => ({
   getPackageManagerRunCommand: mockGetPackageManagerRunCommand
 }));
 
-vi.mock('../script-utils/root.ts', () => ({
+vi.mock('./root.ts', () => ({
   execFromRoot: mockExecFromRoot
 }));
 

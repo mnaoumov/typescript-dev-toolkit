@@ -13,7 +13,7 @@
 import type { TSESTree } from '@typescript-eslint/utils';
 import type { Node as EstreeNode } from 'estree';
 
-import { castTo } from '../../../object-utils.ts';
+import { castTo } from '@mnaoumov/typescript-lib/object-utils';
 
 /**
  * Views an ESLint (ESTree-typed) node as a TSESTree node.

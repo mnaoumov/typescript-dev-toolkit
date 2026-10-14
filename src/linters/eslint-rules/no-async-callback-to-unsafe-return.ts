@@ -31,6 +31,7 @@ import type {
   TypeNode
 } from 'typescript';
 
+import { assertNonNullable } from '@mnaoumov/typescript-lib/type-guards';
 import {
   isIdentifier,
   isTypeAliasDeclaration,
@@ -40,7 +41,6 @@ import {
   TypeFlags
 } from 'typescript';
 
-import { assertNonNullable } from '../../../type-guards.ts';
 import { toTSESTreeNode } from './ts-estree-node.ts';
 
 /**

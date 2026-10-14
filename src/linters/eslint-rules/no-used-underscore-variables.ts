@@ -10,7 +10,7 @@
  */
 import type { Rule } from 'eslint';
 
-import { assertNonNullable } from '../../../type-guards.ts';
+import { assertNonNullable } from '@mnaoumov/typescript-lib/type-guards';
 
 interface NodeWithBody {
   body?: Rule.Node;

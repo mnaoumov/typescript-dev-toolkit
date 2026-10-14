@@ -5,16 +5,15 @@
  * success, exit codes, and chaining multiple tasks.
  */
 
+import type { MaybeReturn } from '@mnaoumov/typescript-lib/type';
 import type { Promisable } from 'type-fest';
 
+import { enableLibraryDebuggers } from '@mnaoumov/typescript-lib/debug';
+import { printError } from '@mnaoumov/typescript-lib/error';
+import { noop } from '@mnaoumov/typescript-lib/function';
+import { replaceAll } from '@mnaoumov/typescript-lib/string';
 import process from 'node:process';
 
-import type { MaybeReturn } from '../type.ts';
-
-import { enableLibraryDebuggers } from '../debug.ts';
-import { printError } from '../error.ts';
-import { noop } from '../function.ts';
-import { replaceAll } from '../string.ts';
 import { getDisabledScriptEnvVariableName } from './env-toggle.ts';
 
 /**

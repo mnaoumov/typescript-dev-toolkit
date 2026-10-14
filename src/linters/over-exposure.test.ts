@@ -3,6 +3,7 @@ import type {
   LanguageService
 } from 'typescript';
 
+import { strictProxy } from '@mnaoumov/typescript-test-toolkit/strict-proxy';
 import dedent from 'dedent';
 import {
   createDocumentRegistry,
@@ -27,7 +28,6 @@ import type {
   OverExposureProgress
 } from './over-exposure.ts';
 
-import { strictProxy } from '../../strict-proxy.ts';
 import {
   analyzeOverExposure,
   createLanguageServiceHost,

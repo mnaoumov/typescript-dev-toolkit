@@ -1,10 +1,10 @@
+import { join } from '@mnaoumov/typescript-lib/path';
 import {
   describe,
   expect,
   it
 } from 'vitest';
 
-import { join } from '../path.ts';
 import { spellcheckContent } from './linters/cspell-content.ts';
 
 // The real `cspell` runs here rather than a mock of it, because the only thing worth proving is the thing a

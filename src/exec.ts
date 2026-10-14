@@ -6,13 +6,13 @@
 
 import type { ChildProcess } from 'node:child_process';
 
+import { getLibDebugger } from '@mnaoumov/typescript-lib/debug';
+import { normalizeOptionalProperties } from '@mnaoumov/typescript-lib/object-utils';
+import { trimEnd } from '@mnaoumov/typescript-lib/string';
+import { assertNonNullable } from '@mnaoumov/typescript-lib/type-guards';
 import { spawn } from 'node:child_process';
 import process from 'node:process';
 
-import { getLibDebugger } from '../debug.ts';
-import { normalizeOptionalProperties } from '../object-utils.ts';
-import { trimEnd } from '../string.ts';
-import { assertNonNullable } from '../type-guards.ts';
 import {
   cmdEscapeCommandLine as commandEscapeCommandLine,
   toCommandLine,

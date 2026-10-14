@@ -1,3 +1,6 @@
+import type { GenericObject } from '@mnaoumov/typescript-lib/type-guards';
+
+import { noopAsync } from '@mnaoumov/typescript-lib/function';
 import {
   afterEach,
   beforeEach,
@@ -7,11 +10,8 @@ import {
   vi
 } from 'vitest';
 
-import type { GenericObject } from '../type-guards.ts';
-import type { EditJsonParams } from './json.ts';
 import type { ResolvePathFromRootSafeParams } from './root.ts';
 
-import { noopAsync } from '../function.ts';
 import {
   addGitTag,
   addUpdatedFilesToGit,
@@ -19,26 +19,25 @@ import {
   assertGitInstalled,
   assertGitRepoClean,
   autolinkBareUrls,
-  copyUpdatedManifest,
   getNewVersion,
   getReleaseNotes,
   getVersionUpdateType,
   gitPush,
+  isPreRelease,
   parseVersionArguments,
   publishGitHubRelease,
+  toUpdateVersionOptions,
   updateChangelog,
   updateVersion,
   updateVersionInFiles,
   validate,
+  VERSION_ARGUMENT_OPTIONS,
   VersionUpdateType
 } from './version.ts';
 
 const {
-  mockArchivePluginDemoVault,
   mockCloseReleasedIssues,
-  mockCp,
   mockCreateInterface,
-  mockEditJson,
   mockEditNpmShrinkWrapJson,
   mockEditPackageJson,
   mockEditPackageLockJson,
@@ -48,7 +47,6 @@ const {
   mockMkdtemp,
   mockNpmRun,
   mockNpmRunOptional,
-  mockReaddirPosix,
   mockReadFile,
   mockReadForbiddenPatterns,
   mockReadPackageJson,
@@ -57,11 +55,8 @@ const {
   mockSpellcheckContent,
   mockWriteFile
 } = vi.hoisted(() => ({
-  mockArchivePluginDemoVault: vi.fn(),
   mockCloseReleasedIssues: vi.fn(),
-  mockCp: vi.fn(),
   mockCreateInterface: vi.fn(),
-  mockEditJson: vi.fn(),
   mockEditNpmShrinkWrapJson: vi.fn(),
   mockEditPackageJson: vi.fn(),
   mockEditPackageLockJson: vi.fn(),
@@ -71,7 +66,6 @@ const {
   mockMkdtemp: vi.fn(),
   mockNpmRun: vi.fn(),
   mockNpmRunOptional: vi.fn(),
-  mockReaddirPosix: vi.fn(),
   mockReadFile: vi.fn(),
   mockReadForbiddenPatterns: vi.fn<() => Promise<RegExp[]>>(),
   mockReadPackageJson: vi.fn(),
@@ -81,18 +75,14 @@ const {
   mockWriteFile: vi.fn()
 }));
 
-vi.mock('./demo-vault.ts', () => ({
-  archivePluginDemoVault: mockArchivePluginDemoVault
-}));
-
-vi.mock('../script-utils/npm.ts', () => ({
+vi.mock('./npm.ts', () => ({
   editNpmShrinkWrapJson: mockEditNpmShrinkWrapJson,
   editPackageJson: mockEditPackageJson,
   editPackageLockJson: mockEditPackageLockJson,
   readPackageJson: mockReadPackageJson
 }));
 
-vi.mock('../script-utils/root.ts', () => ({
+vi.mock('./root.ts', () => ({
   execFromRoot: mockExecFromRoot,
   resolvePathFromRootSafe: mockResolvePathFromRootSafe
 }));
@@ -109,7 +99,6 @@ vi.mock('node:fs/promises', async (importOriginal) => {
   const $module = await importOriginal<typeof import('node:fs/promises')>();
   return {
     ...$module,
-    cp: mockCp,
     mkdtemp: mockMkdtemp,
     readFile: mockReadFile,
     rm: mockRm,
@@ -124,14 +113,6 @@ vi.mock('node:readline/promises', async (importOriginal) => {
     createInterface: mockCreateInterface
   };
 });
-
-vi.mock('../script-utils/fs.ts', () => ({
-  readdirPosix: mockReaddirPosix
-}));
-
-vi.mock('../script-utils/json.ts', () => ({
-  editJson: mockEditJson
-}));
 
 vi.mock('./forbidden-patterns.ts', async (importOriginal) => ({
   ...await importOriginal<typeof import('./forbidden-patterns.ts')>(),
@@ -154,7 +135,7 @@ vi.mock('./package-lock-integrity.ts', () => ({
   assertPackageLockIntegrity: noopAsync
 }));
 
-vi.mock('../script-utils/npm-run.ts', async (importOriginal) => {
+vi.mock('./npm-run.ts', async (importOriginal) => {
   const $module = await importOriginal<typeof import('./npm-run.ts')>();
   return {
     ...$module,
@@ -163,11 +144,11 @@ vi.mock('../script-utils/npm-run.ts', async (importOriginal) => {
   };
 });
 
-vi.mock('../debug.ts', () => ({
+vi.mock('@mnaoumov/typescript-lib/debug', () => ({
   getLibDebugger: vi.fn(() => vi.fn())
 }));
 
-const SCRATCH_FOLDER = '/tmp/obsidian-dev-utils-changelog-abc123';
+const SCRATCH_FOLDER = '/tmp/changelog-abc123';
 const SCRATCH_CHANGELOG_PATH = `${SCRATCH_FOLDER}/CHANGELOG.md`;
 const MARKDOWNLINT_FINDINGS = ['CHANGELOG.md:5 error no-soft-break-in-paragraph Paragraph is hard-wrapped (soft line break inside a paragraph)'];
 // The word is assembled rather than written out for the same reason its sibling suite assembles one: this file
@@ -185,14 +166,11 @@ beforeEach(() => {
   mockEditPackageJson.mockResolvedValue(undefined);
   mockEditPackageLockJson.mockResolvedValue(undefined);
   mockEditNpmShrinkWrapJson.mockResolvedValue(undefined);
-  mockEditJson.mockResolvedValue(undefined);
-  mockCp.mockResolvedValue(undefined);
   mockMkdtemp.mockResolvedValue(SCRATCH_FOLDER);
   mockRm.mockResolvedValue(undefined);
   mockNpmRun.mockResolvedValue(undefined);
   mockNpmRunOptional.mockResolvedValue(undefined);
   mockWriteFile.mockResolvedValue(undefined);
-  mockArchivePluginDemoVault.mockResolvedValue(null);
   mockCloseReleasedIssues.mockResolvedValue([]);
   mockResolvePathFromRootSafe.mockImplementation((params: ResolvePathFromRootSafeParams) => `/root/${params.path}`);
   mockExistsSync.mockReturnValue(false);
@@ -564,18 +542,6 @@ describe('updateVersionInFiles', () => {
   });
 });
 
-describe('copyUpdatedManifest', () => {
-  it('should copy manifest.json to dist/build folder', async () => {
-    await copyUpdatedManifest();
-    expect(mockCp).toHaveBeenCalledTimes(1);
-    expect(mockCp).toHaveBeenCalledWith(
-      expect.stringContaining('manifest.json'),
-      expect.stringContaining('manifest.json'),
-      { force: true }
-    );
-  });
-});
-
 describe('getReleaseNotes', () => {
   it('should return release notes with compare URL when previous tag exists', async () => {
     mockReadFile.mockResolvedValue('\n## 1.0.0\n\nSome changes here\n\n## 0.9.0\n\nOld\n');
@@ -674,70 +640,75 @@ describe('publishGitHubRelease', () => {
     return ghReleaseCall?.[0];
   }
 
-  it('should publish release for obsidian plugin with dist/build files', async () => {
-    setupReleaseNotesMocks();
-    mockReaddirPosix.mockResolvedValue(['main.js', 'manifest.json', 'styles.css']);
-    mockExistsSync.mockReturnValue(true);
-    await publishGitHubRelease('1.0.0', true);
-    expect(mockExecFromRoot).toHaveBeenCalledWith(
-      expect.arrayContaining(['gh', 'release', 'create', '1.0.0']),
-      expect.objectContaining({ isQuiet: true })
-    );
-  });
+  function getAssetPaths(...assetPaths: string[]): () => Promise<string[]> {
+    return () => Promise.resolve(assetPaths);
+  }
 
-  it('should publish release for non-obsidian project with npm pack', async () => {
+  it('should publish the release with the npm pack tarball and the stylesheet by default', async () => {
     setupReleaseNotesMocks();
     mockExistsSync.mockReturnValue(true);
-    await publishGitHubRelease('1.0.0', false);
+    await publishGitHubRelease('1.0.0');
     expect(mockExecFromRoot).toHaveBeenCalledWith(
       expect.arrayContaining(['npm', 'pack', '--pack-destination', 'dist', '--json']),
       expect.any(Object)
     );
+    expect(mockExecFromRoot).toHaveBeenCalledWith(
+      expect.arrayContaining(['gh', 'release', 'create', '1.0.0']),
+      expect.objectContaining({ isQuiet: true })
+    );
     expect(getGhReleaseArguments()).toContain('dist/library-1.0.0.tgz');
+    expect(getGhReleaseArguments()).toContain('dist/styles.css');
+  });
+
+  it('should attach the files a custom getReleaseAssetPaths returns instead of packing', async () => {
+    setupReleaseNotesMocks();
+    mockExistsSync.mockReturnValue(true);
+    await publishGitHubRelease('1.0.0', { getReleaseAssetPaths: getAssetPaths('dist/build/main.js', 'dist/build/manifest.json') });
+    const ghReleaseArguments = getGhReleaseArguments();
+    expect(ghReleaseArguments).toContain('dist/build/main.js');
+    expect(ghReleaseArguments).toContain('dist/build/manifest.json');
+    expect(mockExecFromRoot).not.toHaveBeenCalledWith(expect.arrayContaining(['npm', 'pack']), expect.any(Object));
   });
 
   it('should resolve the tarball from the npm 11 array-shaped pack output', async () => {
     setupReleaseNotesMocks(JSON.stringify([{ filename: 'library-1.0.0.tgz' }], null, 2));
     mockExistsSync.mockReturnValue(true);
-    await publishGitHubRelease('1.0.0', false);
+    await publishGitHubRelease('1.0.0');
     expect(getGhReleaseArguments()).toContain('dist/library-1.0.0.tgz');
   });
 
   it('should resolve the tarball when the prepare script printed a brace before the pack JSON', async () => {
     setupReleaseNotesMocks(`husky - { not json }\n${JSON.stringify({ library: { filename: 'library-1.0.0.tgz' } })}`);
     mockExistsSync.mockReturnValue(true);
-    await publishGitHubRelease('1.0.0', false);
+    await publishGitHubRelease('1.0.0');
     expect(getGhReleaseArguments()).toContain('dist/library-1.0.0.tgz');
   });
 
   it('should throw when npm pack output does not contain expected JSON', async () => {
     setupReleaseNotesMocks('some unexpected output without json');
     mockExistsSync.mockReturnValue(true);
-    await expect(publishGitHubRelease('1.0.0', false)).rejects.toThrow('Failed to find the JSON payload in the `npm pack --json` output');
+    await expect(publishGitHubRelease('1.0.0')).rejects.toThrow('Failed to find the JSON payload in the `npm pack --json` output');
   });
 
   it('should throw when npm pack output holds no pack result', async () => {
     setupReleaseNotesMocks('{}');
     mockExistsSync.mockReturnValue(true);
-    await expect(publishGitHubRelease('1.0.0', false)).rejects.toThrow('Found no pack result in the `npm pack --json` output');
+    await expect(publishGitHubRelease('1.0.0')).rejects.toThrow('Found no pack result in the `npm pack --json` output');
   });
 
   it('should filter out non-existent files', async () => {
     setupReleaseNotesMocks();
-    mockReaddirPosix.mockResolvedValue(['main.js', 'missing.js']);
     mockExistsSync.mockImplementation((path: string) => !path.includes('missing'));
-    await publishGitHubRelease('1.0.0', true);
-    expect(mockExecFromRoot).toHaveBeenCalledWith(
-      expect.arrayContaining(['gh', 'release', 'create']),
-      expect.any(Object)
-    );
+    await publishGitHubRelease('1.0.0', { getReleaseAssetPaths: getAssetPaths('dist/build/main.js', 'dist/build/missing.js') });
+    const ghReleaseArguments = getGhReleaseArguments();
+    expect(ghReleaseArguments).toContain('dist/build/main.js');
+    expect(ghReleaseArguments).not.toContain('dist/build/missing.js');
   });
 
   it('should add --prerelease flag for pre-release versions', async () => {
     setupReleaseNotesMocks();
-    mockReaddirPosix.mockResolvedValue(['main.js']);
     mockExistsSync.mockReturnValue(true);
-    await publishGitHubRelease('1.0.0-beta.1', true);
+    await publishGitHubRelease('1.0.0-beta.1', { getReleaseAssetPaths: getAssetPaths('dist/build/main.js') });
     expect(mockExecFromRoot).toHaveBeenCalledWith(
       expect.arrayContaining(['--prerelease']),
       expect.any(Object)
@@ -746,9 +717,8 @@ describe('publishGitHubRelease', () => {
 
   it('should not add --prerelease flag for stable versions', async () => {
     setupReleaseNotesMocks();
-    mockReaddirPosix.mockResolvedValue(['main.js']);
     mockExistsSync.mockReturnValue(true);
-    await publishGitHubRelease('1.0.0', true);
+    await publishGitHubRelease('1.0.0', { getReleaseAssetPaths: getAssetPaths('dist/build/main.js') });
     const ghReleaseCall = mockExecFromRoot.mock.calls.find(
       (call: unknown[]) => Array.isArray(call[0]) && (call[0] as string[]).includes('gh')
     ) as [string[], unknown] | undefined;
@@ -757,31 +727,28 @@ describe('publishGitHubRelease', () => {
 
   it('should close the released issues after the release is created', async () => {
     setupReleaseNotesMocks();
-    mockReaddirPosix.mockResolvedValue(['main.js']);
     mockExistsSync.mockReturnValue(true);
     mockCloseReleasedIssues.mockImplementation(() => {
       expect(getGhReleaseArguments()).toBeDefined();
       return Promise.resolve([]);
     });
-    await publishGitHubRelease('1.0.0', true);
+    await publishGitHubRelease('1.0.0', { getReleaseAssetPaths: getAssetPaths('dist/build/main.js') });
     expect(mockCloseReleasedIssues).toHaveBeenCalledWith({ newVersion: '1.0.0' });
   });
 
   it('should not close the released issues when shouldCloseReleasedIssues is false', async () => {
     setupReleaseNotesMocks();
-    mockReaddirPosix.mockResolvedValue(['main.js']);
     mockExistsSync.mockReturnValue(true);
-    await publishGitHubRelease('1.0.0', true, { shouldCloseReleasedIssues: false });
+    await publishGitHubRelease('1.0.0', { getReleaseAssetPaths: getAssetPaths('dist/build/main.js'), shouldCloseReleasedIssues: false });
     expect(mockCloseReleasedIssues).not.toHaveBeenCalled();
   });
 
   it('should warn and not throw when closing the released issues fails', async () => {
     setupReleaseNotesMocks();
-    mockReaddirPosix.mockResolvedValue(['main.js']);
     mockExistsSync.mockReturnValue(true);
     mockCloseReleasedIssues.mockRejectedValue(new Error('gh is offline'));
     const warnSpy = vi.spyOn(console, 'warn');
-    await publishGitHubRelease('1.0.0', true);
+    await publishGitHubRelease('1.0.0', { getReleaseAssetPaths: getAssetPaths('dist/build/main.js') });
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('The 1.0.0 release is published, but closing the issues it carries failed'));
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('gh is offline'));
   });
@@ -906,7 +873,7 @@ describe('updateChangelog', () => {
       .mockResolvedValueOnce('');
     await updateChangelog('1.0.0');
 
-    expect(mockMkdtemp).toHaveBeenCalledWith(expect.stringContaining('obsidian-dev-utils-changelog-'));
+    expect(mockMkdtemp).toHaveBeenCalledWith(expect.stringContaining('changelog-'));
     expect(mockWriteFile).toHaveBeenCalledWith(SCRATCH_CHANGELOG_PATH, expect.stringContaining('- msg\n'), 'utf-8');
     expect(mockExecFromRoot).toHaveBeenCalledWith(['code', '-w', SCRATCH_CHANGELOG_PATH], expect.any(Object));
     expect(mockReadFile).toHaveBeenCalledWith(SCRATCH_CHANGELOG_PATH, 'utf-8');
@@ -1352,13 +1319,11 @@ describe('updateChangelog', () => {
   });
 });
 
-describe('parseVersionArgs', () => {
+describe('parseVersionArguments', () => {
   it('should parse the version update type with no flags', () => {
     const { options, versionUpdateType } = parseVersionArguments(['patch']);
     expect(versionUpdateType).toBe('patch');
-    expect(options.minAppVersion).toBeUndefined();
     expect(options).toEqual({
-      shouldArchiveDemoVault: true,
       shouldBuild: true,
       shouldCloseReleasedIssues: true,
       shouldEditChangelog: true,
@@ -1372,20 +1337,16 @@ describe('parseVersionArgs', () => {
     const { options, versionUpdateType } = parseVersionArguments([
       'patch',
       '--changelog-file=notes.md',
-      '--min-app-version=1.9.0',
       '--no-build',
       '--no-changelog-editing',
       '--no-checks',
       '--no-commit-verification',
-      '--no-demo-vault',
       '--no-issue-closing',
       '--no-release'
     ]);
     expect(versionUpdateType).toBe('patch');
     expect(options).toEqual({
       changelogFilePath: 'notes.md',
-      minAppVersion: '1.9.0',
-      shouldArchiveDemoVault: false,
       shouldBuild: false,
       shouldCloseReleasedIssues: false,
       shouldEditChangelog: false,
@@ -1395,25 +1356,76 @@ describe('parseVersionArgs', () => {
     });
   });
 
-  it('should disable demo-vault archiving with --no-demo-vault', () => {
-    const { options } = parseVersionArguments(['patch', '--no-demo-vault']);
-    expect(options.shouldArchiveDemoVault).toBe(false);
-    expect(options.shouldBuild).toBe(true);
-  });
-
   it('should return undefined version update type when no positional is provided', () => {
     const { versionUpdateType } = parseVersionArguments(['--no-release']);
     expect(versionUpdateType).toBeUndefined();
   });
 
-  it('should parse the min app version override with --min-app-version', () => {
-    const { options } = parseVersionArguments(['patch', '--min-app-version=1.9.0']);
-    expect(options.minAppVersion).toBe('1.9.0');
-  });
-
   it('should parse the prepared changelog notes path with --changelog-file', () => {
     const { options } = parseVersionArguments(['patch', '--changelog-file=notes.md']);
     expect(options.changelogFilePath).toBe('notes.md');
+  });
+
+  it('should reject a flag it does not know', () => {
+    expect(() => parseVersionArguments(['patch', '--no-demo-vault'])).toThrow();
+  });
+});
+
+describe('VERSION_ARGUMENT_OPTIONS', () => {
+  it('should declare every flag parseVersionArguments recognizes', () => {
+    expect(Object.keys(VERSION_ARGUMENT_OPTIONS).sort()).toEqual([
+      'changelog-file',
+      'no-build',
+      'no-changelog-editing',
+      'no-checks',
+      'no-commit-verification',
+      'no-issue-closing',
+      'no-release'
+    ]);
+  });
+});
+
+describe('toUpdateVersionOptions', () => {
+  it('should enable every behavior when no flag is set', () => {
+    expect(toUpdateVersionOptions({})).toEqual({
+      changelogFilePath: undefined,
+      shouldBuild: true,
+      shouldCloseReleasedIssues: true,
+      shouldEditChangelog: true,
+      shouldRelease: true,
+      shouldRunChecks: true,
+      shouldVerifyCommit: true
+    });
+  });
+
+  it('should map each flag onto its option', () => {
+    expect(toUpdateVersionOptions({
+      'changelog-file': 'notes.md',
+      'no-build': true,
+      'no-changelog-editing': true,
+      'no-checks': true,
+      'no-commit-verification': true,
+      'no-issue-closing': true,
+      'no-release': true
+    })).toEqual({
+      changelogFilePath: 'notes.md',
+      shouldBuild: false,
+      shouldCloseReleasedIssues: false,
+      shouldEditChangelog: false,
+      shouldRelease: false,
+      shouldRunChecks: false,
+      shouldVerifyCommit: false
+    });
+  });
+});
+
+describe('isPreRelease', () => {
+  it('should be true for a version with a pre-release part', () => {
+    expect(isPreRelease('1.2.4-beta.0')).toBe(true);
+  });
+
+  it('should be false for a stable version', () => {
+    expect(isPreRelease('1.2.4')).toBe(false);
   });
 });
 
@@ -1431,7 +1443,7 @@ describe('updateVersion', () => {
   function setupFullMocks(): void {
     // The interactive changelog review is on by default, and the preflight refuses it without a terminal.
     setIsTty(true);
-    mockReadPackageJson.mockResolvedValue({ name: 'my-plugin', version: '1.0.0' });
+    mockReadPackageJson.mockResolvedValue({ name: 'my-package', version: '1.0.0' });
     mockExistsSync.mockReturnValue(false);
     mockReadFile.mockResolvedValue('# CHANGELOG\n\n');
     mockCreateInterface.mockReturnValue({
@@ -1457,9 +1469,8 @@ describe('updateVersion', () => {
     await expect(updateVersion('invalid')).rejects.toThrow('Invalid version update type');
   });
 
-  it('should run full pipeline for non-obsidian-plugin project', async () => {
+  it('should run the full pipeline', async () => {
     setupFullMocks();
-    mockReaddirPosix.mockResolvedValue([]);
     await updateVersion('patch');
     expect(mockNpmRunOptional).toHaveBeenCalledWith('format:check');
     expect(mockNpmRunOptional).toHaveBeenCalledWith('spellcheck');
@@ -1473,7 +1484,6 @@ describe('updateVersion', () => {
 
   it('should call prepareGitHubRelease callback when provided', async () => {
     setupFullMocks();
-    mockReaddirPosix.mockResolvedValue([]);
     const prepareRelease = vi.fn().mockResolvedValue(undefined);
     await updateVersion('patch', { prepareGitHubRelease: prepareRelease });
     expect(prepareRelease).toHaveBeenCalledWith('1.0.1');
@@ -1481,21 +1491,18 @@ describe('updateVersion', () => {
 
   it('should close the released issues by default', async () => {
     setupFullMocks();
-    mockReaddirPosix.mockResolvedValue([]);
     await updateVersion('patch');
     expect(mockCloseReleasedIssues).toHaveBeenCalledWith({ newVersion: '1.0.1' });
   });
 
   it('should not close the released issues when shouldCloseReleasedIssues is false', async () => {
     setupFullMocks();
-    mockReaddirPosix.mockResolvedValue([]);
     await updateVersion('patch', { shouldCloseReleasedIssues: false });
     expect(mockCloseReleasedIssues).not.toHaveBeenCalled();
   });
 
   it('should skip the verification checks but still build when shouldRunChecks is false', async () => {
     setupFullMocks();
-    mockReaddirPosix.mockResolvedValue([]);
     await updateVersion('patch', { shouldRunChecks: false });
     expect(mockNpmRun).toHaveBeenCalledWith('build');
     expect(mockNpmRun).not.toHaveBeenCalledWith('lint');
@@ -1506,7 +1513,6 @@ describe('updateVersion', () => {
 
   it('should skip the build but still run the verification checks when shouldBuild is false', async () => {
     setupFullMocks();
-    mockReaddirPosix.mockResolvedValue([]);
     await updateVersion('patch', { shouldBuild: false });
     expect(mockNpmRun).not.toHaveBeenCalledWith('build');
     expect(mockNpmRunOptional).toHaveBeenCalledWith('lint');
@@ -1516,7 +1522,6 @@ describe('updateVersion', () => {
 
   it('should stop before push and release when shouldRelease is false', async () => {
     setupFullMocks();
-    mockReaddirPosix.mockResolvedValue([]);
     const prepareRelease = vi.fn().mockResolvedValue(undefined);
     await updateVersion('patch', {
       prepareGitHubRelease: prepareRelease,
@@ -1529,7 +1534,6 @@ describe('updateVersion', () => {
 
   it('should add --no-verify to the release commit when shouldVerifyCommit is false', async () => {
     setupFullMocks();
-    mockReaddirPosix.mockResolvedValue([]);
     await updateVersion('patch', { shouldVerifyCommit: false });
     expect(mockExecFromRoot).toHaveBeenCalledWith(
       ['git', 'commit', '-m', 'chore: release 1.0.1', '--allow-empty', '--no-verify'],
@@ -1539,24 +1543,8 @@ describe('updateVersion', () => {
 
   it('should skip the interactive changelog review when shouldEditChangelog is false', async () => {
     setupFullMocks();
-    mockReaddirPosix.mockResolvedValue([]);
     await updateVersion('patch', { shouldEditChangelog: false });
     expect(mockExecFromRoot).not.toHaveBeenCalledWith('code --version', expect.any(Object));
-  });
-
-  it('should run updateVersionInFilesForPlugin for obsidian plugin with prerelease', async () => {
-    setupFullMocks();
-    mockReadPackageJson.mockResolvedValue({ name: 'my-plugin', version: '1.0.0' });
-    mockExistsSync.mockImplementation((path: string) => path.includes('manifest.json'));
-    mockReaddirPosix.mockResolvedValue([]);
-    await updateVersion('prerelease');
-    expect(mockCp).toHaveBeenCalled();
-    expect(mockEditJson).toHaveBeenCalledTimes(1);
-
-    const betaManifestCallback = (mockEditJson.mock.calls[0]?.[0] as EditJsonParams<Record<string, string>>).editFunction;
-    const betaManifest: Record<string, string> = { version: '1.0.0' };
-    await betaManifestCallback(betaManifest);
-    expect(betaManifest['version']).toBe('1.0.1-beta.0');
   });
 
   it('should use npm env vars when no version type provided', async () => {
@@ -1564,7 +1552,6 @@ describe('updateVersion', () => {
     vi.stubEnv('npm_new_version', '1.0.1');
     try {
       setupFullMocks();
-      mockReaddirPosix.mockResolvedValue([]);
       await updateVersion(undefined);
       expect(mockEditPackageJson).toHaveBeenCalled();
     } finally {
@@ -1572,152 +1559,39 @@ describe('updateVersion', () => {
     }
   });
 
-  it('should read the latest obsidian version from the desktop releases feed', async () => {
+  it('should call updateVersionInExtraFiles with the new version right after updating the package files', async () => {
     setupFullMocks();
-    mockReadPackageJson.mockResolvedValue({ name: 'my-plugin', version: '1.0.0' });
-    mockExistsSync.mockImplementation((path: string) => path.includes('manifest.json'));
-    mockReaddirPosix.mockResolvedValue([]);
-
-    const mockFetch = vi.fn().mockResolvedValue({
-      json: vi.fn().mockResolvedValue({ latestVersion: '1.7.0' })
+    const steps: string[] = [];
+    mockEditPackageJson.mockImplementation(() => {
+      steps.push('bump');
+      return noopAsync();
     });
-    vi.stubGlobal('fetch', mockFetch);
-
-    try {
-      await updateVersion('patch');
-      expect(mockFetch).toHaveBeenCalledWith('https://raw.githubusercontent.com/obsidianmd/obsidian-releases/master/desktop-releases.json');
-    } finally {
-      vi.unstubAllGlobals();
-    }
-  });
-
-  it('should throw when the desktop releases feed has no latest version', async () => {
-    setupFullMocks();
-    mockReadPackageJson.mockResolvedValue({ name: 'my-plugin', version: '1.0.0' });
-    mockExistsSync.mockImplementation((path: string) => path.includes('manifest.json'));
-    mockReaddirPosix.mockResolvedValue([]);
-
-    const mockFetch = vi.fn().mockResolvedValue({
-      json: vi.fn().mockResolvedValue({})
+    mockWriteFile.mockImplementation((path: string) => {
+      if (path !== SCRATCH_CHANGELOG_PATH) {
+        steps.push('write-changelog');
+      }
+      return noopAsync();
     });
-    vi.stubGlobal('fetch', mockFetch);
-
-    try {
-      await expect(updateVersion('patch')).rejects.toThrow('Could not find the latest desktop Obsidian version');
-    } finally {
-      vi.unstubAllGlobals();
-    }
-  });
-
-  it('should use the minAppVersion option verbatim without fetching', async () => {
-    setupFullMocks();
-    mockReadPackageJson.mockResolvedValue({ name: 'my-plugin', version: '1.0.0' });
-    mockExistsSync.mockImplementation((path: string) => path.includes('manifest.json'));
-    mockReaddirPosix.mockResolvedValue([]);
-
-    const mockFetch = vi.fn();
-    vi.stubGlobal('fetch', mockFetch);
-
-    try {
-      await updateVersion('patch', { minAppVersion: '1.9.0' });
-      expect(mockFetch).not.toHaveBeenCalled();
-      expect(mockEditJson).toHaveBeenCalledTimes(2);
-
-      const manifestCallback = (mockEditJson.mock.calls[0]?.[0] as EditJsonParams<Record<string, string>>).editFunction;
-      const manifest: Record<string, string> = { minAppVersion: '1.0.0', version: '1.0.0' };
-      await manifestCallback(manifest);
-      expect(manifest['minAppVersion']).toBe('1.9.0');
-
-      const versionsCallback = (mockEditJson.mock.calls[1]?.[0] as EditJsonParams<Record<string, string>>).editFunction;
-      const versions: Record<string, string> = {};
-      await versionsCallback(versions);
-      expect(versions['1.0.1']).toBe('1.9.0');
-    } finally {
-      vi.unstubAllGlobals();
-    }
-  });
-
-  it('should update plugin manifest with latest obsidian version for non-beta release', async () => {
-    setupFullMocks();
-    mockReadPackageJson.mockResolvedValue({ name: 'my-plugin', version: '1.0.0' });
-    mockExistsSync.mockImplementation((path: string) => path.includes('manifest.json'));
-    mockReaddirPosix.mockResolvedValue([]);
-
-    const mockFetch = vi.fn().mockResolvedValue({
-      json: vi.fn().mockResolvedValue({ latestVersion: '1.7.0' })
+    const updateVersionInExtraFiles = vi.fn((newVersion: string) => {
+      steps.push(`extra-files ${newVersion}`);
+      return noopAsync();
     });
-    vi.stubGlobal('fetch', mockFetch);
-
-    try {
-      await updateVersion('patch');
-      expect(mockEditJson).toHaveBeenCalledTimes(2);
-
-      const manifestCallback = (mockEditJson.mock.calls[0]?.[0] as EditJsonParams<Record<string, string>>).editFunction;
-      const manifest: Record<string, string> = { minAppVersion: '1.0.0', version: '1.0.0' };
-      await manifestCallback(manifest);
-      expect(manifest['minAppVersion']).toBe('1.7.0');
-      expect(manifest['version']).toBe('1.0.1');
-
-      const versionsCallback = (mockEditJson.mock.calls[1]?.[0] as EditJsonParams<Record<string, string>>).editFunction;
-      const versions: Record<string, string> = {};
-      await versionsCallback(versions);
-      expect(versions['1.0.1']).toBe('1.7.0');
-    } finally {
-      vi.unstubAllGlobals();
-    }
+    await updateVersion('patch', { updateVersionInExtraFiles });
+    expect(updateVersionInExtraFiles).toHaveBeenCalledWith('1.0.1');
+    expect(steps).toEqual(['bump', 'extra-files 1.0.1', 'write-changelog']);
   });
 
-  it('should remove manifest-beta.json for non-prerelease obsidian plugin release when it exists', async () => {
+  it('should forward getReleaseAssetPaths to the GitHub release', async () => {
     setupFullMocks();
-    mockReadPackageJson.mockResolvedValue({ name: 'my-plugin', version: '1.0.0' });
-    mockExistsSync.mockImplementation((path: string) => path.includes('manifest.json') || path.includes('manifest-beta.json'));
-    mockReaddirPosix.mockResolvedValue([]);
-
-    const mockFetch = vi.fn().mockResolvedValue({
-      json: vi.fn().mockResolvedValue({ latestVersion: '1.7.0' })
-    });
-    vi.stubGlobal('fetch', mockFetch);
-
-    try {
-      await updateVersion('patch');
-      expect(mockRm).toHaveBeenCalled();
-    } finally {
-      vi.unstubAllGlobals();
-    }
-  });
-
-  it('should archive the demo vault for an obsidian plugin release', async () => {
-    setupFullMocks();
-    mockReadPackageJson.mockResolvedValue({ name: 'my-plugin', version: '1.0.0' });
-    mockExistsSync.mockImplementation((path: string) => path.includes('manifest.json'));
-    mockReaddirPosix.mockResolvedValue([]);
-    await updateVersion('prerelease');
-    expect(mockArchivePluginDemoVault).toHaveBeenCalled();
-  });
-
-  it('should not archive the demo vault when shouldArchiveDemoVault is false', async () => {
-    setupFullMocks();
-    mockReadPackageJson.mockResolvedValue({ name: 'my-plugin', version: '1.0.0' });
-    mockExistsSync.mockImplementation((path: string) => path.includes('manifest.json'));
-    mockReaddirPosix.mockResolvedValue([]);
-    await updateVersion('prerelease', { shouldArchiveDemoVault: false });
-    expect(mockArchivePluginDemoVault).not.toHaveBeenCalled();
-  });
-
-  it('should not archive the demo vault for a non-plugin project', async () => {
-    setupFullMocks();
-    mockReaddirPosix.mockResolvedValue([]);
-    await updateVersion('patch');
-    expect(mockArchivePluginDemoVault).not.toHaveBeenCalled();
-  });
-
-  it('should not archive the demo vault when the release is skipped', async () => {
-    setupFullMocks();
-    mockReadPackageJson.mockResolvedValue({ name: 'my-plugin', version: '1.0.0' });
-    mockExistsSync.mockImplementation((path: string) => path.includes('manifest.json'));
-    mockReaddirPosix.mockResolvedValue([]);
-    await updateVersion('prerelease', { shouldRelease: false });
-    expect(mockArchivePluginDemoVault).not.toHaveBeenCalled();
+    mockExistsSync.mockReturnValue(true);
+    const getReleaseAssetPaths = vi.fn(() => Promise.resolve(['dist/build/main.js']));
+    await updateVersion('patch', { getReleaseAssetPaths });
+    expect(getReleaseAssetPaths).toHaveBeenCalled();
+    expect(mockExecFromRoot).toHaveBeenCalledWith(
+      expect.arrayContaining(['gh', 'release', 'create', '1.0.1', 'dist/build/main.js']),
+      expect.any(Object)
+    );
+    expect(mockExecFromRoot).not.toHaveBeenCalledWith(expect.arrayContaining(['npm', 'pack']), expect.any(Object));
   });
 
   it('should refuse up front when the interactive changelog review has no terminal to answer it', async () => {
@@ -1733,7 +1607,6 @@ describe('updateVersion', () => {
   it('should not refuse without a terminal when prepared changelog notes are supplied', async () => {
     setupFullMocks();
     setIsTty(false);
-    mockReaddirPosix.mockResolvedValue([]);
     await updateVersion('patch', { changelogFilePath: '/notes.md' });
     expect(mockEditPackageJson).toHaveBeenCalled();
     expect(mockMkdtemp).not.toHaveBeenCalled();
@@ -1742,14 +1615,12 @@ describe('updateVersion', () => {
   it('should not refuse without a terminal when the changelog review is disabled', async () => {
     setupFullMocks();
     setIsTty(false);
-    mockReaddirPosix.mockResolvedValue([]);
     await updateVersion('patch', { shouldEditChangelog: false });
     expect(mockEditPackageJson).toHaveBeenCalled();
   });
 
   it('should settle the changelog before any file is written, and write it only after the version bump', async () => {
     setupFullMocks();
-    mockReaddirPosix.mockResolvedValue([]);
     const steps: string[] = [];
     mockExecFromRoot.mockImplementation((command: string | string[]) => {
       const commandString = Array.isArray(command) ? command.join(' ') : command;
@@ -1798,8 +1669,7 @@ describe('updateVersion', () => {
      */
     function setupBumpFloorMocks(commits: string[], currentVersion = LAST_TAG): void {
       setupFullMocks();
-      mockReaddirPosix.mockResolvedValue([]);
-      mockReadPackageJson.mockResolvedValue({ name: 'my-plugin', version: currentVersion });
+      mockReadPackageJson.mockResolvedValue({ name: 'my-package', version: currentVersion });
       mockExistsSync.mockImplementation((path: string) => path.includes('CHANGELOG.md'));
       mockReadFile.mockImplementation((path: string) => Promise.resolve(path === SCRATCH_CHANGELOG_PATH ? '' : `# CHANGELOG\n\n## ${LAST_TAG}\n\n- chore: the previous release\n`));
 

@@ -1,5 +1,6 @@
 import type { PackageJson } from 'type-fest';
 
+import { noopAsync } from '@mnaoumov/typescript-lib/function';
 import {
   beforeEach,
   describe,
@@ -15,7 +16,6 @@ import type {
 import type { ResolveToolCommandParams } from './package-manager.ts';
 import type { ResolvePathFromRootSafeParams } from './root.ts';
 
-import { noopAsync } from '../function.ts';
 import {
   buildClean,
   buildCompile,
@@ -57,13 +57,13 @@ const {
   mockToCanonical: vi.fn<(fileName: string) => string>()
 }));
 
-vi.mock('../script-utils/root.ts', () => ({
+vi.mock('./root.ts', () => ({
   execFromRoot: mockExecFromRoot,
   getRootFolder: mockGetRootFolder,
   resolvePathFromRootSafe: mockResolvePathFromRootSafe
 }));
 
-vi.mock('../script-utils/package-manager.ts', () => ({
+vi.mock('./package-manager.ts', () => ({
   resolveToolCommand: mockResolveToolCommand
 }));
 
@@ -83,7 +83,7 @@ vi.mock('node:fs/promises', async (importOriginal) => {
   };
 });
 
-vi.mock('../script-utils/npm-run.ts', async (importOriginal) => {
+vi.mock('./npm-run.ts', async (importOriginal) => {
   const $module = await importOriginal<typeof import('./npm-run.ts')>();
   return {
     ...$module,
@@ -91,19 +91,19 @@ vi.mock('../script-utils/npm-run.ts', async (importOriginal) => {
   };
 });
 
-vi.mock('../script-utils/json.ts', () => ({
+vi.mock('./json.ts', () => ({
   readJson: mockReadJson
 }));
 
-vi.mock('../script-utils/fs.ts', () => ({
+vi.mock('./fs.ts', () => ({
   readdirPosix: mockReaddirPosix
 }));
 
-vi.mock('../script-utils/npm.ts', () => ({
+vi.mock('./npm.ts', () => ({
   readPackageJson: mockReadPackageJson
 }));
 
-vi.mock('../debug.ts', () => ({
+vi.mock('@mnaoumov/typescript-lib/debug', () => ({
   getLibDebugger: vi.fn(() => vi.fn())
 }));
 

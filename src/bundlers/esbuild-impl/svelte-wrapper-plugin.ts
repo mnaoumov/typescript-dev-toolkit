@@ -8,10 +8,10 @@
 
 import type { Plugin } from 'esbuild';
 
+import { extractDefaultExportInterop } from '@mnaoumov/typescript-lib/object-utils';
 import esbuildSvelte_ from 'esbuild-svelte';
 import { sveltePreprocess } from 'svelte-preprocess';
 
-import { extractDefaultExportInterop } from '../../../object-utils.ts';
 import { readPackageJson } from '../../npm.ts';
 
 const esbuildSvelte = extractDefaultExportInterop(esbuildSvelte_);

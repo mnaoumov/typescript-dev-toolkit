@@ -1,3 +1,5 @@
+import { noopAsync } from '@mnaoumov/typescript-lib/function';
+import { assertNonNullable } from '@mnaoumov/typescript-lib/type-guards';
 import {
   beforeEach,
   describe,
@@ -6,8 +8,6 @@ import {
   vi
 } from 'vitest';
 
-import { noopAsync } from '../function.ts';
-import { assertNonNullable } from '../type-guards.ts';
 import {
   editJson,
   editJsonSync,

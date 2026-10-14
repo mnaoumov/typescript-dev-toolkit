@@ -7,21 +7,15 @@
  * It can automatically fix linting issues if specified, and logs results to the console.
  */
 
+import { getLibDebugger } from '@mnaoumov/typescript-lib/debug';
+import { basename } from '@mnaoumov/typescript-lib/path';
 import { existsSync } from 'node:fs';
 import { cp } from 'node:fs/promises';
 
-import { getLibDebugger } from '../../debug.ts';
-import { ObsidianPluginRepoPaths } from '../../obsidian/plugin/obsidian-plugin-repo-paths.ts';
-import {
-  getFolderName,
-  join
-} from '../../path.ts';
-import { assertNonNullable } from '../../type-guards.ts';
-import { ObsidianDevUtilsRepoPaths } from '../obsidian-dev-utils-repo-paths.ts';
 import { resolveToolCommand } from '../package-manager.ts';
+import { RepoPaths } from '../repo-paths.ts';
 import {
   execFromRoot,
-  getRootFolder,
   resolvePathFromRootSafe
 } from '../root.ts';
 
@@ -50,6 +44,12 @@ const ESLINT_WARNINGS_AS_FINDINGS_ARGUMENTS: readonly string[] = ['--max-warning
  */
 export interface LintOptions {
   /**
+   * The configuration file copied to the project root when the project has none. Without it, ESLint runs
+   * against whatever it finds, and reports a missing configuration itself.
+   */
+  readonly defaultConfigFilePath?: string | undefined;
+
+  /**
    * Optional file paths to lint. If omitted, lints the entire project.
    */
   readonly paths?: string[] | undefined;
@@ -68,14 +68,14 @@ export interface LintOptions {
  * @param options - The {@link LintOptions}.
  */
 export async function lint(options?: LintOptions): Promise<void> {
-  const { paths, shouldFix } = options ?? {};
+  const { defaultConfigFilePath, paths, shouldFix } = options ?? {};
   const configFiles = [
-    ObsidianPluginRepoPaths.EslintConfigJs,
-    ObsidianPluginRepoPaths.EslintConfigMjs,
-    ObsidianPluginRepoPaths.EslintConfigCjs,
-    ObsidianPluginRepoPaths.EslintConfigTs,
-    ObsidianPluginRepoPaths.EslintConfigMts,
-    ObsidianPluginRepoPaths.EslintConfigCts
+    RepoPaths.EslintConfigJs,
+    RepoPaths.EslintConfigMjs,
+    RepoPaths.EslintConfigCjs,
+    RepoPaths.EslintConfigTs,
+    RepoPaths.EslintConfigMts,
+    RepoPaths.EslintConfigCts
   ];
 
   const doesConfigFileExist = configFiles.some((configFile) => {
@@ -83,18 +83,13 @@ export async function lint(options?: LintOptions): Promise<void> {
     return existsSync(configFilePath);
   });
 
-  if (!doesConfigFileExist) {
+  if (!doesConfigFileExist && defaultConfigFilePath) {
     getLibDebugger('ESLint:lint')('ESLint configuration file not found. Creating default config...');
-    const packageFolder = getRootFolder(getFolderName(import.meta.url));
-    assertNonNullable(packageFolder, 'Package folder not found');
-    await cp(
-      join(packageFolder, ObsidianDevUtilsRepoPaths.DistTemplates, ObsidianDevUtilsRepoPaths.EslintConfigMts),
-      resolvePathFromRootSafe({ path: ObsidianPluginRepoPaths.EslintConfigMts })
-    );
+    await cp(defaultConfigFilePath, resolvePathFromRootSafe({ path: basename(defaultConfigFilePath) }));
   }
 
   /* v8 ignore start -- The paths-provided branch is only exercised by consumer projects passing file lists. */
-  const targets = paths?.length ? paths : [ObsidianPluginRepoPaths.CurrentFolder];
+  const targets = paths?.length ? paths : [RepoPaths.CurrentFolder];
   /* v8 ignore stop */
   await execFromRoot([
     ...resolveToolCommand({ tool: 'eslint' }),

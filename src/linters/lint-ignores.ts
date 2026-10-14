@@ -23,11 +23,12 @@
  * exclusions that are about markdown, this one the exclusions that are about no file type at all.
  */
 
-import { ObsidianPluginRepoPaths } from '../../obsidian/plugin/obsidian-plugin-repo-paths.ts';
-import { join } from '../../path.ts';
+import { join } from '@mnaoumov/typescript-lib/path';
+
+import { RepoPaths } from '../repo-paths.ts';
 
 /**
- * The glob matching everything inside {@link ObsidianPluginRepoPaths.ClaudeWorktrees}, for any linter
+ * The glob matching everything inside {@link RepoPaths.ClaudeWorktrees}, for any linter
  * that takes an ignore configuration.
  */
-export const CLAUDE_WORKTREES_IGNORE_GLOB = join(ObsidianPluginRepoPaths.ClaudeWorktrees, ObsidianPluginRepoPaths.AnyPath);
+export const CLAUDE_WORKTREES_IGNORE_GLOB = join(RepoPaths.ClaudeWorktrees, RepoPaths.AnyPath);

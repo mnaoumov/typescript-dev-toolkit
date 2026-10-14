@@ -11,16 +11,16 @@ import type {
   TsConfigJson
 } from 'type-fest';
 
+import { toArray } from '@mnaoumov/typescript-lib/async';
+import { getLibDebugger } from '@mnaoumov/typescript-lib/debug';
+import { join } from '@mnaoumov/typescript-lib/path';
+import { trimStart } from '@mnaoumov/typescript-lib/string';
 import {
   cp,
   glob,
   rm
 } from 'node:fs/promises';
 
-import { toArray } from '../async.ts';
-import { getLibDebugger } from '../debug.ts';
-import { join } from '../path.ts';
-import { trimStart } from '../string.ts';
 import {
   checkProjectTypes,
   parseTsConfig,
@@ -33,8 +33,8 @@ import {
   NpmRunOptionalResult
 } from './npm-run.ts';
 import { readPackageJson } from './npm.ts';
-import { ObsidianDevUtilsRepoPaths } from './obsidian-dev-utils-repo-paths.ts';
 import { resolveToolCommand } from './package-manager.ts';
+import { RepoPaths } from './repo-paths.ts';
 import {
   execFromRoot,
   getRootFolder,
@@ -49,7 +49,7 @@ import {
  * @returns A {@link Promise} that resolves when the folder has been removed.
  */
 export async function buildClean(): Promise<void> {
-  await rm(ObsidianDevUtilsRepoPaths.Dist, { force: true, recursive: true });
+  await rm(RepoPaths.Dist, { force: true, recursive: true });
 }
 
 /**
@@ -77,10 +77,10 @@ export async function buildCompile(): Promise<void> {
  * @throws If the project has Svelte files but does not declare `svelte-check`.
  */
 export async function buildCompileSvelte(): Promise<void> {
-  const tsConfigPath = resolvePathFromRootSafe({ path: ObsidianDevUtilsRepoPaths.TsConfigJson });
+  const tsConfigPath = resolvePathFromRootSafe({ path: RepoPaths.TsConfigJson });
   const tsConfig = await readJson<TsConfigJson>(tsConfigPath);
   const svelteFiles = await toArray(glob(SVELTE_FILE_PATTERNS, {
-    cwd: resolvePathFromRootSafe({ path: ObsidianDevUtilsRepoPaths.CurrentFolder }),
+    cwd: resolvePathFromRootSafe({ path: RepoPaths.CurrentFolder }),
     exclude: [...SVELTE_FILE_EXCLUDE_PATTERNS, ...tsConfig.exclude ?? []]
   }));
 
@@ -100,7 +100,7 @@ export async function buildCompileSvelte(): Promise<void> {
     );
   }
 
-  await execFromRoot([...resolveToolCommand({ tool: SVELTE_CHECK_PACKAGE_NAME }), '--tsconfig', ObsidianDevUtilsRepoPaths.TsConfigJson]);
+  await execFromRoot([...resolveToolCommand({ tool: SVELTE_CHECK_PACKAGE_NAME }), '--tsconfig', RepoPaths.TsConfigJson]);
 }
 
 /**
@@ -127,7 +127,7 @@ export async function buildCompileTypeScript(): Promise<void> {
  * distribution folder.
  *
  * This function recursively reads the contents of the templates folder and copies each file to the
- * corresponding path under {@link ObsidianDevUtilsRepoPaths.DistTemplates}, so consumers can copy the
+ * corresponding path under {@link RepoPaths.DistTemplates}, so consumers can copy the
  * templates from `node_modules/obsidian-dev-utils/dist/templates`. A trailing `.template` on a source
  * file name is stripped in the destination (e.g. `eslint.config.mts.template` is copied as
  * `eslint.config.mts`), so an active config template can live in the repo under a name that the
@@ -136,17 +136,17 @@ export async function buildCompileTypeScript(): Promise<void> {
  * @returns A {@link Promise} that resolves when all files have been copied.
  */
 export async function buildTemplates(): Promise<void> {
-  for (const dirent of await readdirPosix(ObsidianDevUtilsRepoPaths.Templates, { recursive: true, withFileTypes: true })) {
+  for (const dirent of await readdirPosix(RepoPaths.Templates, { recursive: true, withFileTypes: true })) {
     if (!dirent.isFile()) {
       continue;
     }
 
     const path = trimStart({
       $string: join(dirent.parentPath, dirent.name),
-      prefix: `${ObsidianDevUtilsRepoPaths.Templates}/`
+      prefix: `${RepoPaths.Templates}/`
     });
     const destinationPath = path.endsWith(TEMPLATE_FILE_SUFFIX) ? path.slice(0, -TEMPLATE_FILE_SUFFIX.length) : path;
-    await cp(join(ObsidianDevUtilsRepoPaths.Templates, path), join(ObsidianDevUtilsRepoPaths.DistTemplates, destinationPath));
+    await cp(join(RepoPaths.Templates, path), join(RepoPaths.DistTemplates, destinationPath));
   }
 }
 
@@ -157,9 +157,9 @@ const NODE_MODULES_SEGMENT = '/node_modules/';
 const SVELTE_CHECK_PACKAGE_NAME = 'svelte-check';
 
 const SVELTE_FILE_PATTERNS = [
-  `${ObsidianDevUtilsRepoPaths.AnyPath}/*.svelte`,
-  `${ObsidianDevUtilsRepoPaths.AnyPath}/*.svelte.js`,
-  `${ObsidianDevUtilsRepoPaths.AnyPath}/*.svelte.ts`
+  `${RepoPaths.AnyPath}/*.svelte`,
+  `${RepoPaths.AnyPath}/*.svelte.js`,
+  `${RepoPaths.AnyPath}/*.svelte.ts`
 ];
 
 /**
@@ -167,8 +167,8 @@ const SVELTE_FILE_PATTERNS = [
  * default `node_modules` exclusion, so it cannot be relied on to keep dependencies out of the glob.
  */
 const SVELTE_FILE_EXCLUDE_PATTERNS = [
-  `${ObsidianDevUtilsRepoPaths.AnyPath}/${ObsidianDevUtilsRepoPaths.NodeModules}/${ObsidianDevUtilsRepoPaths.AnyPath}`,
-  `${ObsidianDevUtilsRepoPaths.AnyPath}/${ObsidianDevUtilsRepoPaths.Dist}/${ObsidianDevUtilsRepoPaths.AnyPath}`
+  `${RepoPaths.AnyPath}/${RepoPaths.NodeModules}/${RepoPaths.AnyPath}`,
+  `${RepoPaths.AnyPath}/${RepoPaths.Dist}/${RepoPaths.AnyPath}`
 ];
 
 /**
@@ -201,7 +201,7 @@ function areProjectTypesValid(): boolean {
   }
 
   const rootCanonical = toCanonical(root);
-  const { fileNames, options } = parseTsConfig(join(root, ObsidianDevUtilsRepoPaths.TsConfigJson));
+  const { fileNames, options } = parseTsConfig(join(root, RepoPaths.TsConfigJson));
 
   return checkProjectTypes({
     options,

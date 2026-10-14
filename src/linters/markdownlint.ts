@@ -4,6 +4,9 @@
  * Lint markdown documentation using `markdownlint-cli2` and `linkinator`.
  */
 
+import { toArray } from '@mnaoumov/typescript-lib/async';
+import { getLibDebugger } from '@mnaoumov/typescript-lib/debug';
+import { basename } from '@mnaoumov/typescript-lib/path';
 import { existsSync } from 'node:fs';
 import {
   cp,
@@ -11,17 +14,9 @@ import {
 } from 'node:fs/promises';
 import { relative } from 'node:path';
 
-import { toArray } from '../../async.ts';
-import { getLibDebugger } from '../../debug.ts';
-import { ObsidianPluginRepoPaths } from '../../obsidian/plugin/obsidian-plugin-repo-paths.ts';
-import {
-  getFolderName,
-  join
-} from '../../path.ts';
-import { assertNonNullable } from '../../type-guards.ts';
 import { getNonIgnoredFiles } from '../git.ts';
-import { ObsidianDevUtilsRepoPaths } from '../obsidian-dev-utils-repo-paths.ts';
 import { resolveToolCommand } from '../package-manager.ts';
+import { RepoPaths } from '../repo-paths.ts';
 import {
   execFromRoot,
   getRootFolder,
@@ -36,6 +31,12 @@ import {
  * Parameters for the {@link lint} function.
  */
 export interface LintOptions {
+  /**
+   * The configuration file copied to the project root when the project has none. Without it,
+   * `markdownlint-cli2` runs with its own defaults.
+   */
+  readonly defaultConfigFilePath?: string | undefined;
+
   /**
    * Optional file paths to lint. If omitted, lints the entire project.
    */
@@ -55,18 +56,18 @@ export interface LintOptions {
  * @param options - The {@link LintOptions}.
  */
 export async function lint(options?: LintOptions): Promise<void> {
-  const { paths, shouldFix = false } = options ?? {};
+  const { defaultConfigFilePath, paths, shouldFix = false } = options ?? {};
   const configFiles = [
-    ObsidianPluginRepoPaths.MarkdownlintCli2ConfigJsonc,
-    ObsidianPluginRepoPaths.MarkdownlintCli2ConfigYaml,
-    ObsidianPluginRepoPaths.MarkdownlintCli2ConfigCjs,
-    ObsidianPluginRepoPaths.MarkdownlintCli2ConfigMjs,
-    ObsidianPluginRepoPaths.MarkdownlintConfigJsonc,
-    ObsidianPluginRepoPaths.MarkdownlintConfigJson,
-    ObsidianPluginRepoPaths.MarkdownlintConfigYaml,
-    ObsidianPluginRepoPaths.MarkdownlintConfigYml,
-    ObsidianPluginRepoPaths.MarkdownlintConfigCjs,
-    ObsidianPluginRepoPaths.MarkdownlintConfigMjs
+    RepoPaths.MarkdownlintCli2ConfigJsonc,
+    RepoPaths.MarkdownlintCli2ConfigYaml,
+    RepoPaths.MarkdownlintCli2ConfigCjs,
+    RepoPaths.MarkdownlintCli2ConfigMjs,
+    RepoPaths.MarkdownlintConfigJsonc,
+    RepoPaths.MarkdownlintConfigJson,
+    RepoPaths.MarkdownlintConfigYaml,
+    RepoPaths.MarkdownlintConfigYml,
+    RepoPaths.MarkdownlintConfigCjs,
+    RepoPaths.MarkdownlintConfigMjs
   ];
 
   const doesConfigFileExist = configFiles.some((configFile) => {
@@ -74,18 +75,13 @@ export async function lint(options?: LintOptions): Promise<void> {
     return existsSync(configFilePath);
   });
 
-  if (!doesConfigFileExist) {
+  if (!doesConfigFileExist && defaultConfigFilePath) {
     getLibDebugger('markdownlint:lint')('markdownlint configuration file not found. Creating default config...');
-    const packageFolder = getRootFolder(getFolderName(import.meta.url));
-    assertNonNullable(packageFolder, 'Package folder not found');
-    await cp(
-      join(packageFolder, ObsidianDevUtilsRepoPaths.DistTemplates, ObsidianDevUtilsRepoPaths.MarkdownlintCli2ConfigMjs),
-      resolvePathFromRootSafe({ path: ObsidianPluginRepoPaths.MarkdownlintCli2ConfigMjs })
-    );
+    await cp(defaultConfigFilePath, resolvePathFromRootSafe({ path: basename(defaultConfigFilePath) }));
   }
 
   /* v8 ignore start -- The paths-provided branches are only exercised by consumer projects passing file lists. */
-  const targets = paths?.length ? paths : [ObsidianPluginRepoPaths.CurrentFolder];
+  const targets = paths?.length ? paths : [RepoPaths.CurrentFolder];
   /* v8 ignore stop */
   await execFromRoot([...resolveToolCommand({ tool: 'markdownlint-cli2' }), ...(shouldFix ? ['--fix'] : []), { batchedArguments: targets }]);
 

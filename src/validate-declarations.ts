@@ -13,20 +13,21 @@
  * required `resolution-mode` attribute) rather than the validator hiding the problem.
  */
 
-import { join } from '../path.ts';
+import { join } from '@mnaoumov/typescript-lib/path';
+
 import {
   checkProjectTypes,
   parseTsConfig,
   toCanonical
 } from './check-project-types.ts';
-import { ObsidianDevUtilsRepoPaths } from './obsidian-dev-utils-repo-paths.ts';
+import { RepoPaths } from './repo-paths.ts';
 import { getRootFolder } from './root.ts';
 
 const NODE_MODULES_SEGMENT = '/node_modules/';
 
 const VALIDATE_DECLARATIONS_TS_CONFIG_FILE_NAMES = [
-  ObsidianDevUtilsRepoPaths.TsConfigValidateDeclarationsJson,
-  ObsidianDevUtilsRepoPaths.TsConfigValidateDeclarationsCjsJson
+  RepoPaths.TsConfigValidateDeclarationsJson,
+  RepoPaths.TsConfigValidateDeclarationsCjsJson
 ];
 
 /**

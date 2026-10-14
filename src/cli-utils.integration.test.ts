@@ -11,7 +11,7 @@ import {
 
 import { exec } from './exec.ts';
 
-const ECHO_ARGS = resolve(dirname(fileURLToPath(import.meta.url)), '../../scripts/helpers/echo-args.mjs');
+const ECHO_ARGS = resolve(dirname(fileURLToPath(import.meta.url)), '../../../scripts/helpers/echo-args.mjs');
 
 /**
  * Executes the echo-args script with the given arguments via `exec` (array form)

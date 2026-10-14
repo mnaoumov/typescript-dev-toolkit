@@ -18,11 +18,12 @@
  * makes a second run post nothing.
  */
 
-import { errorToString } from '../error.ts';
+import { errorToString } from '@mnaoumov/typescript-lib/error';
 import {
   escapeRegExp,
   getOptionalNamedGroup
-} from '../reg-exp.ts';
+} from '@mnaoumov/typescript-lib/reg-exp';
+
 import { execFromRoot } from './root.ts';
 
 /**

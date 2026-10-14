@@ -45,7 +45,7 @@ const {
   mockWriteJsonSync: vi.fn()
 }));
 
-vi.mock('../script-utils/json.ts', () => ({
+vi.mock('./json.ts', () => ({
   editJson: mockEditJson,
   editJsonSync: mockEditJsonSync,
   readJson: mockReadJson,
@@ -54,7 +54,7 @@ vi.mock('../script-utils/json.ts', () => ({
   writeJsonSync: mockWriteJsonSync
 }));
 
-vi.mock('../script-utils/root.ts', () => ({
+vi.mock('./root.ts', () => ({
   resolvePathFromRoot: mockResolvePathFromRoot
 }));
 

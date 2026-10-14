@@ -10,7 +10,7 @@
  */
 import type { Rule } from 'eslint';
 
-import { ensureNonNullable } from '../../../type-guards.ts';
+import { ensureNonNullable } from '@mnaoumov/typescript-lib/type-guards';
 
 /**
 Message ID reported when a member of a `*Params`/`*Options`/`*Result` interface is not declared `readonly`.

@@ -1,15 +1,14 @@
 /**
  * @file
  *
- * This module defines an enumeration of common file paths and patterns used in the Obsidian development utilities repository.
- * These paths are used throughout the build process and other utilities, ensuring consistency and reducing the likelihood
- * of errors due to hardcoded strings.
+ * Common file paths and patterns the TypeScript project tooling uses, so the tooling never spells them as
+ * hardcoded strings.
  */
 
 /**
- * Enumeration of common file paths and patterns used in the Obsidian development utilities repository.
+ * Common file paths and patterns used by the TypeScript project tooling.
  */
-export enum ObsidianDevUtilsRepoPaths {
+export enum RepoPaths {
   /**
   Any file or folder.
    */
@@ -56,18 +55,6 @@ export enum ObsidianDevUtilsRepoPaths {
   AnyTs = '*.ts',
 
   /**
-  Astro configuration file (documentation site) at the repo root.
-   */
-  AstroConfigTs = 'astro.config.ts',
-
-  /**
-  Astro's generated ambient types, which declare the `astro:content` virtual module and `import.meta.env`.
-  Written under the Astro root, which is the repo root because `astro.config.ts` sits there. Gitignored, and
-  produced only by `astro sync` / `astro build` / `astro dev`.
-   */
-  AstroGeneratedTypesDts = '.astro/types.d.ts',
-
-  /**
   Windows batch file extension.
    */
   BatExtension = '.bat',
@@ -88,6 +75,11 @@ export enum ObsidianDevUtilsRepoPaths {
   BunLockb = 'bun.lockb',
 
   /**
+  Changelog file.
+   */
+  ChangelogMd = 'CHANGELOG.md',
+
+  /**
   CommonJS folder.
    */
   Cjs = 'cjs',
@@ -96,6 +88,13 @@ export enum ObsidianDevUtilsRepoPaths {
   CommonJS file extension.
    */
   CjsExtension = '.cjs',
+
+  /**
+  Claude Code's worktree folder. `git worktree add` puts a second, complete checkout of the repository
+  here, INSIDE the repository, which is the only reason a repo ever contains a copy of itself. Never
+  source, so every linter that walks the tree has to skip it.
+   */
+  ClaudeWorktrees = '.claude/worktrees',
 
   /**
   Windows command script extension.
@@ -108,11 +107,6 @@ export enum ObsidianDevUtilsRepoPaths {
   CurrentFolder = '.',
 
   /**
-  Dataview types.
-   */
-  DataviewTypes = 'src/obsidian/@types/dataview/**',
-
-  /**
   CommonJS TypeScript declaration file extension.
    */
   DctsExtension = '.d.cts',
@@ -123,29 +117,9 @@ export enum ObsidianDevUtilsRepoPaths {
   Dist = 'dist',
 
   /**
-  A path to the built `demo-vault-helper` plugin within the {@link Dist} folder, injected into demo vaults at release time.
-   */
-  DistDemoVaultHelper = 'dist/demo-vault-helper',
-
-  /**
-  A path to the built integration-test harness plugin within the {@link Dist} folder, seeded into a consumer's integration-test vault so its `evalInObsidian` closures reach the library via `lib`.
-   */
-  DistIntegrationTestPlugin = 'dist/integration-test-plugin',
-
-  /**
   A path to the `lib` folder within the {@link Dist} folder.
    */
   DistLib = 'dist/lib',
-
-  /**
-  A path to the built plugin-API integration-test CONSUMER plugin within the {@link Dist} folder. Test-only and never shipped; built separately from its provider so the two carry distinct `obsidian-dev-utils` copies.
-   */
-  DistPluginApiTestConsumer = 'dist/plugin-api-test-consumer',
-
-  /**
-  A path to the built plugin-API integration-test PROVIDER plugin within the {@link Dist} folder. Test-only and never shipped; built separately from its consumer so the two carry distinct `obsidian-dev-utils` copies.
-   */
-  DistPluginApiTestProvider = 'dist/plugin-api-test-provider',
 
   /**
   A path to the `templates` folder within the {@link Dist} folder, holding the consumer-facing templates.
@@ -163,14 +137,10 @@ export enum ObsidianDevUtilsRepoPaths {
   DmtsExtension = '.d.mts',
 
   /**
-  Documentation site folder (Astro + Starlight API-docs sub-project).
+  Obsidian configuration folder within a vault.
    */
-  Docs = 'docs',
-
-  /**
-  Build output folder of the documentation site.
-   */
-  DocsDist = 'docs/dist',
+  // eslint-disable-next-line obsidianmd/hardcoded-config-path -- This is the default config folder name baked into a shipped demo-vault skeleton, not a lookup against a live vault.
+  DotObsidian = '.obsidian',
 
   /**
   Dprint configuration file.
@@ -183,9 +153,34 @@ export enum ObsidianDevUtilsRepoPaths {
   DtsExtension = '.d.ts',
 
   /**
+  CommonJS ESLint configuration file.
+   */
+  EslintConfigCjs = 'eslint.config.cjs',
+
+  /**
+  CommonJS TypeScript ESLint configuration file.
+   */
+  EslintConfigCts = 'eslint.config.cts',
+
+  /**
+  JavaScript ESLint configuration file.
+   */
+  EslintConfigJs = 'eslint.config.js',
+
+  /**
+  ESM JavaScript ESLint configuration file.
+   */
+  EslintConfigMjs = 'eslint.config.mjs',
+
+  /**
   ESM TypeScript ESLint configuration file.
    */
   EslintConfigMts = 'eslint.config.mts',
+
+  /**
+  TypeScript ESLint configuration file.
+   */
+  EslintConfigTs = 'eslint.config.ts',
 
   /**
   ESM JavaScript folder.
@@ -196,16 +191,6 @@ export enum ObsidianDevUtilsRepoPaths {
   Windows executable extension.
    */
   ExeExtension = '.exe',
-
-  /**
-  Generated-during-build CommonJS file.
-   */
-  GeneratedDuringBuildCjs = 'generated-during-build.cjs',
-
-  /**
-  Generated-during-build ESM JavaScript file.
-   */
-  GeneratedDuringBuildMjs = 'generated-during-build.mjs',
 
   /**
   CommonJS JavaScript index file.
@@ -233,19 +218,19 @@ export enum ObsidianDevUtilsRepoPaths {
   IndexTs = 'index.ts',
 
   /**
-  A path to the sources of the plugin-API integration-test CONSUMER plugin.
-   */
-  IntegrationTestPluginApiConsumer = 'integration-test-plugin-api/consumer',
-
-  /**
-  A path to the sources of the plugin-API integration-test PROVIDER plugin.
-   */
-  IntegrationTestPluginApiProvider = 'integration-test-plugin-api/provider',
-
-  /**
   JavaScript file extension.
    */
   JsExtension = '.js',
+
+  /**
+  CommonJS Markdownlint CLI2 configuration file.
+   */
+  MarkdownlintCli2ConfigCjs = '.markdownlint-cli2.cjs',
+
+  /**
+  JSONC Markdownlint CLI2 configuration file.
+   */
+  MarkdownlintCli2ConfigJsonc = '.markdownlint-cli2.jsonc',
 
   /**
   ESM Markdownlint CLI2 configuration file.
@@ -253,14 +238,39 @@ export enum ObsidianDevUtilsRepoPaths {
   MarkdownlintCli2ConfigMjs = '.markdownlint-cli2.mjs',
 
   /**
-  Markdownlint CLI2 configuration schema TypeScript declaration file.
+  YAML Markdownlint CLI2 configuration file.
    */
-  MarkdownlintTypesMarkdownlintCli2ConfigSchemaDts = 'src/script-utils/linters/markdownlint-types/@types/markdownlint-cli2-config-schema.d.ts',
+  MarkdownlintCli2ConfigYaml = '.markdownlint-cli2.yaml',
 
   /**
-  Generated flat re-export barrel file.
+  CommonJS Markdownlint configuration file.
    */
-  MergedTs = '__merged.ts',
+  MarkdownlintConfigCjs = '.markdownlint.cjs',
+
+  /**
+  JSON Markdownlint configuration file.
+   */
+  MarkdownlintConfigJson = '.markdownlint.json',
+
+  /**
+  JSONC Markdownlint configuration file.
+   */
+  MarkdownlintConfigJsonc = '.markdownlint.jsonc',
+
+  /**
+  ESM Markdownlint configuration file.
+   */
+  MarkdownlintConfigMjs = '.markdownlint.mjs',
+
+  /**
+  YAML Markdownlint configuration file.
+   */
+  MarkdownlintConfigYaml = '.markdownlint.yaml',
+
+  /**
+  YAML Markdownlint configuration file.
+   */
+  MarkdownlintConfigYml = '.markdownlint.yml',
 
   /**
   ESM JavaScript file extension.
@@ -273,6 +283,11 @@ export enum ObsidianDevUtilsRepoPaths {
   NodeModules = 'node_modules',
 
   /**
+  NPM shrinkwrap file.
+   */
+  NpmShrinkwrapJson = 'npm-shrinkwrap.json',
+
+  /**
   Package JSON file.
    */
   PackageJson = 'package.json',
@@ -281,11 +296,6 @@ export enum ObsidianDevUtilsRepoPaths {
   NPM lockfile.
    */
   PackageLockJson = 'package-lock.json',
-
-  /**
-  Folder holding hand-written patched copies of third-party packages.
-   */
-  Patches = 'patches',
 
   /**
   Pnpm lockfile.
@@ -301,11 +311,6 @@ export enum ObsidianDevUtilsRepoPaths {
   Scripts folder.
    */
   Scripts = 'scripts',
-
-  /**
-  ScriptUtils folder.
-   */
-  ScriptUtils = 'script-utils',
 
   /**
   Source folder.

@@ -15,25 +15,22 @@ const {
   mockCp,
   mockExecFromRoot,
   mockExistsSync,
-  mockGetRootFolder,
   mockResolvePathFromRootSafe,
   mockResolveToolCommand
 } = vi.hoisted(() => ({
   mockCp: vi.fn(),
   mockExecFromRoot: vi.fn(),
   mockExistsSync: vi.fn<(path: string) => boolean>(),
-  mockGetRootFolder: vi.fn<(cwd?: string) => null | string>(),
   mockResolvePathFromRootSafe: vi.fn<(params: ResolvePathFromRootSafeParams) => string>(),
   mockResolveToolCommand: vi.fn<(params: ResolveToolCommandParams) => string[]>()
 }));
 
-vi.mock('../script-utils/root.ts', () => ({
+vi.mock('./root.ts', () => ({
   execFromRoot: mockExecFromRoot,
-  getRootFolder: mockGetRootFolder,
   resolvePathFromRootSafe: mockResolvePathFromRootSafe
 }));
 
-vi.mock('../script-utils/package-manager.ts', () => ({
+vi.mock('./package-manager.ts', () => ({
   resolveToolCommand: mockResolveToolCommand
 }));
 
@@ -53,7 +50,7 @@ vi.mock('node:fs/promises', async (importOriginal) => {
   };
 });
 
-vi.mock('../debug.ts', () => ({
+vi.mock('@mnaoumov/typescript-lib/debug', () => ({
   getLibDebugger: vi.fn(() => vi.fn())
 }));
 
@@ -106,21 +103,18 @@ describe('lint', () => {
     expect(command.slice(0, -1)).toEqual(['eslint', '--max-warnings', '0', '--no-warn-ignored']);
   });
 
-  it('should copy default config when no config file exists', async () => {
+  it('should copy the default config it is given when no config file exists', async () => {
     mockExistsSync.mockReturnValue(false);
-    mockGetRootFolder.mockReturnValue('/pkg');
-    await lint();
+    await lint({ defaultConfigFilePath: '/pkg/dist/templates/eslint.config.mts' });
     expect(mockCp).toHaveBeenCalledTimes(1);
-    expect(mockCp).toHaveBeenCalledWith(
-      expect.stringMatching(/dist[\\/]templates[\\/]eslint\.config\.mts$/),
-      '/root/eslint.config.mts'
-    );
+    expect(mockCp).toHaveBeenCalledWith('/pkg/dist/templates/eslint.config.mts', '/root/eslint.config.mts');
     expect(mockExecFromRoot).toHaveBeenCalledTimes(1);
   });
 
-  it('should throw when package folder is not found', async () => {
+  it('should run eslint without copying anything when no config file exists and no default is given', async () => {
     mockExistsSync.mockReturnValue(false);
-    mockGetRootFolder.mockReturnValue(null);
-    await expect(lint()).rejects.toThrow('Package folder not found');
+    await lint();
+    expect(mockCp).not.toHaveBeenCalled();
+    expect(mockExecFromRoot).toHaveBeenCalledTimes(1);
   });
 });

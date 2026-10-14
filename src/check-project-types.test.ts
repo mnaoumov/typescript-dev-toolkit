@@ -10,6 +10,7 @@ import type {
   System
 } from 'typescript';
 
+import { strictProxy } from '@mnaoumov/typescript-test-toolkit/strict-proxy';
 import process from 'node:process';
 import { DiagnosticCategory } from 'typescript';
 import {
@@ -21,7 +22,6 @@ import {
   vi
 } from 'vitest';
 
-import { strictProxy } from '../strict-proxy.ts';
 import {
   checkProjectTypes,
   parseTsConfig,

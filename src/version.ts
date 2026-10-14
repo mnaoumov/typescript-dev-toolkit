@@ -7,11 +7,16 @@
  * Git operations such as tagging and pushing.
  */
 
+import type { ParseArgsConfig } from 'node:util';
 import type { ReleaseType } from 'semver';
 
+import { getLibDebugger } from '@mnaoumov/typescript-lib/debug';
+import { errorToString } from '@mnaoumov/typescript-lib/error';
+import { join } from '@mnaoumov/typescript-lib/path';
+import { replaceAll } from '@mnaoumov/typescript-lib/string';
+import { assertNonNullable } from '@mnaoumov/typescript-lib/type-guards';
 import { existsSync } from 'node:fs';
 import {
-  cp,
   mkdtemp,
   readFile,
   rm,
@@ -28,24 +33,12 @@ import {
 
 import type { PackageLockJson } from './npm.ts';
 
-import { getLibDebugger } from '../debug.ts';
-import { errorToString } from '../error.ts';
-import { ObsidianPluginRepoPaths } from '../obsidian/plugin/obsidian-plugin-repo-paths.ts';
-import { join } from '../path.ts';
-import { replaceAll } from '../string.ts';
-import {
-  assertNonNullable,
-  ensureNonNullable
-} from '../type-guards.ts';
-import { archivePluginDemoVault } from './demo-vault.ts';
 import {
   findForbiddenPatternMatches,
   FORBIDDEN_PATTERNS_FILE_ENV_VARIABLE,
   readForbiddenPatterns
 } from './forbidden-patterns.ts';
-import { readdirPosix } from './fs.ts';
 import { gate } from './gate.ts';
-import { editJson } from './json.ts';
 import { spellcheckContent } from './linters/cspell-content.ts';
 import { lintMarkdownContent } from './linters/markdownlint-content.ts';
 import {
@@ -54,8 +47,8 @@ import {
   editPackageLockJson,
   readPackageJson
 } from './npm.ts';
-import { ObsidianDevUtilsRepoPaths } from './obsidian-dev-utils-repo-paths.ts';
 import { closeReleasedIssues } from './released-issues.ts';
+import { RepoPaths } from './repo-paths.ts';
 import {
   execFromRoot,
   resolvePathFromRootSafe
@@ -93,6 +86,14 @@ export interface ParsedVersionArguments {
  * Options for {@link publishGitHubRelease}.
  */
 export interface PublishGitHubReleaseOptions {
+  /**
+   * Returns the files to attach to the GitHub release, as paths relative to the project root. A path that does
+   * not exist is skipped.
+   *
+   * @default the `npm pack` tarball of the project, written into `dist/`, and `dist/styles.css`
+   */
+  readonly getReleaseAssetPaths?: (() => Promise<string[]>) | undefined;
+
   /**
    * Whether to close the issues the release carries once it is published: every issue a commit since the previous
    * tag names with a closing keyword (`fixes #12`) is closed with a `Fixed in` / `Implemented in` comment linking
@@ -148,16 +149,9 @@ export interface UpdateVersionOptions {
   readonly changelogFilePath?: string | undefined;
 
   /**
-   * An explicit `minAppVersion` to write into the plugin's `manifest.json` and its new `versions.json`
-   * entry. When set, it is used verbatim and the latest Obsidian desktop version is not fetched at all.
-   *
-   * Set this when the plugin has a known minimum it actually requires, rather than tracking whatever
-   * Obsidian released most recently. Only applies to Obsidian plugins, and only to non-pre-release
-   * versions (a pre-release copies the existing `manifest.json` and never writes `minAppVersion`).
-   *
-   * @default the latest Obsidian desktop version
+   * Returns the files to attach to the GitHub release. See {@link PublishGitHubReleaseOptions.getReleaseAssetPaths}.
    */
-  readonly minAppVersion?: string | undefined;
+  readonly getReleaseAssetPaths?: (() => Promise<string[]>) | undefined;
 
   /**
    * A callback function to prepare the GitHub release.
@@ -166,14 +160,6 @@ export interface UpdateVersionOptions {
    * @returns A {@link Promise} that resolves when the GitHub release has been prepared.
    */
   readonly prepareGitHubRelease?: (newVersion: string) => Promise<void>;
-
-  /**
-   * Whether to archive the plugin's demo vault (`demo-vault/` in the repo root) as a release
-   * artifact. Only applies to Obsidian plugins; ignored when the repo has no `demo-vault/` folder.
-   *
-   * @default `true`
-   */
-  readonly shouldArchiveDemoVault?: boolean;
 
   /**
    * Whether to run the build step. The build is a publishing prerequisite, not a verification check,
@@ -229,6 +215,16 @@ export interface UpdateVersionOptions {
    * @default `true`
    */
   readonly shouldVerifyCommit?: boolean;
+
+  /**
+   * Updates the version in any file beyond `package.json` and the lockfiles, once the new version is known and
+   * before the release commit is made. An Obsidian plugin's `manifest.json` and `versions.json` are the case this
+   * exists for.
+   *
+   * @param newVersion - The version being released.
+   * @returns A {@link Promise} that resolves when the files are updated.
+   */
+  readonly updateVersionInExtraFiles?: ((newVersion: string) => Promise<void>) | undefined;
 }
 
 /**
@@ -380,15 +376,6 @@ const DEFAULT_PREID = 'beta';
 const FEAT_TYPE = 'feat';
 
 /**
- * The feed the Obsidian desktop app updates from.
- *
- * Deliberately NOT the GitHub `releases/latest` API: that endpoint returns the newest release of any kind
- * in `obsidianmd/obsidian-releases`, including one whose only asset is the Android APK, which no desktop
- * user can install. See {@link getLatestObsidianVersion}.
- */
-const DESKTOP_RELEASES_JSON_URL = 'https://raw.githubusercontent.com/obsidianmd/obsidian-releases/master/desktop-releases.json';
-
-/**
  * The npm scripts whose checks the settled changelog is held to, named in the messages so a reader knows which
  * gate they are looking at — and knows that fixing it here is the same fix as fixing it on the branch.
  */
@@ -449,34 +436,6 @@ const NAMED_VERSION_UPDATE_TYPES = new Map<string, VersionUpdateType>([
   VersionUpdateType.PrePatch,
   VersionUpdateType.PreRelease
 ].map((type) => [type, type]));
-
-/**
- * Type representing the structure of Obsidian's `desktop-releases.json` feed.
- *
- * This is the feed the desktop app itself updates from, so it is the only source that states a version
- * desktop users can actually run.
- */
-export interface DesktopReleasesJson {
-  /**
-   * The latest Obsidian version available for desktop.
-   */
-  latestVersion: string;
-}
-
-/**
- * Type representing the manifest file format for Obsidian plugins.
- */
-export interface Manifest {
-  /**
-   * A minimum Obsidian version required for the plugin.
-   */
-  minAppVersion: string;
-
-  /**
-   * A version of the plugin.
-   */
-  version: string;
-}
 
 /**
  * Creates a Git tag for the new version.
@@ -597,19 +556,6 @@ export function autolinkBareUrls(text: string): string {
 }
 
 /**
- * Copies the updated manifest file to the distribution build folder.
- *
- * @returns A {@link Promise} that resolves when the copy operation is complete.
- */
-export async function copyUpdatedManifest(): Promise<void> {
-  await cp(
-    resolvePathFromRootSafe({ path: ObsidianPluginRepoPaths.ManifestJson }),
-    resolvePathFromRootSafe({ path: join(ObsidianPluginRepoPaths.DistBuild, ObsidianPluginRepoPaths.ManifestJson) }),
-    { force: true }
-  );
-}
-
-/**
  * Generates a new version string based on the current version and the specified update type.
  *
  * Uses the `semver` package to compute the next version, supporting all npm increment types:
@@ -646,7 +592,7 @@ export async function getNewVersion(versionUpdateType: string): Promise<string> 
  * @returns A {@link Promise} that resolves to the release notes for the specified version.
  */
 export async function getReleaseNotes(newVersion: string): Promise<string> {
-  const changelogPath = resolvePathFromRootSafe({ path: ObsidianPluginRepoPaths.ChangelogMd });
+  const changelogPath = resolvePathFromRootSafe({ path: RepoPaths.ChangelogMd });
   const content = await readFile(changelogPath, 'utf-8');
   const section = extractChangelogSection(content, newVersion);
   let releaseNotes = section ? `${section}\n\n` : '';
@@ -688,20 +634,57 @@ export async function gitPush(): Promise<void> {
 }
 
 /**
+ * The flags {@link parseVersionArguments} recognizes, in the shape Node's `parseArgs` takes. Exported so a wrapper
+ * that adds flags of its own can parse them all in one pass and still read these through
+ * {@link toUpdateVersionOptions}.
+ */
+export const VERSION_ARGUMENT_OPTIONS = {
+  'changelog-file': { type: 'string' },
+  'no-build': { type: 'boolean' },
+  'no-changelog-editing': { type: 'boolean' },
+  'no-checks': { type: 'boolean' },
+  'no-commit-verification': { type: 'boolean' },
+  'no-issue-closing': { type: 'boolean' },
+  'no-release': { type: 'boolean' }
+} as const satisfies NonNullable<ParseArgsConfig['options']>;
+
+/**
+ * The values `parseArgs` reports for {@link VERSION_ARGUMENT_OPTIONS}.
+ */
+export type VersionArgumentValues = ReturnType<typeof parseArgs<VersionArgumentParseConfig>>['values'];
+
+/**
+ * The `parseArgs` configuration {@link VersionArgumentValues} is derived from.
+ */
+interface VersionArgumentParseConfig {
+  /**
+   * The recognized flags.
+   */
+  readonly options: typeof VERSION_ARGUMENT_OPTIONS;
+}
+
+/**
+ * Whether a version is a pre-release, such as `1.2.4-beta.0`.
+ *
+ * @param version - The version.
+ * @returns Whether it carries a pre-release part.
+ */
+export function isPreRelease(version: string): boolean {
+  return prerelease(version) !== null;
+}
+
+/**
  * Parses the command-line arguments for a version update into a version update type and
  * {@link UpdateVersionOptions}.
  *
- * Each behavior is enabled by default; the corresponding `--no-*` flag turns it off. `--changelog-file` and
- * `--min-app-version` take a value instead and have no default. Recognized flags:
+ * Each behavior is enabled by default; the corresponding `--no-*` flag turns it off. `--changelog-file` takes a
+ * value instead and has no default. Recognized flags:
  * - `--changelog-file=<path>` — use this file's contents as the new version's changelog section instead of
  *   the commit-derived bullets, and skip the interactive review entirely.
- * - `--min-app-version=<x.y.z>` — write this `minAppVersion` into the plugin's `manifest.json` and its new
- *   `versions.json` entry instead of tracking the latest Obsidian desktop version.
  * - `--no-build` — skip the build step (only safe when the build output already matches the current code).
  * - `--no-changelog-editing` — generate the changelog without opening it for manual review.
  * - `--no-checks` — skip the clean-repo check, format, spellcheck, lint, over-exposure analysis, and tests (the build still runs).
  * - `--no-commit-verification` — pass `--no-verify` to the release commit, skipping the pre-commit hook.
- * - `--no-demo-vault` — skip archiving the plugin's demo vault (`demo-vault/`) as a release artifact.
  * - `--no-issue-closing` — do not close the issues the release carries once it is published.
  * - `--no-release` — run all local steps but skip the push and the GitHub release.
  *
@@ -713,31 +696,11 @@ export function parseVersionArguments($arguments: string[]): ParsedVersionArgume
     allowPositionals: true,
     // eslint-disable-next-line unicorn/name-replacements -- `args` is the option name Node's `parseArgs` reads.
     args: $arguments,
-    options: {
-      'changelog-file': { type: 'string' },
-      'min-app-version': { type: 'string' },
-      'no-build': { type: 'boolean' },
-      'no-changelog-editing': { type: 'boolean' },
-      'no-checks': { type: 'boolean' },
-      'no-commit-verification': { type: 'boolean' },
-      'no-demo-vault': { type: 'boolean' },
-      'no-issue-closing': { type: 'boolean' },
-      'no-release': { type: 'boolean' }
-    }
+    options: VERSION_ARGUMENT_OPTIONS
   });
 
   return {
-    options: {
-      changelogFilePath: values['changelog-file'],
-      minAppVersion: values['min-app-version'],
-      shouldArchiveDemoVault: !(values['no-demo-vault'] ?? false),
-      shouldBuild: !(values['no-build'] ?? false),
-      shouldCloseReleasedIssues: !(values['no-issue-closing'] ?? false),
-      shouldEditChangelog: !(values['no-changelog-editing'] ?? false),
-      shouldRelease: !(values['no-release'] ?? false),
-      shouldRunChecks: !(values['no-checks'] ?? false),
-      shouldVerifyCommit: !(values['no-commit-verification'] ?? false)
-    },
+    options: toUpdateVersionOptions(values),
     versionUpdateType: positionals[0]
   };
 }
@@ -745,34 +708,19 @@ export function parseVersionArguments($arguments: string[]): ParsedVersionArgume
 /**
  * Publishes a GitHub release for the new version.
  *
- * Handles the creation of a release and uploading files for either an Obsidian plugin or another project.
+ * Creates the release and attaches the files {@link PublishGitHubReleaseOptions.getReleaseAssetPaths} names.
  *
  * Once the release exists, the issues it carries are closed with a link to it (see {@link closeReleasedIssues}),
  * unless {@link PublishGitHubReleaseOptions.shouldCloseReleasedIssues} is `false`. A failure there is reported and
  * does not fail the release, which is already published.
  *
  * @param newVersion - The new version number for the release.
- * @param isObsidianPlugin - A boolean indicating if the project is an Obsidian plugin.
  * @param options - The {@link PublishGitHubReleaseOptions}.
  * @returns A {@link Promise} that resolves when the release has been published.
  */
-export async function publishGitHubRelease(newVersion: string, isObsidianPlugin: boolean, options: PublishGitHubReleaseOptions = {}): Promise<void> {
-  const { shouldCloseReleasedIssues = true } = options;
-  let filePaths: string[];
-
-  if (isObsidianPlugin) {
-    const buildFolder = resolvePathFromRootSafe({ path: ObsidianPluginRepoPaths.DistBuild });
-    const fileNames = await readdirPosix(buildFolder);
-    filePaths = fileNames.map((fileName) => join(buildFolder, fileName));
-  } else {
-    const resultOutput = await execFromRoot(['npm', 'pack', '--pack-destination', ObsidianDevUtilsRepoPaths.Dist, '--json'], { isQuiet: true });
-    const result = parseNpmPackOutput(resultOutput);
-    filePaths = [
-      join(ObsidianDevUtilsRepoPaths.Dist, result.filename),
-      join(ObsidianDevUtilsRepoPaths.Dist, ObsidianDevUtilsRepoPaths.StylesCss)
-    ];
-  }
-
+export async function publishGitHubRelease(newVersion: string, options: PublishGitHubReleaseOptions = {}): Promise<void> {
+  const { getReleaseAssetPaths = getNpmPackReleaseAssetPaths, shouldCloseReleasedIssues = true } = options;
+  let filePaths = await getReleaseAssetPaths();
   filePaths = filePaths.filter((filePath) => existsSync(resolvePathFromRootSafe({ path: filePath })));
 
   await execFromRoot([
@@ -801,6 +749,23 @@ export async function publishGitHubRelease(newVersion: string, isObsidianPlugin:
     console.warn(`The ${newVersion} release is published, but closing the issues it carries failed: ${errorToString(error)}`);
   }
 }
+/**
+ * Maps the values `parseArgs` reports for {@link VERSION_ARGUMENT_OPTIONS} onto {@link UpdateVersionOptions}.
+ *
+ * @param values - The parsed values.
+ * @returns The options.
+ */
+export function toUpdateVersionOptions(values: VersionArgumentValues): UpdateVersionOptions {
+  return {
+    changelogFilePath: values['changelog-file'],
+    shouldBuild: !(values['no-build'] ?? false),
+    shouldCloseReleasedIssues: !(values['no-issue-closing'] ?? false),
+    shouldEditChangelog: !(values['no-changelog-editing'] ?? false),
+    shouldRelease: !(values['no-release'] ?? false),
+    shouldRunChecks: !(values['no-checks'] ?? false),
+    shouldVerifyCommit: !(values['no-commit-verification'] ?? false)
+  };
+}
 
 /**
  * Updates the changelog file with new version information and commit messages.
@@ -819,7 +784,6 @@ export async function publishGitHubRelease(newVersion: string, isObsidianPlugin:
 export async function updateChangelog(newVersion: string, options: UpdateChangelogOptions = {}): Promise<void> {
   await writeChangelog(await prepareChangelog(newVersion, options));
 }
-
 /**
  * Updates the version of the project based on the specified update type.
  *
@@ -834,9 +798,10 @@ export async function updateChangelog(newVersion: string, options: UpdateChangel
  * 8. Settles the changelog — the only step that can block on a human, and deliberately the last one before
  *    anything is written, so an interrupt here leaves the working tree clean and the release re-runnable.
  *    The settled text is linted here too: `lint:md` ran in step 6, before a character of it existed.
- * 9. Updates version in files, then writes the settled changelog.
+ * 9. Updates version in files (and in whatever {@link UpdateVersionOptions.updateVersionInExtraFiles} adds), then
+ *    writes the settled changelog.
  * 10. Adds updated files to Git, tags the commit, and pushes to the repository.
- * 11. If an Obsidian plugin, copies the updated manifest and publishes a GitHub release.
+ * 11. Prepares and publishes a GitHub release.
  * 12. Closes the issues the release carries, with a link to it.
  *
  * @param versionUpdateType - The type of version update to perform (major, minor, patch, premajor, preminor, prepatch, prerelease, or x.y.z[-suffix]).
@@ -846,15 +811,15 @@ export async function updateChangelog(newVersion: string, options: UpdateChangel
 export async function updateVersion(versionUpdateType?: string, options: UpdateVersionOptions = {}): Promise<void> {
   const {
     changelogFilePath,
-    minAppVersion,
+    getReleaseAssetPaths,
     prepareGitHubRelease,
-    shouldArchiveDemoVault = true,
     shouldBuild = true,
     shouldCloseReleasedIssues = true,
     shouldEditChangelog = true,
     shouldRelease = true,
     shouldRunChecks = true,
-    shouldVerifyCommit = true
+    shouldVerifyCommit = true,
+    updateVersionInExtraFiles
   } = options;
 
   if (!versionUpdateType) {
@@ -868,12 +833,6 @@ export async function updateVersion(versionUpdateType?: string, options: UpdateV
     }
 
     throw new Error('No version update type provided');
-  }
-
-  let isObsidianPlugin = false;
-  if (existsSync(resolvePathFromRootSafe({ path: ObsidianPluginRepoPaths.ManifestJson }))) {
-    const packageJson = await readPackageJson();
-    isObsidianPlugin = packageJson.name !== 'obsidian-dev-utils';
   }
 
   validate(versionUpdateType);
@@ -913,9 +872,7 @@ export async function updateVersion(versionUpdateType?: string, options: UpdateV
   });
 
   await updateVersionInFiles(newVersion);
-  if (isObsidianPlugin) {
-    await updateVersionInFilesForPlugin(newVersion, minAppVersion);
-  }
+  await updateVersionInExtraFiles?.(newVersion);
 
   await writeChangelog(newChangeLog);
   await addUpdatedFilesToGit(newVersion, { shouldVerifyCommit });
@@ -928,15 +885,11 @@ export async function updateVersion(versionUpdateType?: string, options: UpdateV
 
   await gitPush();
   await prepareGitHubRelease?.(newVersion);
-  if (isObsidianPlugin && shouldArchiveDemoVault) {
-    await archivePluginDemoVault();
-  }
-  await publishGitHubRelease(newVersion, isObsidianPlugin, { shouldCloseReleasedIssues });
+  await publishGitHubRelease(newVersion, { getReleaseAssetPaths, shouldCloseReleasedIssues });
 }
 
 /**
- * Updates the version in various files, including `package.json`, `package-lock.json`,
- * and Obsidian plugin manifests if applicable.
+ * Updates the version in `package.json` and, where they exist, `package-lock.json` and `npm-shrinkwrap.json`.
  *
  * @param newVersion - The new version string to update in the files.
  * @returns A {@link Promise} that resolves when the update is complete.
@@ -999,7 +952,7 @@ async function assertChangelogHasNoForbiddenPatterns(changelogContent: string, v
   }
 
   throw new Error(
-    `The ${version} section of ${ObsidianPluginRepoPaths.ChangelogMd} matches a pattern from the file`
+    `The ${version} section of ${RepoPaths.ChangelogMd} matches a pattern from the file`
       + ` ${FORBIDDEN_PATTERNS_FILE_ENV_VARIABLE} names:\n`
       + `${matches.map(({ line, match }) => `${line}    <- ${match}`).join('\n')}\n`
       + 'Nothing has been written yet. Supply release notes that say the same thing without it, with'
@@ -1037,7 +990,7 @@ function assertChangelogHasNoMergeSubjects(changelogContent: string, version: st
   }
 
   throw new Error(
-    `The ${version} section of ${ObsidianPluginRepoPaths.ChangelogMd} carries a merge subject git wrote itself:\n`
+    `The ${version} section of ${RepoPaths.ChangelogMd} carries a merge subject git wrote itself:\n`
       + `${offendingEntries.join('\n')}\n`
       + 'Such an entry publishes a branch name instead of saying what shipped. Give the merge commit the same'
       + ' subject as the branch commit it lands (`git commit --amend` on the merge, then re-run the release), or'
@@ -1213,7 +1166,7 @@ async function getBumpFloor(commitRange: string): Promise<BumpFloor> {
  */
 async function getChangelogSectionFindings(changelogContent: string, version: string): Promise<ChangelogFinding[]> {
   const content = toChangelogSectionDocument(changelogContent, version);
-  const filePath = resolvePathFromRootSafe({ path: ObsidianPluginRepoPaths.ChangelogMd });
+  const filePath = resolvePathFromRootSafe({ path: RepoPaths.ChangelogMd });
   const packageJson = await readPackageJson();
   const scriptNames = Object.keys(packageJson.scripts ?? {});
 
@@ -1241,23 +1194,18 @@ async function getChangelogSectionFindings(changelogContent: string, version: st
     }))
   ];
 }
-
 /**
- * Fetches the latest version of Obsidian that the desktop app can actually run.
+ * The default release assets: the project's `npm pack` tarball, written into `dist/`, and `dist/styles.css`.
  *
- * Reads {@link DESKTOP_RELEASES_JSON_URL}, not the GitHub `releases/latest` API. The API returns the newest
- * release of ANY kind, so whenever a mobile-only release (an APK-only asset) is newer than the desktop one,
- * it reports a version that does not exist for desktop. A plugin released in that window gets a
- * `minAppVersion` no desktop user can satisfy, and Obsidian silently keeps offering them the previous
- * release instead — the release succeeds and reaches nobody.
- *
- * @returns A {@link Promise} that resolves to the latest Obsidian version available for desktop.
+ * @returns The asset paths, relative to the project root.
  */
-async function getLatestObsidianVersion(): Promise<string> {
-  // eslint-disable-next-line no-restricted-globals -- We run this outside of Obsidian, so we don't have `requestUrl()`.
-  const response = await fetch(DESKTOP_RELEASES_JSON_URL);
-  const desktopReleasesJson = await response.json() as Partial<DesktopReleasesJson>;
-  return ensureNonNullable(desktopReleasesJson.latestVersion, 'Could not find the latest desktop Obsidian version');
+async function getNpmPackReleaseAssetPaths(): Promise<string[]> {
+  const resultOutput = await execFromRoot(['npm', 'pack', '--pack-destination', RepoPaths.Dist, '--json'], { isQuiet: true });
+  const result = parseNpmPackOutput(resultOutput);
+  return [
+    join(RepoPaths.Dist, result.filename),
+    join(RepoPaths.Dist, RepoPaths.StylesCss)
+  ];
 }
 
 /**
@@ -1277,10 +1225,6 @@ function isBumpLevelAtLeast(level: BumpLevel, floorLevel: VersionUpdateType.Majo
   return floorLevel === VersionUpdateType.Major
     ? level === VersionUpdateType.Major
     : level !== VersionUpdateType.Patch;
-}
-
-function isPreRelease(version: string): boolean {
-  return prerelease(version) !== null;
 }
 
 /**
@@ -1419,7 +1363,7 @@ async function prepareChangelog(newVersion: string, options: UpdateChangelogOpti
  */
 async function readPreviousChangelogLines(): Promise<string[]> {
   const HEADER_LINES_COUNT = 2;
-  const changelogPath = resolvePathFromRootSafe({ path: ObsidianPluginRepoPaths.ChangelogMd });
+  const changelogPath = resolvePathFromRootSafe({ path: RepoPaths.ChangelogMd });
   if (!existsSync(changelogPath)) {
     return [];
   }
@@ -1464,7 +1408,7 @@ async function resolveLastReleasedTag(previousChangelogLines: string[]): Promise
 
   if (!resolvedLastTag) {
     getLibDebugger('Version')(
-      `${ObsidianPluginRepoPaths.ChangelogMd} starts at '## ${lastTag}', but no such tag exists. Generating the changelog from the full history instead.`
+      `${RepoPaths.ChangelogMd} starts at '## ${lastTag}', but no such tag exists. Generating the changelog from the full history instead.`
     );
     return '';
   }
@@ -1482,8 +1426,8 @@ async function resolveLastReleasedTag(previousChangelogLines: string[]): Promise
  * @returns A {@link Promise} that resolves to the reviewed content.
  */
 async function reviewChangelog(newChangeLog: string, findings: ChangelogFinding[]): Promise<string> {
-  const scratchFolder = await mkdtemp(join(tmpdir(), 'obsidian-dev-utils-changelog-'));
-  const scratchChangelogPath = join(scratchFolder, ObsidianPluginRepoPaths.ChangelogMd);
+  const scratchFolder = await mkdtemp(join(tmpdir(), 'changelog-'));
+  const scratchChangelogPath = join(scratchFolder, RepoPaths.ChangelogMd);
 
   try {
     await writeFile(scratchChangelogPath, newChangeLog, 'utf-8');
@@ -1495,12 +1439,12 @@ async function reviewChangelog(newChangeLog: string, findings: ChangelogFinding[
     const versionDebugger = getLibDebugger('Version');
     if (findings.length > 0) {
       versionDebugger(
-        `${ObsidianPluginRepoPaths.ChangelogMd} does not pass ${toFailedScriptNames(findings)} yet:\n${toFindingLines(findings)}`
+        `${RepoPaths.ChangelogMd} does not pass ${toFailedScriptNames(findings)} yet:\n${toFindingLines(findings)}`
       );
     }
 
     if (codeVersion) {
-      versionDebugger(`Please update the ${ObsidianPluginRepoPaths.ChangelogMd} file. Close Visual Studio Code when you are done...`);
+      versionDebugger(`Please update the ${RepoPaths.ChangelogMd} file. Close Visual Studio Code when you are done...`);
       await execFromRoot(['code', '-w', scratchChangelogPath], {
         isQuiet: true,
         shouldIgnoreExitCode: true
@@ -1581,7 +1525,7 @@ function toChangelogEntry(commitMessage: string): string {
 function toChangelogFindingsError(findings: ChangelogFinding[], version: string): Error {
   const scriptNames = toFailedScriptNames(findings);
   return new Error(
-    `The ${version} section of ${ObsidianPluginRepoPaths.ChangelogMd} does not pass ${scriptNames}:\n`
+    `The ${version} section of ${RepoPaths.ChangelogMd} does not pass ${scriptNames}:\n`
       + `${toFindingLines(findings)}\n`
       + 'The changelog is settled before it is written, so this stops the release with the repository untouched'
       + ' and nothing to revert. The line numbers are the ones the written file would have had. Fix the release'
@@ -1729,46 +1673,6 @@ function toHighestBumpLevel(forcingCommits: readonly ForcingCommit[]): BumpLevel
   return forcingCommits.length > 0 ? VersionUpdateType.Minor : VersionUpdateType.Patch;
 }
 
-async function updateVersionInFilesForPlugin(newVersion: string, minAppVersion: string | undefined): Promise<void> {
-  const manifestBetaJsonPath = resolvePathFromRootSafe({ path: ObsidianPluginRepoPaths.ManifestBetaJson });
-  if (isPreRelease(newVersion)) {
-    await cp(
-      resolvePathFromRootSafe({ path: ObsidianPluginRepoPaths.ManifestJson }),
-      manifestBetaJsonPath,
-      { force: true }
-    );
-    await editJson<Manifest>({
-      editFunction: (manifest) => {
-        manifest.version = newVersion;
-      },
-      path: ObsidianPluginRepoPaths.ManifestBetaJson
-    });
-  } else {
-    const resolvedMinAppVersion = minAppVersion ?? await getLatestObsidianVersion();
-
-    await editJson<Manifest>({
-      editFunction: (manifest) => {
-        manifest.minAppVersion = resolvedMinAppVersion;
-        manifest.version = newVersion;
-      },
-      path: ObsidianPluginRepoPaths.ManifestJson
-    });
-
-    await editJson<Record<string, string>>({
-      editFunction: (versions) => {
-        versions[newVersion] = resolvedMinAppVersion;
-      },
-      path: ObsidianPluginRepoPaths.VersionsJson
-    });
-
-    if (existsSync(manifestBetaJsonPath)) {
-      await rm(manifestBetaJsonPath);
-    }
-  }
-
-  await copyUpdatedManifest();
-}
-
 /**
  * Writes the composed changelog into the repository. Deliberately the last thing the changelog step does,
  * so nothing lands on disk until the content is settled.
@@ -1777,5 +1681,5 @@ async function updateVersionInFilesForPlugin(newVersion: string, minAppVersion: 
  * @returns A {@link Promise} that resolves once the changelog has been written.
  */
 async function writeChangelog(newChangeLog: string): Promise<void> {
-  await writeFile(resolvePathFromRootSafe({ path: ObsidianPluginRepoPaths.ChangelogMd }), newChangeLog, 'utf-8');
+  await writeFile(resolvePathFromRootSafe({ path: RepoPaths.ChangelogMd }), newChangeLog, 'utf-8');
 }

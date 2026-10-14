@@ -72,6 +72,7 @@ import type {
   VariableStatement
 } from 'typescript';
 
+import { assertNonNullable } from '@mnaoumov/typescript-lib/type-guards';
 import {
   canHaveModifiers,
   createDocumentRegistry,
@@ -100,7 +101,6 @@ import {
   sys
 } from 'typescript';
 
-import { assertNonNullable } from '../../type-guards.ts';
 import {
   parseTsConfig,
   toCanonical

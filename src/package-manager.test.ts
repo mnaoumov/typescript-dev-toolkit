@@ -1,5 +1,6 @@
 import type { MockInstance } from 'vitest';
 
+import { noop } from '@mnaoumov/typescript-lib/function';
 import {
   afterEach,
   beforeEach,
@@ -9,7 +10,6 @@ import {
   vi
 } from 'vitest';
 
-import { noop } from '../function.ts';
 import {
   getPackageManager,
   getPackageManagerRunCommand,

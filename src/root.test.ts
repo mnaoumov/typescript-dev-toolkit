@@ -30,7 +30,7 @@ vi.mock('node:fs', async (importOriginal) => {
   };
 });
 
-vi.mock('../script-utils/exec.ts', () => ({
+vi.mock('./exec.ts', () => ({
   exec: mockExec
 }));
 
