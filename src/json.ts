@@ -6,6 +6,7 @@
 
 import type { Promisable } from 'type-fest';
 
+import { toJson } from '@mnaoumov/typescript-lib/object-utils';
 import {
   existsSync,
   readFileSync,
@@ -15,8 +16,6 @@ import {
   readFile,
   writeFile
 } from 'node:fs/promises';
-
-import { toJson } from '../object-utils.ts';
 
 /**
  * Options for {@link editJson}.

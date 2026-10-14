@@ -1,10 +1,10 @@
+import { join } from '@mnaoumov/typescript-lib/path';
 import {
   describe,
   expect,
   it
 } from 'vitest';
 
-import { join } from '../path.ts';
 import { lintMarkdownContent } from './linters/markdownlint-content.ts';
 
 // The real `markdownlint-cli2` runs here rather than a mock of it, because the only thing worth proving is the
@@ -12,12 +12,15 @@ import { lintMarkdownContent } from './linters/markdownlint-content.ts';
 // That is why these cases are integration tests and their unit siblings are not — the run loads this
 // repository's own TypeScript configuration through `jiti`, whose copy of the custom rule module then collides
 // with the vite-loaded one in the v8 coverage report, and the coverage run does not include this project.
-const CHANGELOG_PATH = join(process.cwd(), 'CHANGELOG.md');
+// The repository root, whose .markdownlint-cli2.mjs the cases below rely on; a package folder has none.
+const REPOSITORY_ROOT = join(import.meta.dirname, '../../..');
+const CHANGELOG_PATH = join(REPOSITORY_ROOT, 'CHANGELOG.md');
 
 describe('lintMarkdownContent', () => {
   it('should report nothing for content that passes', async () => {
     const findings = await lintMarkdownContent({
       content: '# CHANGELOG\n\n## 1.0.0\n\n- feat: add a shiny new feature\n',
+      cwd: REPOSITORY_ROOT,
       filePath: CHANGELOG_PATH
     });
     expect(findings).toEqual([]);
@@ -26,6 +29,7 @@ describe('lintMarkdownContent', () => {
   it('should report a finding, naming the path the content was linted as', async () => {
     const findings = await lintMarkdownContent({
       content: '# CHANGELOG\n\n## 1.0.0\n\n- feat: add a shiny new feature   \n',
+      cwd: REPOSITORY_ROOT,
       filePath: CHANGELOG_PATH
     });
     expect(findings).toHaveLength(1);
@@ -39,6 +43,7 @@ describe('lintMarkdownContent', () => {
   it('should apply the repository\'s own configuration rather than the shared default', async () => {
     const findings = await lintMarkdownContent({
       content: '# CHANGELOG\n\n## 1.0.0\n\n- feat: a note that is hard-wrapped\n  onto a second line\n',
+      cwd: REPOSITORY_ROOT,
       filePath: CHANGELOG_PATH
     });
     expect(findings).toHaveLength(1);
@@ -50,7 +55,8 @@ describe('lintMarkdownContent', () => {
   it('should lint the content alone, never the repository\'s own markdown', async () => {
     const findings = await lintMarkdownContent({
       content: '# CHANGELOG\n\n## 1.0.0\n\n- feat: add a shiny new feature\n',
-      filePath: join(process.cwd(), 'no-such-file.md')
+      cwd: REPOSITORY_ROOT,
+      filePath: join(REPOSITORY_ROOT, 'no-such-file.md')
     });
     expect(findings).toEqual([]);
   });

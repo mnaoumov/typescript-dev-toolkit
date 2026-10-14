@@ -10,13 +10,12 @@ import type {
   PathLike
 } from 'node:fs';
 
-import { readdir } from 'node:fs/promises';
-
 import {
   toPosixBuffer,
   toPosixPath
-} from '../path.ts';
-import { assertNonNullable } from '../type-guards.ts';
+} from '@mnaoumov/typescript-lib/path';
+import { assertNonNullable } from '@mnaoumov/typescript-lib/type-guards';
+import { readdir } from 'node:fs/promises';
 
 /**
  * Options for controlling the format of the result when returning buffers.

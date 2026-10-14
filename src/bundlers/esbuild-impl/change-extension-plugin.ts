@@ -6,10 +6,10 @@
 
 import type { Plugin } from 'esbuild';
 
+import { replaceAll } from '@mnaoumov/typescript-lib/string';
 import { writeFile } from 'node:fs/promises';
 
-import { replaceAll } from '../../../string.ts';
-import { ObsidianDevUtilsRepoPaths } from '../../obsidian-dev-utils-repo-paths.ts';
+import { RepoPaths } from '../../repo-paths.ts';
 
 /* v8 ignore start -- esbuild plugin that rewrites file extensions at build time; requires a live esbuild context. */
 
@@ -25,7 +25,7 @@ export function changeExtensionPlugin(extension: string): Plugin {
     setup(build): void {
       build.onEnd(async (result) => {
         for (const file of result.outputFiles ?? []) {
-          if (!file.path.endsWith(ObsidianDevUtilsRepoPaths.JsExtension) || file.path.endsWith(ObsidianDevUtilsRepoPaths.DjsExtension)) {
+          if (!file.path.endsWith(RepoPaths.JsExtension) || file.path.endsWith(RepoPaths.DjsExtension)) {
             continue;
           }
 

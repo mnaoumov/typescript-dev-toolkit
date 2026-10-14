@@ -4,15 +4,11 @@
  * Format the source code.
  */
 
+import { assertNonNullable } from '@mnaoumov/typescript-lib/type-guards';
 import { existsSync } from 'node:fs';
 
-import {
-  getFolderName,
-  join
-} from '../../path.ts';
-import { assertNonNullable } from '../../type-guards.ts';
-import { ObsidianDevUtilsRepoPaths } from '../obsidian-dev-utils-repo-paths.ts';
 import { resolveToolCommand } from '../package-manager.ts';
+import { RepoPaths } from '../repo-paths.ts';
 import {
   execFromRoot,
   getRootFolder,
@@ -23,6 +19,12 @@ import {
  * Parameters for the {@link format} function.
  */
 export interface FormatOptions {
+  /**
+   * The `dprint.json` used when the project has none of its own. Without it, a project with no `dprint.json`
+   * fails.
+   */
+  readonly defaultConfigFilePath?: string | undefined;
+
   /**
    * Optional file paths to format. If omitted, formats the entire project.
    */
@@ -43,14 +45,12 @@ export interface FormatOptions {
  * @returns A {@link Promise} that resolves when the source code has been formatted.
  */
 export async function format(options?: FormatOptions): Promise<void> {
-  const { paths, rewrite = true } = options ?? {};
+  const { defaultConfigFilePath, paths, rewrite = true } = options ?? {};
   const rootFolder = getRootFolder();
   assertNonNullable(rootFolder, 'Root folder not found');
-  let dprintJsonPath = resolvePathFromRootSafe({ path: ObsidianDevUtilsRepoPaths.DprintJson });
-  if (!existsSync(dprintJsonPath)) {
-    const packageFolder = getRootFolder(getFolderName(import.meta.url));
-    assertNonNullable(packageFolder, 'Could not find package folder.');
-    dprintJsonPath = resolvePathFromRootSafe({ cwd: packageFolder, path: join(ObsidianDevUtilsRepoPaths.DistTemplates, ObsidianDevUtilsRepoPaths.DprintJson) });
+  let dprintJsonPath = resolvePathFromRootSafe({ path: RepoPaths.DprintJson });
+  if (!existsSync(dprintJsonPath) && defaultConfigFilePath) {
+    dprintJsonPath = defaultConfigFilePath;
   }
 
   if (!existsSync(dprintJsonPath)) {

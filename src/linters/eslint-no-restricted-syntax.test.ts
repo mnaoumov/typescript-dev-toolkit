@@ -9,6 +9,7 @@
 
 import type { Linter as LinterType } from 'eslint';
 
+import { castTo } from '@mnaoumov/typescript-lib/object-utils';
 import { Linter } from 'eslint';
 import { parser as tseslintParser } from 'typescript-eslint';
 import {
@@ -17,7 +18,6 @@ import {
   it
 } from 'vitest';
 
-import { castTo } from '../../object-utils.ts';
 import { noRestrictedSyntaxRuleEntries } from './eslint-no-restricted-syntax.ts';
 
 const linter = new Linter();

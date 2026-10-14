@@ -1,3 +1,4 @@
+import { noopAsync } from '@mnaoumov/typescript-lib/function';
 import {
   beforeEach,
   describe,
@@ -9,7 +10,6 @@ import {
 import type { ResolveToolCommandParams } from './package-manager.ts';
 import type { ResolvePathFromRootSafeParams } from './root.ts';
 
-import { noopAsync } from '../function.ts';
 import { lint } from './linters/markdownlint.ts';
 
 const {
@@ -32,17 +32,17 @@ const {
   mockResolveToolCommand: vi.fn<(params: ResolveToolCommandParams) => string[]>()
 }));
 
-vi.mock('../script-utils/root.ts', () => ({
+vi.mock('./root.ts', () => ({
   execFromRoot: mockExecFromRoot,
   getRootFolder: mockGetRootFolder,
   resolvePathFromRootSafe: mockResolvePathFromRootSafe
 }));
 
-vi.mock('../script-utils/package-manager.ts', () => ({
+vi.mock('./package-manager.ts', () => ({
   resolveToolCommand: mockResolveToolCommand
 }));
 
-vi.mock('../script-utils/git.ts', () => ({
+vi.mock('./git.ts', () => ({
   getNonIgnoredFiles: mockGetNonIgnoredFiles
 }));
 
@@ -63,7 +63,7 @@ vi.mock('node:fs/promises', async (importOriginal) => {
   };
 });
 
-vi.mock('../debug.ts', () => ({
+vi.mock('@mnaoumov/typescript-lib/debug', () => ({
   getLibDebugger: vi.fn(() => vi.fn())
 }));
 
@@ -109,22 +109,19 @@ describe('lint', () => {
     expect(firstCall[0]).not.toContain('--fix');
   });
 
-  it('should copy default config when no config file exists', async () => {
+  it('should copy the default config it is given when no config file exists', async () => {
     mockExistsSync.mockReturnValue(false);
-    mockGetRootFolder.mockReturnValue('/pkg');
-    await lint();
+    await lint({ defaultConfigFilePath: '/pkg/dist/templates/.markdownlint-cli2.mjs' });
     expect(mockCp).toHaveBeenCalledTimes(1);
-    expect(mockCp).toHaveBeenCalledWith(
-      expect.stringMatching(/dist[\\/]templates[\\/]\.markdownlint-cli2\.mjs$/),
-      '/root/.markdownlint-cli2.mjs'
-    );
+    expect(mockCp).toHaveBeenCalledWith('/pkg/dist/templates/.markdownlint-cli2.mjs', '/root/.markdownlint-cli2.mjs');
     expect(mockExecFromRoot).toHaveBeenCalledTimes(2);
   });
 
-  it('should throw when package folder is not found', async () => {
+  it('should lint without copying anything when no config file exists and no default is given', async () => {
     mockExistsSync.mockReturnValue(false);
-    mockGetRootFolder.mockReturnValue(null);
-    await expect(lint()).rejects.toThrow('Package folder not found');
+    await lint();
+    expect(mockCp).not.toHaveBeenCalled();
+    expect(mockExecFromRoot).toHaveBeenCalledTimes(2);
   });
 
   it('should link-check the non-ignored markdown files git reports', async () => {

@@ -12,7 +12,7 @@ const { mockExecFromRoot } = vi.hoisted(() => ({
   mockExecFromRoot: vi.fn()
 }));
 
-vi.mock('../script-utils/root.ts', () => ({
+vi.mock('./root.ts', () => ({
   execFromRoot: mockExecFromRoot
 }));
 

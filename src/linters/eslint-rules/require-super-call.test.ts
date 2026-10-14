@@ -1,6 +1,9 @@
 import type { TSESTree } from '@typescript-eslint/utils';
 import type { Rule } from 'eslint';
 
+import { castTo } from '@mnaoumov/typescript-lib/object-utils';
+import { assertNonNullable } from '@mnaoumov/typescript-lib/type-guards';
+import { strictProxy } from '@mnaoumov/typescript-test-toolkit/strict-proxy';
 import { RuleTester } from '@typescript-eslint/rule-tester';
 import { SyntaxKind } from 'typescript';
 import {
@@ -11,9 +14,6 @@ import {
   vi
 } from 'vitest';
 
-import { castTo } from '../../../object-utils.ts';
-import { strictProxy } from '../../../strict-proxy.ts';
-import { assertNonNullable } from '../../../type-guards.ts';
 import {
   MESSAGE_ID,
   requireSuperCall

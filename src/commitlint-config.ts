@@ -11,7 +11,8 @@ import type {
   UserConfig
 } from '@commitlint/types';
 
-import { castTo } from '../object-utils.ts';
+import { castTo } from '@mnaoumov/typescript-lib/object-utils';
+
 import {
   forbiddenPatternsPlugin,
   NO_FORBIDDEN_PATTERNS_RULE_NAME

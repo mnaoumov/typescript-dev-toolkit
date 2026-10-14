@@ -4,7 +4,8 @@
  * NPM run utilities.
  */
 
-import { getLibDebugger } from '../debug.ts';
+import { getLibDebugger } from '@mnaoumov/typescript-lib/debug';
+
 import { readPackageJson } from './npm.ts';
 import { getPackageManagerRunCommand } from './package-manager.ts';
 import { execFromRoot } from './root.ts';

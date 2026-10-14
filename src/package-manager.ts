@@ -12,18 +12,18 @@
 
 import type { PackageJson } from 'type-fest';
 
-import { existsSync } from 'node:fs';
-import process from 'node:process';
-
 import {
   dirname,
   join,
   toPosixPath
-} from '../path.ts';
-import { getMandatoryNamedGroup } from '../reg-exp.ts';
-import { assertNever } from '../type-guards.ts';
+} from '@mnaoumov/typescript-lib/path';
+import { getMandatoryNamedGroup } from '@mnaoumov/typescript-lib/reg-exp';
+import { assertNever } from '@mnaoumov/typescript-lib/type-guards';
+import { existsSync } from 'node:fs';
+import process from 'node:process';
+
 import { readJsonSync } from './json.ts';
-import { ObsidianDevUtilsRepoPaths } from './obsidian-dev-utils-repo-paths.ts';
+import { RepoPaths } from './repo-paths.ts';
 import { getRootFolder } from './root.ts';
 
 /**
@@ -162,11 +162,11 @@ const DECLARATION_NAME_REG_EXP = /^(?<name>[^@\s]+)@/;
  * Both bun lockfile formats map to the same manager, so a repo holding both is one claimant, not two.
  */
 const LOCKFILES: LockfileClaim[] = [
-  { fileName: ObsidianDevUtilsRepoPaths.BunLock, packageManager: PackageManager.Bun },
-  { fileName: ObsidianDevUtilsRepoPaths.BunLockb, packageManager: PackageManager.Bun },
-  { fileName: ObsidianDevUtilsRepoPaths.PnpmLockYaml, packageManager: PackageManager.Pnpm },
-  { fileName: ObsidianDevUtilsRepoPaths.YarnLock, packageManager: PackageManager.Yarn },
-  { fileName: ObsidianDevUtilsRepoPaths.PackageLockJson, packageManager: PackageManager.Npm }
+  { fileName: RepoPaths.BunLock, packageManager: PackageManager.Bun },
+  { fileName: RepoPaths.BunLockb, packageManager: PackageManager.Bun },
+  { fileName: RepoPaths.PnpmLockYaml, packageManager: PackageManager.Pnpm },
+  { fileName: RepoPaths.YarnLock, packageManager: PackageManager.Yarn },
+  { fileName: RepoPaths.PackageLockJson, packageManager: PackageManager.Npm }
 ];
 
 /**
@@ -261,7 +261,7 @@ interface WarnAboutSeveralClaimantsParams {
  * the field is absent or malformed, or it names a manager we do not handle.
  */
 function detectPackageManagerFromPackageJson(root: string): null | PackageManager {
-  const packageJsonPath = join(root, ObsidianDevUtilsRepoPaths.PackageJson);
+  const packageJsonPath = join(root, RepoPaths.PackageJson);
 
   if (!existsSync(packageJsonPath)) {
     return null;
@@ -317,11 +317,11 @@ function findBinShim(params: FindBinShimParams): null | string {
   let currentFolder = getStartFolder(cwd);
 
   while (
-    currentFolder !== ObsidianDevUtilsRepoPaths.CurrentFolder as string
-    && currentFolder !== ObsidianDevUtilsRepoPaths.RootFolder as string
+    currentFolder !== RepoPaths.CurrentFolder as string
+    && currentFolder !== RepoPaths.RootFolder as string
   ) {
     for (const candidate of candidates) {
-      const shimPath = join(currentFolder, ObsidianDevUtilsRepoPaths.NodeModules, ObsidianDevUtilsRepoPaths.Bin, candidate);
+      const shimPath = join(currentFolder, RepoPaths.NodeModules, RepoPaths.Bin, candidate);
       if (existsSync(shimPath)) {
         return shimPath;
       }
@@ -375,9 +375,9 @@ function getPackageManagerExecCommand(cwd?: string): string[] {
 function getShimCandidates(tool: string): string[] {
   return process.platform === 'win32'
     ? [
-      `${tool}${ObsidianDevUtilsRepoPaths.CommandExtension}`,
-      `${tool}${ObsidianDevUtilsRepoPaths.ExeExtension}`,
-      `${tool}${ObsidianDevUtilsRepoPaths.BatExtension}`
+      `${tool}${RepoPaths.CommandExtension}`,
+      `${tool}${RepoPaths.ExeExtension}`,
+      `${tool}${RepoPaths.BatExtension}`
     ]
     : [tool];
 }

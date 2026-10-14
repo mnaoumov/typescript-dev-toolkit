@@ -16,7 +16,8 @@ import type { TSESTree } from '@typescript-eslint/utils';
 import type { Rule } from 'eslint';
 import type { Comment } from 'estree';
 
-import { getMandatoryNamedGroup } from '../../../reg-exp.ts';
+import { getMandatoryNamedGroup } from '@mnaoumov/typescript-lib/reg-exp';
+
 import { toTSESTreeNode } from './ts-estree-node.ts';
 
 interface JsdocSettings {

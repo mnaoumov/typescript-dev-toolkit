@@ -16,12 +16,12 @@ const { mockExecFromRoot, mockGetRootFolder, mockResolveToolCommand } = vi.hoist
   mockResolveToolCommand: vi.fn<(params: ResolveToolCommandParams) => string[]>()
 }));
 
-vi.mock('../script-utils/root.ts', () => ({
+vi.mock('./root.ts', () => ({
   execFromRoot: mockExecFromRoot,
   getRootFolder: mockGetRootFolder
 }));
 
-vi.mock('../script-utils/package-manager.ts', () => ({
+vi.mock('./package-manager.ts', () => ({
   resolveToolCommand: mockResolveToolCommand
 }));
 

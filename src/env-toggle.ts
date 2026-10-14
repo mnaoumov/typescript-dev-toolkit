@@ -17,10 +17,9 @@
  * "off" value, so there is a single answer to what counts as off across the whole tool set.
  */
 
+import { replaceAll } from '@mnaoumov/typescript-lib/string';
 import { existsSync } from 'node:fs';
 import process from 'node:process';
-
-import { replaceAll } from '../string.ts';
 
 /**
  * The values that switch a variable off. Anything else — including an unset variable — leaves it on, so the

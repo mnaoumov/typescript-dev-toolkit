@@ -5,6 +5,14 @@
  * resolving paths relative to the root.
  */
 
+import { normalizeOptionalProperties } from '@mnaoumov/typescript-lib/object-utils';
+import {
+  dirname,
+  join,
+  relative,
+  resolve,
+  toPosixPath
+} from '@mnaoumov/typescript-lib/path';
 import { existsSync } from 'node:fs';
 
 import type {
@@ -15,16 +23,8 @@ import type {
   ExecSimpleOptions
 } from './exec.ts';
 
-import { normalizeOptionalProperties } from '../object-utils.ts';
-import {
-  dirname,
-  join,
-  relative,
-  resolve,
-  toPosixPath
-} from '../path.ts';
 import { exec } from './exec.ts';
-import { ObsidianDevUtilsRepoPaths } from './obsidian-dev-utils-repo-paths.ts';
+import { RepoPaths } from './repo-paths.ts';
 
 /**
  * Options for {@link execFromRoot}.
@@ -138,8 +138,8 @@ export function execFromRoot(command: CommandPart[] | string, options: ExecFromR
  */
 export function getRootFolder(cwd?: string): null | string {
   let currentFolder = toPosixPath(cwd ?? process.cwd());
-  while (currentFolder !== ObsidianDevUtilsRepoPaths.CurrentFolder as string && currentFolder !== ObsidianDevUtilsRepoPaths.RootFolder as string) {
-    if (existsSync(join(currentFolder, ObsidianDevUtilsRepoPaths.PackageJson))) {
+  while (currentFolder !== RepoPaths.CurrentFolder as string && currentFolder !== RepoPaths.RootFolder as string) {
+    if (existsSync(join(currentFolder, RepoPaths.PackageJson))) {
       return toPosixPath(currentFolder);
     }
     currentFolder = dirname(currentFolder);

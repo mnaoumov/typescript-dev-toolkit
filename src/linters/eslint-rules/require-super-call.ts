@@ -24,13 +24,13 @@ import type {
 import type { Rule } from 'eslint';
 import type { Declaration } from 'typescript';
 
+import { assert } from '@mnaoumov/typescript-lib/type-guards';
 import {
   canHaveModifiers,
   getModifiers,
   SyntaxKind
 } from 'typescript';
 
-import { assert } from '../../../type-guards.ts';
 import { toTSESTreeNode } from './ts-estree-node.ts';
 
 /**

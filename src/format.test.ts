@@ -25,13 +25,13 @@ const {
   mockResolveToolCommand: vi.fn<(params: ResolveToolCommandParams) => string[]>()
 }));
 
-vi.mock('../script-utils/root.ts', () => ({
+vi.mock('./root.ts', () => ({
   execFromRoot: mockExecFromRoot,
   getRootFolder: mockGetRootFolder,
   resolvePathFromRootSafe: mockResolvePathFromRootSafe
 }));
 
-vi.mock('../script-utils/package-manager.ts', () => ({
+vi.mock('./package-manager.ts', () => ({
   resolveToolCommand: mockResolveToolCommand
 }));
 
@@ -79,23 +79,12 @@ describe('format', () => {
     await expect(format()).rejects.toThrow('dprint.json not found');
   });
 
-  it('should throw when package folder is not found', async () => {
-    mockExistsSync.mockReturnValue(false);
-    mockGetRootFolder.mockImplementation((cwd?: string) => cwd ? null : '/root');
-    await expect(format()).rejects.toThrow('Could not find package folder');
-  });
-
-  it('should use fallback dprint.json from package folder', async () => {
-    let callCount = 0;
-    mockExistsSync.mockImplementation(() => {
-      callCount++;
-      return callCount !== 1;
-    });
-    mockGetRootFolder.mockImplementation((cwd?: string) => cwd ? '/pkg' : '/root');
-    await format();
+  it('should use the default dprint.json it is given when the project has none', async () => {
+    mockExistsSync.mockImplementation((path: string) => path === '/pkg/dist/templates/dprint.json');
+    await format({ defaultConfigFilePath: '/pkg/dist/templates/dprint.json' });
     expect(mockExecFromRoot).toHaveBeenCalledTimes(1);
     expect(mockExecFromRoot).toHaveBeenCalledWith(
-      expect.arrayContaining(['--config', expect.stringMatching(/dist[\\/]templates[\\/]dprint\.json$/)])
+      expect.arrayContaining(['--config', '/pkg/dist/templates/dprint.json'])
     );
   });
 });

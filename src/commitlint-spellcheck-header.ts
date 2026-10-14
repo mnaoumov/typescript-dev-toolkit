@@ -23,9 +23,9 @@ import type {
   RuleOutcome
 } from '@commitlint/types';
 
-import { ObsidianPluginRepoPaths } from '../obsidian/plugin/obsidian-plugin-repo-paths.ts';
 import { spellcheckContent } from './linters/cspell-content.ts';
 import { readPackageJson } from './npm.ts';
+import { RepoPaths } from './repo-paths.ts';
 import { resolvePathFromRootSafe } from './root.ts';
 
 /**
@@ -61,7 +61,7 @@ export async function spellcheckHeaderRule(commit: Commit): Promise<RuleOutcome>
 
   const findings = await spellcheckContent({
     content: `- ${commit.header}\n`,
-    filePath: resolvePathFromRootSafe({ path: ObsidianPluginRepoPaths.ChangelogMd })
+    filePath: resolvePathFromRootSafe({ path: RepoPaths.ChangelogMd })
   });
 
   if (findings.length === 0) {

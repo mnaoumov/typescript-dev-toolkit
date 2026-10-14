@@ -16,10 +16,10 @@
  * five configuration file formats, which is a copy of `markdownlint-cli2` that can only ever drift from it.
  */
 
+import { getLibDebugger } from '@mnaoumov/typescript-lib/debug';
+import { toPosixPath } from '@mnaoumov/typescript-lib/path';
 import { main as markdownlintCli2 } from 'markdownlint-cli2';
 
-import { getLibDebugger } from '../../debug.ts';
-import { toPosixPath } from '../../path.ts';
 import { getRootFolder } from '../root.ts';
 import { obsidianDevUtilsConfig } from './markdownlint-cli2-config.ts';
 
@@ -38,6 +38,13 @@ export interface LintMarkdownContentParams {
   readonly content: string;
 
   /**
+   * A folder inside the project whose markdownlint configuration applies. Defaults to the current working folder.
+   * In a workspace, a package's own folder has no configuration of its own, so a caller linting for the
+   * workspace root names it here.
+   */
+  readonly cwd?: string | undefined;
+
+  /**
    * The path the content is linted AS — normally the path it is about to be written to. It decides how the
    * path-relative rules resolve (`relative-links` walks from the file's own folder), and it is what every
    * reported finding is named after.
@@ -53,12 +60,12 @@ export interface LintMarkdownContentParams {
  * carried — `<path>:<line>[:<column>] error <rule> <description>` — or an empty array when there are none.
  */
 export async function lintMarkdownContent(params: LintMarkdownContentParams): Promise<string[]> {
-  const { content, filePath } = params;
+  const { content, cwd, filePath } = params;
   const findings: string[] = [];
   const contentDebugger = getLibDebugger('markdownlint:lintMarkdownContent');
 
   const exitCode = await markdownlintCli2({
-    directory: getRootFolder() ?? process.cwd(),
+    directory: getRootFolder(cwd) ?? cwd ?? process.cwd(),
     logError: (message: string): void => {
       findings.push(message);
     },

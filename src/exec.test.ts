@@ -1,3 +1,4 @@
+import { assertNonNullable } from '@mnaoumov/typescript-lib/type-guards';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 import {
@@ -8,14 +9,13 @@ import {
   vi
 } from 'vitest';
 
-import { assertNonNullable } from '../type-guards.ts';
 import {
   appendNodeOption,
   buildChildEnv,
   exec
 } from './exec.ts';
 
-vi.mock('../debug.ts', () => ({
+vi.mock('@mnaoumov/typescript-lib/debug', () => ({
   getLibDebugger: vi.fn(() => vi.fn())
 }));
 

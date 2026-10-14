@@ -23,7 +23,7 @@ interface MarkdownlintCli2TestParameters {
 // Hoisted with the mocks that reference it: `vi.mock`'s factory runs before any module-scope `const` of this
 // file is initialized, so a plain one here is a `ReferenceError` at import time.
 const { mockGetRootFolder, mockMarkdownlintCli2, SHARED_CONFIG } = vi.hoisted(() => ({
-  mockGetRootFolder: vi.fn<() => null | string>(),
+  mockGetRootFolder: vi.fn<(cwd?: string) => null | string>(),
   mockMarkdownlintCli2: vi.fn<(parameters: MarkdownlintCli2TestParameters) => Promise<number>>(),
   SHARED_CONFIG: { config: { MD013: false } }
 }));
@@ -125,5 +125,25 @@ describe('lintMarkdownContent', () => {
       filePath: '/root/CHANGELOG.md'
     });
     expect(mockMarkdownlintCli2.mock.calls[0]?.[0].directory).toBe(process.cwd());
+  });
+
+  it('should resolve the project root from the folder it is given', async () => {
+    mockGetRootFolder.mockImplementation((cwd?: string) => cwd === '/workspace/packages/pkg' ? '/workspace' : null);
+    await lintMarkdownContent({
+      content: '# CHANGELOG\n',
+      cwd: '/workspace/packages/pkg',
+      filePath: '/workspace/CHANGELOG.md'
+    });
+    expect(mockMarkdownlintCli2.mock.calls[0]?.[0].directory).toBe('/workspace');
+  });
+
+  it('should fall back to the folder it is given when no project root is found above it', async () => {
+    mockGetRootFolder.mockReturnValue(null);
+    await lintMarkdownContent({
+      content: '# CHANGELOG\n',
+      cwd: '/loose',
+      filePath: '/loose/CHANGELOG.md'
+    });
+    expect(mockMarkdownlintCli2.mock.calls[0]?.[0].directory).toBe('/loose');
   });
 });

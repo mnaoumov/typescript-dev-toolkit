@@ -18,10 +18,10 @@
  * asked of one line at a time.
  */
 
+import { ensureNonNullable } from '@mnaoumov/typescript-lib/type-guards';
 import { readFile } from 'node:fs/promises';
 import process from 'node:process';
 
-import { ensureNonNullable } from '../type-guards.ts';
 import { loadEnvFileIfExists } from './env-toggle.ts';
 
 /**
