@@ -311,7 +311,7 @@
     }
   },
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=22.5.0"
   },
   "publishConfig": {
     "access": "public"

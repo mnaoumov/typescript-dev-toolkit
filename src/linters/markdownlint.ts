@@ -12,7 +12,10 @@ import {
   cp,
   glob
 } from 'node:fs/promises';
-import { relative } from 'node:path';
+import {
+  matchesGlob,
+  relative
+} from 'node:path';
 
 import { getNonIgnoredFiles } from '../git.ts';
 import { resolveToolCommand } from '../package-manager.ts';
@@ -38,6 +41,18 @@ export interface LintOptions {
   readonly defaultConfigFilePath?: string | undefined;
 
   /**
+   * Globs, relative to the root folder, of markdown files to leave out of the `linkinator` pass only;
+   * `markdownlint-cli2` still lints them.
+   *
+   * For a documentation site whose pages link to each other base-absolutely (`/<site-base>/guides/...`): those
+   * links resolve only against the BUILT site, so `linkinator` reports each one as a 404, and the site's own
+   * build is what checks them.
+   *
+   * @example `['docs/**']`
+   */
+  readonly linkCheckExcludeGlobs?: readonly string[] | undefined;
+
+  /**
    * Optional file paths to lint. If omitted, lints the entire project.
    */
   readonly paths?: string[] | undefined;
@@ -56,7 +71,7 @@ export interface LintOptions {
  * @param options - The {@link LintOptions}.
  */
 export async function lint(options?: LintOptions): Promise<void> {
-  const { defaultConfigFilePath, paths, shouldFix = false } = options ?? {};
+  const { defaultConfigFilePath, linkCheckExcludeGlobs = [], paths, shouldFix = false } = options ?? {};
   const configFiles = [
     RepoPaths.MarkdownlintCli2ConfigJsonc,
     RepoPaths.MarkdownlintCli2ConfigYaml,
@@ -91,6 +106,7 @@ export async function lint(options?: LintOptions): Promise<void> {
     ? paths.map((p) => relative(rootFolder, p).replaceAll('\\', '/') || p)
     : await getMarkdownFiles();
   /* v8 ignore stop */
+  const linkCheckFiles = mdFiles.filter((mdFile) => linkCheckExcludeGlobs.every((excludeGlob) => !matchesGlob(mdFile, excludeGlob)));
   await execFromRoot([
     ...resolveToolCommand({ tool: 'linkinator' }),
     '--retry',
@@ -103,7 +119,7 @@ export async function lint(options?: LintOptions): Promise<void> {
     String.raw`https://www\.npmjs\.com/package/`,
     '--url-rewrite-replace',
     'https://registry.npmjs.org/',
-    { batchedArguments: mdFiles }
+    { batchedArguments: linkCheckFiles }
   ]);
 }
 
