@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 1.3.1
+
+- fix(markdownlint): skip linkinator when linkCheckExcludeGlobs leaves no file
+
 ## 1.3.0
 
 - feat(env-toggle): export exitIfScriptDisabled for scripts outside wrapCliTask
