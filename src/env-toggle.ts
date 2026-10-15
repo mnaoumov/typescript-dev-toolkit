@@ -44,6 +44,22 @@ const NON_ALPHANUMERIC_REG_EXP = /[^a-z0-9]+/gi;
 const NPM_SCRIPT_NAME_ENV_VARIABLE = 'npm_lifecycle_event';
 
 /**
+ * Exits the process successfully, before any work, when the npm script currently running has been switched
+ * off: it writes `Skipped (<VAR> is off).` and calls `process.exit(0)`.
+ *
+ * Call it first in a script entry point that does not go through `wrapCliTask`, which already calls it.
+ */
+export function exitIfScriptDisabled(): void {
+  const disabledScriptEnvVariableName = getDisabledScriptEnvVariableName();
+  if (disabledScriptEnvVariableName === null) {
+    return;
+  }
+
+  process.stdout.write(`Skipped (${disabledScriptEnvVariableName} is off).\n`);
+  process.exit(0);
+}
+
+/**
  * Resolves the off switch for the npm script that is currently running, loading {@link ENV_FILE_PATH} first.
  *
  * The script name comes from npm itself, so no script has to declare its own switch. When the script was
