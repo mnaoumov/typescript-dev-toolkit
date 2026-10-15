@@ -378,9 +378,13 @@ describe('wrapCliTask', () => {
     it('should skip the task and exit 0 when the script switch is off', async () => {
       vi.stubEnv('npm_lifecycle_event', 'lint:md');
       vi.stubEnv('LINT_MD', '0');
+      // `process.exit` never returns, so the stub must not either, or the task would run after it.
+      mockExit.mockImplementationOnce(() => {
+        throw new Error('process.exit');
+      });
       const taskFunction = vi.fn(() => CliTaskResult.Failure());
 
-      await wrapCliTask(taskFunction);
+      await expect(wrapCliTask(taskFunction)).rejects.toThrow('process.exit');
 
       expect(taskFunction).not.toHaveBeenCalled();
       expect(mockStdoutWrite).toHaveBeenCalledWith('Skipped (LINT_MD is off).\n');

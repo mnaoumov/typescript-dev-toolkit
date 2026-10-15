@@ -8,14 +8,17 @@ import {
 } from 'vitest';
 
 import {
+  exitIfScriptDisabled,
   getDisabledScriptEnvVariableName,
   isEnvVariableOff,
   loadEnvFileIfExists
 } from './env-toggle.ts';
 
-const { mockExistsSync, mockLoadEnvFile } = vi.hoisted(() => ({
+const { mockExistsSync, mockExit, mockLoadEnvFile, mockStdoutWrite } = vi.hoisted(() => ({
   mockExistsSync: vi.fn<(path: string) => boolean>(),
-  mockLoadEnvFile: vi.fn()
+  mockExit: vi.fn(),
+  mockLoadEnvFile: vi.fn(),
+  mockStdoutWrite: vi.fn()
 }));
 
 vi.mock('node:fs', async (importOriginal) => ({
@@ -29,7 +32,9 @@ vi.mock('node:process', async (importOriginal) => {
     ...$module,
     default: {
       ...$module,
-      loadEnvFile: mockLoadEnvFile
+      exit: mockExit,
+      loadEnvFile: mockLoadEnvFile,
+      stdout: { write: mockStdoutWrite }
     }
   };
 });
@@ -122,5 +127,32 @@ describe('getDisabledScriptEnvVariableName', () => {
     vi.stubEnv('npm_lifecycle_event', 'lint');
     getDisabledScriptEnvVariableName();
     expect(mockLoadEnvFile).toHaveBeenCalledWith('.env');
+  });
+});
+
+describe('exitIfScriptDisabled', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockExistsSync.mockReturnValue(false);
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('should report the switch and exit successfully when the script is switched off', () => {
+    vi.stubEnv('npm_lifecycle_event', 'lint:md');
+    vi.stubEnv('LINT_MD', '0');
+    exitIfScriptDisabled();
+    expect(mockStdoutWrite).toHaveBeenCalledWith('Skipped (LINT_MD is off).\n');
+    expect(mockExit).toHaveBeenCalledWith(0);
+  });
+
+  it('should do nothing when the script is not switched off', () => {
+    vi.stubEnv('npm_lifecycle_event', 'lint:md');
+    vi.stubEnv('LINT_MD', undefined);
+    exitIfScriptDisabled();
+    expect(mockStdoutWrite).not.toHaveBeenCalled();
+    expect(mockExit).not.toHaveBeenCalled();
   });
 });
