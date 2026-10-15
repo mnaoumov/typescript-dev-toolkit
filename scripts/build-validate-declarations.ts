@@ -1,0 +1,22 @@
+import process from 'node:process';
+import { parseArgs } from 'node:util';
+
+import {
+  CliTaskResult,
+  wrapCliTask
+} from '../src/cli-utils.ts';
+import { validateDeclarations } from '../src/validate-declarations.ts';
+
+const [, , ...$arguments] = process.argv;
+
+const { values } = parseArgs({
+  // eslint-disable-next-line unicorn/name-replacements -- `args` is the option name Node's `parseArgs` reads.
+  args: $arguments,
+  options: {
+    verbose: { type: 'boolean' }
+  }
+});
+
+const isVerbose = values.verbose ?? false;
+
+await wrapCliTask(() => CliTaskResult.Success(validateDeclarations({ isVerbose })));

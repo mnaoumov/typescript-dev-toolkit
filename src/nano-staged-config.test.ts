@@ -127,7 +127,6 @@ async function getClaimingKeys(config: Record<string, string[]>, file: string): 
  */
 async function loadGlobToRegex(): Promise<GlobToRegexModule['globToRegex']> {
   const entryPath = fileURLToPath(import.meta.resolve('nano-staged'));
-  // eslint-disable-next-line no-unsanitized/method -- the specifier is built from the resolved nano-staged entry, never from input.
   const $module = await import(pathToFileURL(join(dirname(entryPath), 'glob-to-regex.js')).href) as GlobToRegexModule;
   return $module.globToRegex;
 }

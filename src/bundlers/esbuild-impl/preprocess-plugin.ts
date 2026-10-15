@@ -20,8 +20,6 @@
  * from another module would hit exactly the cross-module trap above.
  */
 
-/* eslint-disable unicorn/prefer-module -- The CommonJS surface is the subject here, not an oversight. This plugin emits the interop shims that let a bundle run under either module system, so it has to name `__filename` and `require` to detect and bridge them. `import.meta.filename` is precisely what is unavailable in the environment these branches exist to serve. */
-
 import type { GenericObject } from '@mnaoumov/typescript-lib/type-guards';
 import type { Plugin } from 'esbuild';
 import type { pathToFileURL } from 'node:url';
@@ -144,11 +142,9 @@ export function ensureBrowserProcess(): void {
     platform: 'android'
   };
 
-  // eslint-disable-next-line obsidianmd/no-global-this, unicorn/no-unnecessary-global-this -- Must stay `globalThis`-qualified: in the emitted banner a bare `process` is a free identifier, so reading it where the host has none throws a ReferenceError instead of yielding `undefined`. That is the very case this function exists to handle.
   const existingProcess = globalThis.process as Partial<NodeJS.Process> | undefined;
 
   if (!existingProcess) {
-    // eslint-disable-next-line obsidianmd/no-global-this -- Actively use globalThis.
     globalThis.process = browserProcess as NodeJS.Process;
     return;
   }
@@ -305,12 +301,10 @@ function getCjsImportMetaUrl(): string {
   }
 
   // Fallback to the page URL, or an empty string if the environment is unknown.
-  // eslint-disable-next-line obsidianmd/no-global-this -- A bare `location` would throw where the host has none.
   return (globalThis as LocationHost).location?.href ?? '';
 }
 
 function initCjs(): void {
-  // eslint-disable-next-line obsidianmd/no-global-this -- Actively use globalThis.
   const globalThisRecord = globalThis as GenericObject;
   ensureDisposeSymbols();
   globalThisRecord['__name'] ??= keepName;
@@ -330,5 +324,3 @@ function initEsm(): void {
 }
 
 /* v8 ignore stop */
-
-/* eslint-enable unicorn/prefer-module -- Pairs with the file-level disable above. */

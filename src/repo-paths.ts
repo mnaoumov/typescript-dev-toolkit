@@ -149,7 +149,6 @@ export enum RepoPaths {
   /**
   Obsidian configuration folder within a vault.
    */
-  // eslint-disable-next-line obsidianmd/hardcoded-config-path -- This is the default config folder name baked into a shipped demo-vault skeleton, not a lookup against a live vault.
   DotObsidian = '.obsidian',
 
   /**

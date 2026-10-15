@@ -1,0 +1,32 @@
+import process from 'node:process';
+
+import {
+  CliTaskResult,
+  wrapCliTask
+} from '../src/cli-utils.ts';
+import {
+  findOverExposure,
+  formatOverExposureFindings
+} from '../src/linters/over-exposure.ts';
+
+const [, , projectFolderArgument] = process.argv;
+
+await wrapCliTask(() => {
+  const projectFolder = projectFolderArgument ?? process.cwd();
+  process.stderr.write(`Analyzing ${projectFolder} for over-exposed declarations...\n`);
+
+  let previousProgressLineLength = 0;
+
+  const findings = findOverExposure({
+    onProgress: (progress) => {
+      const label = `  [${String(progress.analyzedFileCount + 1)}/${String(progress.totalFileCount)}] ${progress.currentFilePath}`;
+      process.stderr.write(`\r${label.padEnd(previousProgressLineLength)}`);
+      previousProgressLineLength = label.length;
+    },
+    projectFolder
+  });
+
+  process.stderr.write(`\r${' '.repeat(previousProgressLineLength)}\r`);
+  process.stdout.write(formatOverExposureFindings(findings));
+  return CliTaskResult.Success(findings.length === 0);
+});

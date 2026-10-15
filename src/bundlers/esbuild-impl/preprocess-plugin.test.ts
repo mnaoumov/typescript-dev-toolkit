@@ -27,7 +27,6 @@ import {
 } from './preprocess-plugin.ts';
 
 function getHostProcess(): GenericObject {
-  // eslint-disable-next-line obsidianmd/no-global-this, unicorn/no-unnecessary-global-this -- The shim under test reads and writes `globalThis.process`; the tests stub that same property.
   return ensureGenericObject(globalThis.process);
 }
 
@@ -206,7 +205,6 @@ describe('preprocessPlugin', () => {
   it('serializes the __name shim into the cjs banner, so __name holds a function and not window.name', () => {
     runBanner(false, {});
 
-    // eslint-disable-next-line obsidianmd/no-global-this -- The banner assigns onto `globalThis`, which is what this asserts on.
     expect(ensureGenericObject(globalThis)['__name']).toBeTypeOf('function');
   });
 
@@ -244,7 +242,6 @@ describe('makePreprocessBanner', () => {
   it('runs each additional init function after the shared scope, on its own', () => {
     vi.stubGlobal('__initOrder', []);
     function recordInit(): void {
-      // eslint-disable-next-line obsidianmd/no-global-this -- The serialized function can only report through a global.
       (Reflect.get(globalThis, '__initOrder') as string[]).push('extra');
     }
 
@@ -254,7 +251,6 @@ describe('makePreprocessBanner', () => {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-call -- `Function` is untyped by construction.
     runEmittedBanner();
 
-    // eslint-disable-next-line obsidianmd/no-global-this -- Reads back what the serialized function recorded.
     expect(ensureGenericObject(globalThis)['__initOrder']).toEqual(['extra']);
     expect(banner.indexOf('function recordInit(')).toBeGreaterThan(banner.indexOf('})();'));
   });

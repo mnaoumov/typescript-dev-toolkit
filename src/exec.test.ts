@@ -48,7 +48,6 @@ function createMockChild(): MockChild {
 function mockSpawnSequence(): void {
   mockSpawn.mockImplementation(() => {
     const child = createMockChild();
-    // eslint-disable-next-line obsidianmd/prefer-window-timers -- Node-only test environment; activeWindow is not available.
     setTimeout(() => {
       child.stdout.end();
       child.stderr.end();
@@ -314,7 +313,6 @@ describe('exec', () => {
         const child = children[callIndex];
         assertNonNullable(child);
         callIndex++;
-        // eslint-disable-next-line obsidianmd/prefer-window-timers -- Node-only test environment; activeWindow is not available.
         setTimeout(() => {
           child.stdout.push(Buffer.from(`out${String(callIndex)}`));
           child.stdout.end();
@@ -345,7 +343,6 @@ describe('exec', () => {
         const child = children[callIndex];
         assertNonNullable(child);
         callIndex++;
-        // eslint-disable-next-line obsidianmd/prefer-window-timers -- Node-only test environment; activeWindow is not available.
         setTimeout(() => {
           child.stdout.push(Buffer.from(`batch${String(callIndex)}`));
           child.stdout.end();
@@ -484,7 +481,6 @@ describe('exec', () => {
         const child = createMockChild();
         const index = callIndex;
         callIndex++;
-        // eslint-disable-next-line obsidianmd/prefer-window-timers -- Node-only test environment; activeWindow is not available.
         setTimeout(() => {
           child.stdout.end(`out${String(index)}`);
           child.stderr.end(index === 1 ? 'boom' : '');
@@ -537,7 +533,6 @@ describe('exec', () => {
         const result = results[callIndex];
         assertNonNullable(result);
         callIndex++;
-        // eslint-disable-next-line obsidianmd/prefer-window-timers -- Node-only test environment; activeWindow is not available.
         setTimeout(() => {
           child.stdout.end();
           child.stderr.end();
@@ -713,11 +708,9 @@ describe('exec', () => {
     async function getFailureMessage(run: FailingRun): Promise<string> {
       mockSpawn.mockImplementation(() => {
         const child = createMockChild();
-        // eslint-disable-next-line obsidianmd/prefer-window-timers -- Node-only test environment; activeWindow is not available.
         setTimeout(() => {
           child.stdout.end(run.stdout ?? '');
           child.stderr.end(run.stderr ?? '');
-          // eslint-disable-next-line obsidianmd/prefer-window-timers -- Node-only test environment; activeWindow is not available.
           setTimeout(() => {
             child.emit('close', run.exitCode, run.exitSignal ?? null);
           }, 0);

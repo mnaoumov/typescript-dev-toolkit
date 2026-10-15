@@ -13,7 +13,7 @@ import { lintMarkdownContent } from './linters/markdownlint-content.ts';
 // repository's own TypeScript configuration through `jiti`, whose copy of the custom rule module then collides
 // with the vite-loaded one in the v8 coverage report, and the coverage run does not include this project.
 // The repository root, whose .markdownlint-cli2.mjs the cases below rely on; a package folder has none.
-const REPOSITORY_ROOT = join(import.meta.dirname, '../../..');
+const REPOSITORY_ROOT = join(import.meta.dirname, '..');
 const CHANGELOG_PATH = join(REPOSITORY_ROOT, 'CHANGELOG.md');
 
 describe('lintMarkdownContent', () => {
