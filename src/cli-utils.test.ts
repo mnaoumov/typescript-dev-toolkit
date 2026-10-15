@@ -1,3 +1,5 @@
+// The mocked copy below, so setting `exitCode` on it cannot fail the test run itself.
+import process from 'node:process';
 import {
   afterEach,
   beforeEach,
@@ -342,6 +344,34 @@ describe('wrapCliTask', () => {
       // No return
     });
     expect(mockExit).toHaveBeenCalledWith(0);
+  });
+
+  describe('process.exitCode', () => {
+    afterEach(() => {
+      process.exitCode = undefined;
+    });
+
+    it('should exit with the exitCode a void-returning task set', async () => {
+      await wrapCliTask((): void => {
+        process.exitCode = 1;
+      });
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it('should exit with code 0 when a void-returning task set exitCode to 0', async () => {
+      await wrapCliTask((): void => {
+        process.exitCode = 0;
+      });
+      expect(mockExit).toHaveBeenCalledWith(0);
+    });
+
+    it('should let a returned result win over exitCode', async () => {
+      await wrapCliTask(() => {
+        process.exitCode = 1;
+        return CliTaskResult.FromExitCode(2);
+      });
+      expect(mockExit).toHaveBeenCalledWith(2);
+    });
   });
 
   describe('per-script off switch', () => {
