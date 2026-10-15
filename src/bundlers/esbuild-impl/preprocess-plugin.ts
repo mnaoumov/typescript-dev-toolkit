@@ -7,7 +7,9 @@
  * We cannot use `.` instead of `(dot)` in the above description because the file itself is preprocessed with the same rule.
  *
  * `initCjs`, `initEsm` and the shims they call are stringified with `String(fn)` and injected into every
- * built bundle as an esbuild banner, so they must be reachable from one another by BARE identifier. That is
+ * built bundle as an esbuild banner, so they must be reachable from one another by BARE identifier. An unbundled
+ * build (`bundle: false`, one output per source) gets no banner: each emitted module gets a preamble holding only the
+ * shims its own code needs, and a module that needs none gets nothing. That is
  * why they all live in this module: esbuild compiles a cross-module call to `(0, import_module.fn)(…)`,
  * which would name a binding the emitted bundle does not have. Same-module references stay bare, and
  * {@link makePreprocessBanner} serializes the shims alongside the `init` function so they are in scope there. A shim
@@ -21,8 +23,15 @@
  */
 
 import type { GenericObject } from '@mnaoumov/typescript-lib/type-guards';
-import type { Plugin } from 'esbuild';
+import type {
+  OutputFile,
+  Plugin
+} from 'esbuild';
 import type { pathToFileURL } from 'node:url';
+import type {
+  Identifier,
+  Node
+} from 'typescript';
 
 import {
   FunctionHandlingMode,
@@ -32,7 +41,48 @@ import {
   makeValidVariableName,
   replaceAll
 } from '@mnaoumov/typescript-lib/string';
+import { Buffer } from 'node:buffer';
 import { readFile } from 'node:fs/promises';
+import {
+  createSourceFile,
+  forEachChild,
+  isBindingElement,
+  isCallExpression,
+  isClassDeclaration,
+  isExportDeclaration,
+  isFunctionDeclaration,
+  isGetAccessorDeclaration,
+  isIdentifier,
+  isImportClause,
+  isImportDeclaration,
+  isImportSpecifier,
+  isMethodDeclaration,
+  isNamespaceImport,
+  isParameter,
+  isPropertyAccessExpression,
+  isPropertyAssignment,
+  isPropertyDeclaration,
+  isSetAccessorDeclaration,
+  isStringLiteral,
+  isVariableDeclaration,
+  ScriptKind,
+  ScriptTarget,
+  SyntaxKind
+} from 'typescript';
+
+const DISPOSE_SYMBOL_NAMES = new Set(['asyncDispose', 'dispose']);
+const INLINE_SOURCE_MAP_PREFIX = '//# sourceMappingURL=data:application/json;base64,';
+const JS_OUTPUT_REG_EXP = /\.[cm]?js$/;
+// Esbuild's helper behind a lowered `using`, which looks up `Symbol.dispose` by name.
+const KNOWN_SYMBOL_HELPER_NAME = '__knownSymbol';
+// A relative or absolute path, or a `node:` built-in: anything else names a package.
+const NON_BARE_SPECIFIER_REG_EXP = /^(?:\.|\/|node:)/;
+
+enum IdentifierUsage {
+  Binding = 'binding',
+  Member = 'member',
+  Read = 'read'
+}
 
 /**
  * Options for {@link makePreprocessBanner}.
@@ -75,6 +125,12 @@ export interface PreprocessPluginOptions {
   readonly isEsm?: boolean;
 }
 
+interface AddModulePreamblesParams {
+  readonly additionalBannerInitFunctions: readonly (() => void)[];
+  readonly leadingBanner: string;
+  readonly outputFiles: readonly OutputFile[];
+}
+
 /**
  * A browser-flavored stand-in for Node's `process` global.
  */
@@ -103,12 +159,28 @@ interface EsmModule {
 /**
  * The slice of a browser global {@link getCjsImportMetaUrl} reads, optional because a non-browser host has none.
  */
+interface InsertPreambleParams {
+  readonly code: string;
+  readonly leadingBanner: string;
+  readonly preamble: string;
+}
+
 interface LocationHost {
   location?: PageLocation;
 }
 
+interface ModuleShimNeeds {
+  readonly isBrowserProcessNeeded: boolean;
+  readonly isDisposeSymbolsNeeded: boolean;
+  readonly isNameNeeded: boolean;
+}
+
 interface PageLocation {
   href: string;
+}
+
+interface SourceMapWithMappings {
+  mappings: string;
 }
 
 interface UrlModule {
@@ -219,7 +291,7 @@ export function makePreprocessBanner(options: MakePreprocessBannerOptions = {}):
   return `\n(function () {\n${shims.map(String).join('\n\n')}\n\n(${String(init)})();\n})();\n${additionalInits}`;
 }
 
-/* v8 ignore start -- Everything from here to the matching `stop` either needs a live esbuild context or is serialized into the emitted banner and so runs inside the built bundle, never in this process. The shims above are deliberately NOT ignored: they are ordinary functions here and are unit-tested directly. */
+/* v8 ignore start -- The plugin's setup needs a live esbuild context, and the functions in the later ignored ranges are serialized into the emitted banner and so run inside the built bundle, never in this process. The shims above are deliberately NOT ignored: they are ordinary functions here and are unit-tested directly, and neither are the unbundled-build helpers, which the tests drive through a stub build. */
 
 /**
  * Creates an esbuild plugin that preprocesses JavaScript and TypeScript files.
@@ -256,9 +328,18 @@ export function preprocessPlugin(options: PreprocessPluginOptions = {}): Plugin 
         build.initialOptions.define[key] = `__${makeValidVariableName(key)}`;
       }
 
-      build.initialOptions.banner ??= {};
-      build.initialOptions.banner['js'] ??= '';
-      build.initialOptions.banner['js'] += makePreprocessBanner({ additionalBannerInitFunctions, isEsm });
+      if (build.initialOptions.bundle === false) {
+        // One output per source: each module gets only the shims its own code needs, so a page importing a pure
+        // module of a library is left with its globals untouched.
+        const leadingBanner = build.initialOptions.banner?.['js'] ?? '';
+        build.onEnd((result) => {
+          addModulePreambles({ additionalBannerInitFunctions, leadingBanner, outputFiles: result.outputFiles ?? [] });
+        });
+      } else {
+        build.initialOptions.banner ??= {};
+        build.initialOptions.banner['js'] ??= '';
+        build.initialOptions.banner['js'] += makePreprocessBanner({ additionalBannerInitFunctions, isEsm });
+      }
 
       build.onLoad({ filter: /\.(?:js|ts|cjs|mjs|cts|mts)$/ }, async ($arguments) => {
         let contents = await readFile($arguments.path, 'utf-8');
@@ -291,6 +372,31 @@ export function preprocessPlugin(options: PreprocessPluginOptions = {}): Plugin 
   };
 }
 
+/* v8 ignore stop */
+
+/**
+ * Prepends to each emitted module the preamble its own code needs, and nothing when it needs none.
+ *
+ * @param params - The emitted modules, the banner the caller already put first, and the caller's extra inits.
+ */
+function addModulePreambles(params: AddModulePreamblesParams): void {
+  const { additionalBannerInitFunctions, leadingBanner, outputFiles } = params;
+  for (const outputFile of outputFiles) {
+    if (!JS_OUTPUT_REG_EXP.test(outputFile.path)) {
+      continue;
+    }
+
+    const code = outputFile.text;
+    const preamble = makeModulePreamble(getModuleShimNeeds(code), additionalBannerInitFunctions);
+    if (preamble === '') {
+      continue;
+    }
+
+    outputFile.contents = new TextEncoder().encode(insertPreamble({ code, leadingBanner, preamble }));
+  }
+}
+
+/* v8 ignore start -- Serialized into the emitted module, see above. */
 function getCjsImportMetaUrl(): string {
   if (typeof __filename === 'string') {
     const localRequire = require;
@@ -303,7 +409,103 @@ function getCjsImportMetaUrl(): string {
   // Fallback to the page URL, or an empty string if the environment is unknown.
   return (globalThis as LocationHost).location?.href ?? '';
 }
+/* v8 ignore stop */
 
+function getIdentifierUsage(node: Identifier): IdentifierUsage {
+  const { parent } = node;
+  if (
+    (isPropertyAccessExpression(parent) || isPropertyAssignment(parent) || isMethodDeclaration(parent) || isPropertyDeclaration(parent)
+      || isGetAccessorDeclaration(parent) || isSetAccessorDeclaration(parent))
+    && parent.name === node
+  ) {
+    return IdentifierUsage.Member;
+  }
+
+  return (isVariableDeclaration(parent) || isFunctionDeclaration(parent) || isClassDeclaration(parent) || isParameter(parent) || isBindingElement(parent)
+      || isImportClause(parent) || isImportSpecifier(parent) || isNamespaceImport(parent))
+      && parent.name === node
+    ? IdentifierUsage.Binding
+    : IdentifierUsage.Read;
+}
+
+/**
+ * Reads which shims an emitted module needs from its code.
+ *
+ * - `ensureBrowserProcess`: it reads a `process` it does not bind itself, or it loads a bare package that is not a
+ *   `node:` built-in. The second case is there because such a package (`path-browserify` reads `process.cwd()`) cannot
+ *   carry a shim of its own, and in an unbundled build its importer is the only module that can.
+ * - `ensureDisposeSymbols`: it names `Symbol.dispose` or `Symbol.asyncDispose`, or holds esbuild's `__knownSymbol`
+ *   helper, which a lowered `using` emits.
+ * - `__name`: it reads a `__name` it does not declare.
+ *
+ * @param code - The emitted module.
+ * @returns What the module needs.
+ */
+function getModuleShimNeeds(code: string): ModuleShimNeeds {
+  const sourceFile = createSourceFile('module.js', code, ScriptTarget.Latest, true, ScriptKind.JS);
+  const boundNames = new Set<string>();
+  const readNames = new Set<string>();
+  let isBareImportFound = false;
+  let isDisposeSymbolFound = false;
+
+  function visit(node: Node): void {
+    const specifier = getModuleSpecifier(node);
+    if (specifier !== undefined && !NON_BARE_SPECIFIER_REG_EXP.test(specifier)) {
+      isBareImportFound = true;
+    }
+
+    if (
+      isPropertyAccessExpression(node) && isIdentifier(node.expression) && node.expression.text === 'Symbol'
+      && DISPOSE_SYMBOL_NAMES.has(node.name.text)
+    ) {
+      isDisposeSymbolFound = true;
+    }
+
+    if (isIdentifier(node)) {
+      if (node.text === KNOWN_SYMBOL_HELPER_NAME) {
+        isDisposeSymbolFound = true;
+      }
+
+      const usage = getIdentifierUsage(node);
+      if (usage === IdentifierUsage.Binding) {
+        boundNames.add(node.text);
+      } else if (usage === IdentifierUsage.Read) {
+        readNames.add(node.text);
+      }
+    }
+
+    forEachChild(node, visit);
+  }
+  visit(sourceFile);
+
+  function isFreeRead(name: string): boolean {
+    return readNames.has(name) && !boundNames.has(name);
+  }
+
+  return {
+    isBrowserProcessNeeded: isFreeRead('process') || isBareImportFound,
+    isDisposeSymbolsNeeded: isDisposeSymbolFound,
+    isNameNeeded: isFreeRead('__name')
+  };
+}
+
+function getModuleSpecifier(node: Node): string | undefined {
+  if ((isImportDeclaration(node) || isExportDeclaration(node)) && node.moduleSpecifier !== undefined && isStringLiteral(node.moduleSpecifier)) {
+    return node.moduleSpecifier.text;
+  }
+
+  if (isCallExpression(node)) {
+    const [firstArgument] = node.arguments;
+    const isLoader = node.expression.kind === SyntaxKind.ImportKeyword || (isIdentifier(node.expression) && node.expression.text === 'require');
+    if (isLoader && firstArgument !== undefined && isStringLiteral(firstArgument)) {
+      return firstArgument.text;
+    }
+  }
+
+  return undefined;
+}
+
+/* v8 ignore start -- Serialized into the emitted banner, see above. */
 function initCjs(): void {
   const globalThisRecord = globalThis as GenericObject;
   ensureDisposeSymbols();
@@ -322,5 +524,57 @@ function initEsm(): void {
   ensureDisposeSymbols();
   ensureBrowserProcess();
 }
-
 /* v8 ignore stop */
+
+/**
+ * Inserts the preamble after the caller's leading banner, and shifts an inline source map down by the lines it adds,
+ * so the module's own lines keep mapping onto their sources.
+ *
+ * @param params - The module, its leading banner and the preamble.
+ * @returns The module with the preamble in it.
+ */
+function insertPreamble(params: InsertPreambleParams): string {
+  const { code, leadingBanner, preamble } = params;
+  const insertAt = leadingBanner.endsWith('\n') && code.startsWith(leadingBanner) ? leadingBanner.length : 0;
+  const addedLineCount = preamble.split('\n').length - 1;
+  let shiftedCode = code;
+  const sourceMapStart = code.lastIndexOf(INLINE_SOURCE_MAP_PREFIX);
+  if (sourceMapStart !== -1) {
+    const dataStart = sourceMapStart + INLINE_SOURCE_MAP_PREFIX.length;
+    const data = code.slice(dataStart).trimEnd();
+    const sourceMap = JSON.parse(Buffer.from(data, 'base64').toString('utf-8')) as SourceMapWithMappings;
+    sourceMap.mappings = ';'.repeat(addedLineCount) + sourceMap.mappings;
+    shiftedCode = code.slice(0, dataStart) + Buffer.from(JSON.stringify(sourceMap), 'utf-8').toString('base64') + code.slice(dataStart + data.length);
+  }
+  return shiftedCode.slice(0, insertAt) + preamble + shiftedCode.slice(insertAt);
+}
+
+/**
+ * Builds the preamble of one unbundled module: the shims it needs in one shared scope, then the caller's extra inits.
+ *
+ * @param needs - What the module needs.
+ * @param additionalBannerInitFunctions - The caller's extra inits, which every module gets.
+ * @returns The preamble, empty when the module needs nothing.
+ */
+function makeModulePreamble(needs: ModuleShimNeeds, additionalBannerInitFunctions: readonly (() => void)[]): string {
+  const shims: ((...arguments_: never[]) => unknown)[] = [];
+  const calls: string[] = [];
+
+  if (needs.isDisposeSymbolsNeeded) {
+    shims.push(ensureDisposeSymbols);
+    calls.push('ensureDisposeSymbols();');
+  }
+
+  if (needs.isBrowserProcessNeeded) {
+    shims.push(ensureBrowserProcess);
+    calls.push('ensureBrowserProcess();');
+  }
+
+  if (needs.isNameNeeded) {
+    shims.push(keepName);
+    calls.push('globalThis[\'__name\'] ??= keepName;');
+  }
+
+  const sharedScope = shims.length === 0 ? '' : `(function () {\n${shims.map(String).join('\n\n')}\n\n${calls.join('\n')}\n})();\n`;
+  return sharedScope + additionalBannerInitFunctions.map((function_) => `(${String(function_)})();\n`).join('');
+}

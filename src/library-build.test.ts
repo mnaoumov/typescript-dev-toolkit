@@ -1,5 +1,6 @@
 import type { Plugin } from 'esbuild';
 
+import { Buffer } from 'node:buffer';
 import {
   existsSync,
   readFileSync
@@ -17,6 +18,10 @@ import {
   join
 } from 'node:path';
 import process from 'node:process';
+import {
+  createContext,
+  runInContext
+} from 'node:vm';
 import {
   createProgram,
   flattenDiagnosticMessageText,
@@ -90,6 +95,15 @@ interface PackageJsonWithExports {
   exports: Record<string, unknown>;
 }
 
+interface SourceMapWithMappings {
+  readonly mappings: string;
+}
+
+interface TypeCheckParams {
+  readonly lib?: string[];
+  readonly rootName: string;
+}
+
 let originalCwd = '';
 let packageFolder = '';
 
@@ -106,6 +120,24 @@ function makeParsedTsConfig(options: ParsedTsConfig['options']): ParsedTsConfig 
 
 function readText(path: string): string {
   return readFileSync(path, 'utf-8');
+}
+
+// Type-checks one built declaration the way a consumer with `skipLibCheck: false` and no ambient `types` does.
+function typeCheck(params: TypeCheckParams): string[] {
+  const { lib, rootName } = params;
+  const program = createProgram({
+    options: {
+      ...(lib !== undefined && { lib }),
+      module: ModuleKind.NodeNext,
+      moduleResolution: ModuleResolutionKind.NodeNext,
+      noEmit: true,
+      skipLibCheck: false,
+      strict: true,
+      types: []
+    },
+    rootNames: [join(packageFolder, rootName)]
+  });
+  return getPreEmitDiagnostics(program).map((diagnostic) => flattenDiagnosticMessageText(diagnostic.messageText, '\n'));
 }
 
 async function writeFiles(files: Record<string, string>): Promise<void> {
@@ -278,15 +310,98 @@ describe('buildLibraryTypes', () => {
     expect(readText('dist/lib/cjs/index.d.cts')).toBe('/// <reference path="./library-references.d.cts" />\n');
   });
 
-  it('writes the lib and types references alone into library-references, in both formats', async () => {
-    mockParseTsConfig.mockReturnValue(makeParsedTsConfig({ lib: ['lib.es2022.d.ts'], types: ['node'] }));
+  it('writes only the language libs into library-references, in both formats', async () => {
+    mockParseTsConfig.mockReturnValue(makeParsedTsConfig({
+      lib: ['lib.es2022.d.ts', 'lib.dom.d.ts', 'lib.dom.iterable.d.ts', 'lib.esnext.disposable.d.ts', 'lib.webworker.d.ts'],
+      types: ['node']
+    }));
     await writeFiles({ 'src/index.d.ts': 'export {};\n' });
 
     await buildLibraryTypes();
 
-    const expected = [libReference('es2022'), '/// <reference types="node" />', ''].join('\n');
+    const expected = [libReference('es2022'), libReference('esnext.disposable'), ''].join('\n');
     expect(readText('dist/lib/cjs/library-references.d.cts')).toBe(expected);
     expect(readText('dist/lib/esm/library-references.d.mts')).toBe(expected);
+  });
+
+  it('gives each declaration the environment references only it needs', { timeout: BUILD_TEST_TIMEOUT_IN_MILLISECONDS }, async () => {
+    mockParseTsConfig.mockReturnValue(makeParsedTsConfig({
+      lib: ['lib.es2022.d.ts', 'lib.dom.d.ts', 'lib.dom.iterable.d.ts'],
+      typeRoots: [join(originalCwd, 'node_modules/@types')],
+      types: ['node', 'vitest']
+    }));
+    await writeFiles({
+      'src/dom.d.ts': 'export declare function getBody(): HTMLElement;\n',
+      'src/index.d.ts': 'export {};\n',
+      'src/node-import.d.ts': 'import type { Readable } from \'node:stream\';\nexport declare function read(stream: Readable): void;\n',
+      'src/node.d.ts': 'export declare function startTimer(): NodeJS.Timeout;\n',
+      'src/pure.d.ts': 'export declare function isOne(value: unknown): value is 1;\nexport declare const values: ReadonlyMap<string, Promise<number>>;\n',
+      'src/sub/uses-dom.d.ts': 'import { getBody } from \'../dom.ts\';\nexport declare const body: ReturnType<typeof getBody>;\n',
+      'src/timer.d.ts': 'export declare function wait(): ReturnType<typeof setTimeout>;\n'
+    });
+
+    await buildLibraryTypes();
+
+    expect(readText('dist/lib/esm/pure.d.mts')).toBe([
+      '/// <reference path="./library-references.d.mts" />',
+      'export declare function isOne(value: unknown): value is 1;',
+      'export declare const values: ReadonlyMap<string, Promise<number>>;',
+      ''
+    ].join('\n'));
+    expect(readText('dist/lib/cjs/dom.d.cts')).toBe([
+      '/// <reference path="./library-references.d.cts" />',
+      libReference('dom'),
+      'export declare function getBody(): HTMLElement;',
+      ''
+    ].join('\n'));
+    expect(readText('dist/lib/esm/node.d.mts')).toBe([
+      '/// <reference path="./library-references.d.mts" />',
+      '/// <reference types="node" />',
+      'export declare function startTimer(): NodeJS.Timeout;',
+      ''
+    ].join('\n'));
+    expect(readText('dist/lib/esm/node-import.d.mts')).toContain('/// <reference types="node" />');
+    expect(readText('dist/lib/esm/node-import.d.mts')).not.toContain('lib=');
+    // A global both the DOM and Node declare is taken from the DOM, which every host can load.
+    expect(readText('dist/lib/esm/timer.d.mts')).toContain(libReference('dom'));
+    expect(readText('dist/lib/esm/timer.d.mts')).not.toContain('types=');
+    // The module it imports from carries its own reference, so the importer needs none.
+    expect(readText('dist/lib/esm/sub/uses-dom.d.mts')).toBe([
+      '/// <reference path="../library-references.d.mts" />',
+      'import { getBody } from \'../dom.mjs\';',
+      'export declare const body: ReturnType<typeof getBody>;',
+      ''
+    ].join('\n'));
+
+    // A browser consumer: no `node` types at all, and only the language libs.
+    expect(typeCheck({ lib: ['lib.es2022.d.ts'], rootName: 'dist/lib/esm/pure.d.mts' })).toEqual([]);
+    expect(typeCheck({ lib: ['lib.es2022.d.ts'], rootName: 'dist/lib/esm/dom.d.mts' })).toEqual([]);
+    expect(typeCheck({ lib: ['lib.es2022.d.ts'], rootName: 'dist/lib/cjs/pure.d.cts' })).toEqual([]);
+  });
+
+  it('names a lib a package replaced by the lib, not by its file', { timeout: BUILD_TEST_TIMEOUT_IN_MILLISECONDS }, async () => {
+    mockParseTsConfig.mockReturnValue(makeParsedTsConfig({
+      // A parsed `tsconfig.json` names itself, and a replacement is looked up beside it.
+      configFilePath: join(packageFolder, 'tsconfig.json'),
+      lib: ['lib.es2022.d.ts', 'lib.dom.d.ts', 'lib.dom.iterable.d.ts'],
+      libReplacement: true,
+      // A replacement is resolved as a package, which the default resolution of no `module` never looks for.
+      module: ModuleKind.NodeNext,
+      moduleResolution: ModuleResolutionKind.NodeNext
+    }));
+    await writeFiles({
+      'node_modules/@typescript/lib-dom/index.d.ts': 'declare var replacedDomGlobal: number;\n',
+      'node_modules/@typescript/lib-dom/iterable.d.ts': 'declare var replacedDomIterableGlobal: number;\n',
+      'node_modules/@typescript/lib-dom/package.json': '{ "name": "@typescript/lib-dom", "types": "index.d.ts" }\n',
+      'src/dom-iterable.d.ts': 'export declare const value: typeof replacedDomIterableGlobal;\n',
+      'src/dom.d.ts': 'export declare const value: typeof replacedDomGlobal;\n',
+      'src/index.d.ts': 'export {};\n'
+    });
+
+    await buildLibraryTypes();
+
+    expect(readText('dist/lib/esm/dom.d.mts')).toContain(libReference('dom'));
+    expect(readText('dist/lib/esm/dom-iterable.d.mts')).toContain(libReference('dom.iterable'));
   });
 
   it('refuses a source module that collides with library-references', async () => {
@@ -306,25 +421,10 @@ describe('buildLibraryTypes', () => {
 
     await buildLibraryTypes();
 
-    function typeCheck(rootName: string): string[] {
-      const program = createProgram({
-        options: {
-          module: ModuleKind.NodeNext,
-          moduleResolution: ModuleResolutionKind.NodeNext,
-          noEmit: true,
-          skipLibCheck: false,
-          strict: true,
-          types: []
-        },
-        rootNames: [join(packageFolder, rootName)]
-      });
-      return getPreEmitDiagnostics(program).map((diagnostic) => flattenDiagnosticMessageText(diagnostic.messageText, '\n'));
-    }
-
-    expect(typeCheck('dist/lib/esm/light.d.mts')).toEqual([]);
-    expect(typeCheck('dist/lib/cjs/light.d.cts')).toEqual([]);
+    expect(typeCheck({ rootName: 'dist/lib/esm/light.d.mts' })).toEqual([]);
+    expect(typeCheck({ rootName: 'dist/lib/cjs/light.d.cts' })).toEqual([]);
     // The control: the barrel does reach the absent peer, so the fixture can fail the way a consumer did.
-    expect(typeCheck('dist/lib/esm/index.d.mts')).toEqual([expect.stringContaining('absent-optional-peer')]);
+    expect(typeCheck({ rootName: 'dist/lib/esm/index.d.mts' })).toEqual([expect.stringContaining('absent-optional-peer')]);
   });
 });
 
@@ -461,6 +561,59 @@ describe('buildLibrary', { timeout: BUILD_TEST_TIMEOUT_IN_MILLISECONDS }, () => 
 
     expect(formats).toEqual([false, true]);
     expect(readText('dist/lib/esm/a.mjs')).not.toContain('ensureDisposeSymbols');
+  });
+
+  it('gives each module only the runtime shims its own code needs', async () => {
+    await writeFiles({
+      'src/bare.ts': 'import { join } from \'path-browserify\';\nexport const joined = join(\'a\', \'b\');\n',
+      'src/disposable.ts': 'export function run(): void {\n  using _resource = { [Symbol.dispose](): void {} };\n}\n',
+      'src/mentions.ts': [
+        '// The process global is only mentioned here.',
+        'export const api = { process(): number { return 1; } };',
+        'export const label = \'process\';',
+        'export const result = api.process();',
+        ''
+      ].join('\n'),
+      'src/node-process.ts': 'import process from \'node:process\';\nexport function getCwd(): string {\n  return process.cwd();\n}\n',
+      'src/pure.ts': 'export function isOne(value: unknown): value is 1 {\n  return value === 1;\n}\n',
+      'src/reads-process.ts': 'export function getCwd(): string {\n  return process.cwd();\n}\n'
+    });
+    for (const folder of ['dist/lib/cjs', 'dist/lib/esm']) {
+      await mkdir(folder, { recursive: true });
+    }
+
+    await buildLibrary();
+
+    for (const name of ['pure', 'mentions', 'node-process']) {
+      for (const path of [`dist/lib/esm/${name}.mjs`, `dist/lib/cjs/${name}.cjs`]) {
+        const code = readText(path);
+        expect(code, path).toContain(LIBRARY_BANNER.trim());
+        expect(code, path).not.toContain('ensureBrowserProcess');
+        expect(code, path).not.toContain('ensureDisposeSymbols');
+      }
+    }
+
+    for (const name of ['reads-process', 'bare']) {
+      expect(readText(`dist/lib/esm/${name}.mjs`)).toContain('ensureBrowserProcess();');
+      expect(readText(`dist/lib/esm/${name}.mjs`)).not.toContain('ensureDisposeSymbols');
+    }
+    expect(readText('dist/lib/esm/disposable.mjs')).toContain('ensureDisposeSymbols();');
+    expect(readText('dist/lib/esm/disposable.mjs')).not.toContain('ensureBrowserProcess');
+
+    // The preamble comes after the generated-file banner, and the module's own lines still map onto their sources.
+    const readsProcess = readText('dist/lib/esm/reads-process.mjs');
+    expect(readsProcess.startsWith(LIBRARY_BANNER)).toBe(true);
+    const lines = readsProcess.split('\n');
+    const sourceMapLine = lines.find((line) => line.startsWith('//# sourceMappingURL=data:application/json;base64,')) ?? '';
+    const sourceMap = JSON.parse(Buffer.from(sourceMapLine.slice(sourceMapLine.indexOf(',') + 1), 'base64').toString('utf-8')) as SourceMapWithMappings;
+    const firstMappedLine = sourceMap.mappings.split(';').findIndex((segments) => segments !== '');
+    expect(firstMappedLine).toBe(lines.findIndex((line) => line.startsWith('function getCwd')));
+
+    // The CommonJS module shims a host with no `process` before it reads it.
+    const commonJsModule = { exports: {} as Record<string, unknown> };
+    const context = createContext({ exports: commonJsModule.exports, module: commonJsModule, require: (): unknown => ({}) });
+    runInContext(readText('dist/lib/cjs/reads-process.cjs'), context);
+    expect((commonJsModule.exports['getCwd'] as () => string)()).toBe('/');
   });
 
   it('fails when esbuild does', async () => {
