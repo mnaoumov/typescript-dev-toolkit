@@ -216,6 +216,17 @@ describe('lint', () => {
     );
   });
 
+  // `linkinator` with no location prints its usage and exits non-zero, failing the whole lint.
+  it('should skip linkinator when linkCheckExcludeGlobs excludes every path', async () => {
+    mockExistsSync.mockReturnValue(true);
+    mockGetRootFolder.mockReturnValue('/root');
+    await lint({ linkCheckExcludeGlobs: ['docs/**'], paths: ['/root/docs/guide.md'] });
+    expect(mockExecFromRoot).toHaveBeenCalledOnce();
+    expect(mockExecFromRoot).toHaveBeenCalledWith(
+      expect.arrayContaining(['markdownlint-cli2', { batchedArguments: ['/root/docs/guide.md'] }])
+    );
+  });
+
   it('should handle multiple markdown files from glob', async () => {
     mockExistsSync.mockReturnValue(true);
     mockGlob.mockReturnValue((async function* generateMultipleMdFiles(): AsyncGenerator<string, void> {

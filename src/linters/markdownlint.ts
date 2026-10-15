@@ -107,6 +107,10 @@ export async function lint(options?: LintOptions): Promise<void> {
     : await getMarkdownFiles();
   /* v8 ignore stop */
   const linkCheckFiles = mdFiles.filter((mdFile) => linkCheckExcludeGlobs.every((excludeGlob) => !matchesGlob(mdFile, excludeGlob)));
+  // `linkinator` with no LOCATION prints its usage and exits non-zero, so a list emptied by the exclusions has nothing to check.
+  if (linkCheckFiles.length === 0) {
+    return;
+  }
   await execFromRoot([
     ...resolveToolCommand({ tool: 'linkinator' }),
     '--retry',
