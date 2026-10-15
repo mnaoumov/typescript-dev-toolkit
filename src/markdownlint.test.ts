@@ -177,6 +177,45 @@ describe('lint', () => {
     );
   });
 
+  // A Starlight site's guides link to each other as `/<site-base>/guides/...`, which resolves only against
+  // the built site, so linkinator reports every one as a 404.
+  it('should leave linkCheckExcludeGlobs matches out of the linkinator pass only', async () => {
+    mockExistsSync.mockReturnValue(true);
+    mockGetNonIgnoredFiles.mockResolvedValue(['README.md', 'docs/src/content/docs/guides/setup.md', 'docs.md']);
+    await lint({ linkCheckExcludeGlobs: ['docs/**'] });
+    expect(mockExecFromRoot).toHaveBeenCalledWith(
+      expect.arrayContaining(['markdownlint-cli2', { batchedArguments: ['.'] }])
+    );
+    expect(mockExecFromRoot).toHaveBeenCalledWith(
+      expect.arrayContaining(['linkinator', { batchedArguments: ['README.md', 'docs.md'] }])
+    );
+  });
+
+  it('should apply linkCheckExcludeGlobs to the glob fallback', async () => {
+    mockExistsSync.mockReturnValue(true);
+    mockGlob.mockReturnValue((async function* generateMdFiles(): AsyncGenerator<string, void> {
+      await noopAsync();
+      yield 'README.md';
+      yield 'site/guide.md';
+    })());
+    await lint({ linkCheckExcludeGlobs: ['CHANGELOG.md', 'site/**'] });
+    expect(mockExecFromRoot).toHaveBeenCalledWith(
+      expect.arrayContaining(['linkinator', { batchedArguments: ['README.md'] }])
+    );
+  });
+
+  it('should apply linkCheckExcludeGlobs to explicit paths', async () => {
+    mockExistsSync.mockReturnValue(true);
+    mockGetRootFolder.mockReturnValue('/root');
+    await lint({ linkCheckExcludeGlobs: ['docs/**'], paths: ['/root/README.md', '/root/docs/guide.md'] });
+    expect(mockExecFromRoot).toHaveBeenCalledWith(
+      expect.arrayContaining(['markdownlint-cli2', { batchedArguments: ['/root/README.md', '/root/docs/guide.md'] }])
+    );
+    expect(mockExecFromRoot).toHaveBeenCalledWith(
+      expect.arrayContaining(['linkinator', { batchedArguments: ['README.md'] }])
+    );
+  });
+
   it('should handle multiple markdown files from glob', async () => {
     mockExistsSync.mockReturnValue(true);
     mockGlob.mockReturnValue((async function* generateMultipleMdFiles(): AsyncGenerator<string, void> {
