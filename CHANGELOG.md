@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 1.2.0
+
+- feat(library-build): give each module and declaration only the globals it needs
+
 ## 1.1.0
 
 - feat(linters): tell a crashed ESLint apart from lint findings
