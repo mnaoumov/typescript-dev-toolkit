@@ -111,6 +111,10 @@ export interface GenerateLibraryExportsOptions {
 type ModuleFormat = 'cjs' | 'esm';
 
 const DECLARATION_REFERENCE_TYPES = new Set(['node']);
+
+// The declaration that carries only the `lib` and `types` references. Every declaration but the root one references
+// it, rather than the root barrel, which would load every module of the package, optional peers' types included.
+const LIBRARY_REFERENCES_FILE_NAME = 'library-references';
 // Spelled apart on purpose: {@link collectAllLibs} scans every source file of the package being built for the
 // directive, this one included, so a literal one here would be read as a lib this package needs.
 const REFERENCE_LIB_DIRECTIVE = ['<reference', 'lib='].join(' ');
@@ -143,7 +147,6 @@ interface BuildLibraryFormatParams {
 interface BuildReferencePathDirectiveParams {
   readonly declarationFilePath: string;
   readonly extension: string;
-  readonly libraryFileName: string;
   readonly moduleDirectory: string;
 }
 
@@ -208,16 +211,30 @@ export async function buildLibrary(options: BuildLibraryOptions = {}): Promise<v
  * as a `.d.mts` whose relative imports name `.mjs` files.
  *
  * The library's root declaration (`library.ts` where the package has one, otherwise the generated `index.ts`) carries
- * every `lib` and `types` reference the package needs; every other declaration references it by path.
+ * every `lib` and `types` reference the package needs, and so does a `library-references` declaration beside it that
+ * carries nothing else. Every other declaration references that one by path, never the root: the root barrel
+ * re-exports every module, so referencing it made each subpath load the whole package, and a consumer type-checking
+ * with `skipLibCheck: false` then needed every optional peer installed.
  *
  * @returns A {@link Promise} that resolves when the declarations have been written.
+ * @throws If a source module is named `library-references`, which would collide with the generated declaration.
  */
 export async function buildLibraryTypes(): Promise<void> {
+  if (existsSync(join(RepoPaths.Src, `${LIBRARY_REFERENCES_FILE_NAME}${RepoPaths.TsExtension}`))) {
+    throw new Error(`src/${LIBRARY_REFERENCES_FILE_NAME}${RepoPaths.TsExtension} collides with the generated declaration of the same name.`);
+  }
+
   await execFromRoot([...resolveToolCommand({ tool: 'tsc' }), '--project', './tsconfig.types.json']);
 
   const libraryFileName = existsSync(join(RepoPaths.Src, 'library.ts')) ? 'library' : 'index';
   const allLibs = await collectAllLibs();
   const allTypes = collectAllTypes();
+  const directives = buildAllReferenceLibDirectives(allLibs) + buildAllReferenceTypesDirectives(allTypes);
+
+  await mkdir(join(RepoPaths.DistLib, RepoPaths.Cjs), { recursive: true });
+  await mkdir(join(RepoPaths.DistLib, RepoPaths.Esm), { recursive: true });
+  await writeFile(join(RepoPaths.DistLib, RepoPaths.Cjs, LIBRARY_REFERENCES_FILE_NAME + RepoPaths.DctsExtension), directives);
+  await writeFile(join(RepoPaths.DistLib, RepoPaths.Esm, LIBRARY_REFERENCES_FILE_NAME + RepoPaths.DmtsExtension), directives);
 
   for (const file of await readdirPosix(RepoPaths.Src, { recursive: true })) {
     if (!file.endsWith(RepoPaths.DtsExtension) || file.startsWith(RepoPaths.TestHelpers)) {
@@ -238,13 +255,12 @@ export async function buildLibraryTypes(): Promise<void> {
     let mtsContent = toMtsContent(content);
 
     if (name === libraryFileName && folder === '.') {
-      const directives = buildAllReferenceLibDirectives(allLibs) + buildAllReferenceTypesDirectives(allTypes);
       ctsContent = directives + ctsContent;
       mtsContent = directives + mtsContent;
     } else {
-      ctsContent = buildReferencePathDirective({ declarationFilePath: ctsPath, extension: RepoPaths.DctsExtension, libraryFileName, moduleDirectory: RepoPaths.Cjs })
+      ctsContent = buildReferencePathDirective({ declarationFilePath: ctsPath, extension: RepoPaths.DctsExtension, moduleDirectory: RepoPaths.Cjs })
         + ctsContent;
-      mtsContent = buildReferencePathDirective({ declarationFilePath: mtsPath, extension: RepoPaths.DmtsExtension, libraryFileName, moduleDirectory: RepoPaths.Esm })
+      mtsContent = buildReferencePathDirective({ declarationFilePath: mtsPath, extension: RepoPaths.DmtsExtension, moduleDirectory: RepoPaths.Esm })
         + mtsContent;
     }
 
@@ -377,8 +393,8 @@ async function buildLibraryFormat(params: BuildLibraryFormatParams): Promise<voi
 }
 
 function buildReferencePathDirective(params: BuildReferencePathDirectiveParams): string {
-  const { declarationFilePath, extension, libraryFileName, moduleDirectory } = params;
-  const libraryFilePath = join(RepoPaths.DistLib, moduleDirectory, libraryFileName + extension);
+  const { declarationFilePath, extension, moduleDirectory } = params;
+  const libraryFilePath = join(RepoPaths.DistLib, moduleDirectory, LIBRARY_REFERENCES_FILE_NAME + extension);
   let relativePath = relativeNative(dirname(declarationFilePath), libraryFilePath).replaceAll('\\', '/');
   if (!relativePath.startsWith('.')) {
     relativePath = `./${relativePath}`;

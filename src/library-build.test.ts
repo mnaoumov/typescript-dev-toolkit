@@ -18,6 +18,13 @@ import {
 } from 'node:path';
 import process from 'node:process';
 import {
+  createProgram,
+  flattenDiagnosticMessageText,
+  getPreEmitDiagnostics,
+  ModuleKind,
+  ModuleResolutionKind
+} from 'typescript';
+import {
   afterEach,
   beforeEach,
   describe,
@@ -240,11 +247,11 @@ describe('buildLibraryTypes', () => {
     ].join('\n'));
     expect(readText('dist/lib/esm/index.d.mts')).toContain('export * as \'a\' from \'./a.mjs\';');
 
-    expect(readText('dist/lib/cjs/other.d.cts')).toBe('/// <reference path="./index.d.cts" />\nexport declare const x: typeof import(\'./a.cjs\');\n');
-    expect(readText('dist/lib/esm/other.d.mts')).toBe('/// <reference path="./index.d.mts" />\nexport declare const x: typeof import(\'./a.mjs\');\n');
+    expect(readText('dist/lib/cjs/other.d.cts')).toBe('/// <reference path="./library-references.d.cts" />\nexport declare const x: typeof import(\'./a.cjs\');\n');
+    expect(readText('dist/lib/esm/other.d.mts')).toBe('/// <reference path="./library-references.d.mts" />\nexport declare const x: typeof import(\'./a.mjs\');\n');
 
     const subCts = readText('dist/lib/cjs/sub/b.d.cts');
-    expect(subCts).toContain('/// <reference path="../index.d.cts" />');
+    expect(subCts).toContain('/// <reference path="../library-references.d.cts" />');
     expect(subCts).toContain('import type { Promisable } from \'type-fest\' with { \'resolution-mode\': \'import\' };');
     expect(subCts).toContain('from \'../a.cjs\';');
     expect(subCts).toContain('import("./c.cjs")');
@@ -268,7 +275,56 @@ describe('buildLibraryTypes', () => {
     await buildLibraryTypes();
 
     expect(readText('dist/lib/cjs/library.d.cts')).toBe('\n');
-    expect(readText('dist/lib/cjs/index.d.cts')).toBe('/// <reference path="./library.d.cts" />\n');
+    expect(readText('dist/lib/cjs/index.d.cts')).toBe('/// <reference path="./library-references.d.cts" />\n');
+  });
+
+  it('writes the lib and types references alone into library-references, in both formats', async () => {
+    mockParseTsConfig.mockReturnValue(makeParsedTsConfig({ lib: ['lib.es2022.d.ts'], types: ['node'] }));
+    await writeFiles({ 'src/index.d.ts': 'export {};\n' });
+
+    await buildLibraryTypes();
+
+    const expected = [libReference('es2022'), '/// <reference types="node" />', ''].join('\n');
+    expect(readText('dist/lib/cjs/library-references.d.cts')).toBe(expected);
+    expect(readText('dist/lib/esm/library-references.d.mts')).toBe(expected);
+  });
+
+  it('refuses a source module that collides with library-references', async () => {
+    await writeFiles({ 'src/library-references.ts': '' });
+
+    await expect(buildLibraryTypes()).rejects.toThrow('collides with the generated declaration');
+    expect(mockExecFromRoot).not.toHaveBeenCalled();
+  });
+
+  it('lets a consumer type-check one subpath with skipLibCheck off while a sibling needs an absent optional peer', { timeout: BUILD_TEST_TIMEOUT_IN_MILLISECONDS }, async () => {
+    mockParseTsConfig.mockReturnValue(makeParsedTsConfig({}));
+    await writeFiles({
+      'src/heavy.d.ts': 'import type { Peer } from \'absent-optional-peer\';\nexport declare const peer: Peer;\n',
+      'src/index.d.ts': 'export * as \'heavy\' from \'./heavy.ts\';\nexport * as \'light\' from \'./light.ts\';\n',
+      'src/light.d.ts': 'export declare const light: number;\n'
+    });
+
+    await buildLibraryTypes();
+
+    function typeCheck(rootName: string): string[] {
+      const program = createProgram({
+        options: {
+          module: ModuleKind.NodeNext,
+          moduleResolution: ModuleResolutionKind.NodeNext,
+          noEmit: true,
+          skipLibCheck: false,
+          strict: true,
+          types: []
+        },
+        rootNames: [join(packageFolder, rootName)]
+      });
+      return getPreEmitDiagnostics(program).map((diagnostic) => flattenDiagnosticMessageText(diagnostic.messageText, '\n'));
+    }
+
+    expect(typeCheck('dist/lib/esm/light.d.mts')).toEqual([]);
+    expect(typeCheck('dist/lib/cjs/light.d.cts')).toEqual([]);
+    // The control: the barrel does reach the absent peer, so the fixture can fail the way a consumer did.
+    expect(typeCheck('dist/lib/esm/index.d.mts')).toEqual([expect.stringContaining('absent-optional-peer')]);
   });
 });
 
