@@ -23,7 +23,8 @@ export function fixEsmPlugin(): Plugin {
         for (const file of result.outputFiles ?? []) {
           const newText = replaceAll({
             $string: file.text,
-            replacer: '$1(__extractDefault($2), 1);',
+            // Inline rather than a call to a global helper, so a module works without any banner having run first.
+            replacer: '$1(((module) => module && module.__esModule && \'default\' in module ? module.default : module)($2), 1);',
             searchValue: /(?<Caller>__toESM\d*)\((?<Module>.+), 1\);/g
           });
           file.contents = new TextEncoder().encode(newText);

@@ -1,11 +1,14 @@
 import type { GenericObject } from '@mnaoumov/typescript-lib/type-guards';
 import type {
+  BuildResult,
+  OutputFile,
   Plugin,
   PluginBuild
 } from 'esbuild';
 
 import { ensureGenericObject } from '@mnaoumov/typescript-lib/type-guards';
 import { build as bundle } from 'esbuild';
+import { Buffer } from 'node:buffer';
 import {
   createContext,
   runInContext
@@ -17,6 +20,8 @@ import {
   it,
   vi
 } from 'vitest';
+
+import type { PreprocessPluginOptions } from './preprocess-plugin.ts';
 
 import {
   ensureBrowserProcess,
@@ -226,6 +231,175 @@ describe('preprocessPlugin', () => {
 
     expect(banner).not.toContain('isMobile');
     expect(banner).not.toContain('__isPatched');
+  });
+});
+
+describe('preprocessPlugin in an unbundled build', () => {
+  type EndCallback = Parameters<PluginBuild['onEnd']>[0];
+
+  interface RunUnbundledParams {
+    readonly banner?: string;
+    readonly files: Record<string, string>;
+    readonly options?: PreprocessPluginOptions;
+  }
+
+  function makeOutputFile(path: string, text: string): OutputFile {
+    const decoder = new TextDecoder();
+    const outputFile = {
+      contents: new TextEncoder().encode(text),
+      hash: '',
+      path,
+      get text(): string {
+        return decoder.decode(outputFile.contents);
+      }
+    };
+    return outputFile;
+  }
+
+  // Runs the plugin's end-of-build pass over hand-written outputs and returns each output's resulting text.
+  async function runUnbundled(params: RunUnbundledParams): Promise<Record<string, string>> {
+    const { banner, files, options = {} } = params;
+    const endCallbacks: EndCallback[] = [];
+    const partialBuild: Partial<PluginBuild> = {
+      initialOptions: { ...(banner !== undefined && { banner: { js: banner } }), bundle: false },
+      onEnd(callback): void {
+        endCallbacks.push(callback);
+      },
+      onLoad(): void {
+        // The tests never trigger a load.
+      }
+    };
+    const build = partialBuild as PluginBuild;
+    expect(preprocessPlugin(options).setup(build)).toBeUndefined();
+    expect(build.initialOptions.banner).toEqual(banner === undefined ? undefined : { js: banner });
+
+    const outputFiles = Object.entries(files).map(([path, text]) => makeOutputFile(path, text));
+    const partialResult: Partial<BuildResult> = { outputFiles };
+    for (const callback of endCallbacks) {
+      await callback(partialResult as BuildResult);
+      await callback({} as BuildResult);
+    }
+    return Object.fromEntries(outputFiles.map((outputFile) => [outputFile.path, outputFile.text]));
+  }
+
+  async function runOne(code: string, options?: PreprocessPluginOptions): Promise<string> {
+    const outputs = await runUnbundled({ files: { 'out/a.js': code }, ...(options !== undefined && { options }) });
+    return outputs['out/a.js'] ?? '';
+  }
+
+  it('leaves a module that needs no shim untouched', async () => {
+    const code = [
+      'import { a } from "./a.js";',
+      'export { b } from "./b.js";',
+      'export { a };',
+      'const api = { process() { return 1; }, get __name() { return 2; }, set __name(value) {} };',
+      'class Worker { process() {} static __name = 1; }',
+      'function process(...args) { return args; }',
+      'const { process: renamed } = api;',
+      'process(api.process(), renamed, new Worker(), require(name), call());',
+      'const text = "process";',
+      ''
+    ].join('\n');
+
+    expect(await runOne(code)).toBe(code);
+  });
+
+  it.each([
+    ['a free process read', 'export const cwd = process.cwd();\n'],
+    ['a bare import', 'import debug from "debug";\n'],
+    ['a bare re-export', 'export * from "path-browserify";\n'],
+    ['a bare require', 'const debug = require("debug");\n'],
+    ['a bare dynamic import', 'export const load = () => import("debug");\n']
+  ])('shims process for %s', async (_case, code) => {
+    const result = await runOne(code);
+
+    expect(result).toContain('ensureBrowserProcess();');
+    expect(result).not.toContain('ensureDisposeSymbols');
+    expect(result.endsWith(code)).toBe(true);
+  });
+
+  it.each([
+    ['Symbol.dispose', 'class A { [Symbol.dispose]() {} }\n'],
+    ['Symbol.asyncDispose', 'class A { async [Symbol.asyncDispose]() {} }\n'],
+    ['the lowered using helper', 'var __knownSymbol = (name) => Symbol.for("Symbol." + name);\n']
+  ])('shims the dispose symbols for %s', async (_case, code) => {
+    const result = await runOne(code);
+
+    expect(result).toContain('ensureDisposeSymbols();');
+    expect(result).not.toContain('ensureBrowserProcess');
+  });
+
+  it('shims a free __name, and leaves one the module declares', async () => {
+    expect(await runOne('__name(f, "f");\n')).toContain('globalThis[\'__name\'] ??= keepName;');
+    expect(await runOne('var __name = (target) => target;\n__name(f, "f");\n')).not.toContain('keepName');
+  });
+
+  it('leaves Symbol members that are not the dispose symbols alone', async () => {
+    const code = 'const iterator = Symbol.iterator;\nconst other = notSymbol.dispose;\n';
+
+    expect(await runOne(code)).toBe(code);
+  });
+
+  it('runs the caller\'s init functions in every module, even one that needs no shim', async () => {
+    function extraInit(): void {
+      // Only its serialized text matters.
+    }
+
+    const result = await runOne('export const a = 1;\n', { additionalBannerInitFunctions: [extraInit] });
+
+    expect(result).toBe(`(${String(extraInit)})();\nexport const a = 1;\n`);
+  });
+
+  it('puts the preamble after the leading banner, and only touches JavaScript outputs', async () => {
+    const outputs = await runUnbundled({
+      banner: '/* banner */\n',
+      files: {
+        'out/a.js': '/* banner */\nexport const cwd = process.cwd();\n',
+        'out/a.js.map': 'process'
+      }
+    });
+
+    expect(outputs['out/a.js']).toMatch(/^\/\* banner \*\/\n\(function \(\) \{\n/);
+    expect(outputs['out/a.js.map']).toBe('process');
+  });
+
+  it('puts the preamble first when the leading banner does not end its line', async () => {
+    const outputs = await runUnbundled({ banner: '/* banner */', files: { 'out/a.mjs': '/* banner */export const cwd = process.cwd();\n' } });
+
+    expect(outputs['out/a.mjs']).toMatch(/^\(function \(\) \{\n/);
+  });
+
+  it('shifts an inline source map down by the lines the preamble adds', async () => {
+    const sourceMap = { mappings: 'AAAA', sources: ['a.ts'], version: 3 };
+    const prefix = '//# sourceMappingURL=data:application/json;base64,';
+    const code = `export const cwd = process.cwd();\n${prefix}${Buffer.from(JSON.stringify(sourceMap)).toString('base64')}\n`;
+
+    const result = await runOne(code);
+
+    const resultLines = result.split('\n');
+    const mapLine = resultLines.find((line) => line.startsWith(prefix)) ?? '';
+    const shiftedMap = JSON.parse(Buffer.from(mapLine.slice(prefix.length), 'base64').toString('utf-8')) as typeof sourceMap;
+    const codeLine = resultLines.indexOf('export const cwd = process.cwd();');
+    expect(shiftedMap.mappings).toBe(`${';'.repeat(codeLine)}AAAA`);
+    expect(result.endsWith('\n')).toBe(true);
+  });
+
+  it('serializes a preamble that installs the shims it names', async () => {
+    const preamble = await runOne('');
+    expect(preamble).toBe('');
+
+    const code = await runOne('class A { [Symbol.dispose]() {} }\nexport const cwd = process.cwd();\n__name(f, "f");\n');
+    const preambleCode = code.slice(0, code.indexOf('class A'));
+    vi.stubGlobal('process', undefined);
+    vi.stubGlobal('__name', undefined);
+    // eslint-disable-next-line @typescript-eslint/no-implied-eval, no-new-func -- Evaluating the emitted preamble is the point of this check.
+    const runPreamble = new Function(preambleCode);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call -- `Function` is untyped by construction.
+    runPreamble();
+
+    expect(getHostProcess()['browser']).toBe(true);
+    expect(ensureGenericObject(globalThis)['__name']).toBeTypeOf('function');
+    vi.unstubAllGlobals();
   });
 });
 

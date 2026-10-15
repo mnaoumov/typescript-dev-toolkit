@@ -14,6 +14,12 @@ import type {
   Plugin
 } from 'esbuild';
 import type { Dirent } from 'node:fs';
+import type {
+  Node,
+  Program,
+  Symbol as TsSymbol,
+  TypeChecker
+} from 'typescript';
 
 import { asyncMap } from '@mnaoumov/typescript-lib/async';
 import { isDeepEqual } from '@mnaoumov/typescript-lib/object-utils';
@@ -26,6 +32,7 @@ import {
   relative
 } from '@mnaoumov/typescript-lib/path';
 import { replaceAll } from '@mnaoumov/typescript-lib/string';
+import { ensureNonNullable } from '@mnaoumov/typescript-lib/type-guards';
 import { context } from 'esbuild';
 import {
   existsSync,
@@ -37,8 +44,18 @@ import {
   rm,
   writeFile
 } from 'node:fs/promises';
-import { relative as relativeNative } from 'node:path';
+import {
+  relative as relativeNative,
+  resolve as resolveNative
+} from 'node:path';
 import process from 'node:process';
+import {
+  createProgram,
+  forEachChild,
+  isIdentifier,
+  isStringLiteral,
+  SymbolFlags
+} from 'typescript';
 
 import type { PackageJson } from './npm.ts';
 
@@ -112,6 +129,12 @@ type ModuleFormat = 'cjs' | 'esm';
 
 const DECLARATION_REFERENCE_TYPES = new Set(['node']);
 
+// The libs that describe a host's globals rather than the language, which consumers conflict over. Each declaration
+// gets the ones it uses; every other lib is shared through `library-references`.
+const ENVIRONMENT_LIB_PREFIXES: readonly string[] = ['dom', 'scripthost', 'webworker'];
+const NODE_TYPES_PATH_SEGMENT = '/node_modules/@types/node/';
+const LIB_REPLACEMENT_REG_EXP = /\/node_modules\/@typescript\/lib-(?<Lib>[^/]+)\/(?<SubLib>.+)\.d\.ts$/;
+
 // The declaration that carries only the `lib` and `types` references. Every declaration but the root one references
 // it, rather than the root barrel, which would load every module of the package, optional peers' types included.
 const LIBRARY_REFERENCES_FILE_NAME = 'library-references';
@@ -138,6 +161,13 @@ enum GenerateIndexResult {
   Success = 'success'
 }
 
+interface AddEnvironmentGlobalsParams {
+  readonly libs: Set<string>;
+  readonly program: Program;
+  readonly symbol: TsSymbol;
+  readonly types: Set<string>;
+}
+
 interface BuildLibraryFormatParams {
   readonly format: ModuleFormat;
   readonly libFiles: string[];
@@ -148,6 +178,11 @@ interface BuildReferencePathDirectiveParams {
   readonly declarationFilePath: string;
   readonly extension: string;
   readonly moduleDirectory: string;
+}
+
+interface CollectEnvironmentDirectivesParams {
+  readonly availableTypes: readonly string[];
+  readonly declarationFiles: readonly string[];
 }
 
 interface SetExportParams {
@@ -211,10 +246,16 @@ export async function buildLibrary(options: BuildLibraryOptions = {}): Promise<v
  * as a `.d.mts` whose relative imports name `.mjs` files.
  *
  * The library's root declaration (`library.ts` where the package has one, otherwise the generated `index.ts`) carries
- * every `lib` and `types` reference the package needs, and so does a `library-references` declaration beside it that
- * carries nothing else. Every other declaration references that one by path, never the root: the root barrel
- * re-exports every module, so referencing it made each subpath load the whole package, and a consumer type-checking
- * with `skipLibCheck: false` then needed every optional peer installed.
+ * every `lib` and `types` reference the package needs. Every other declaration references a `library-references`
+ * declaration beside it by path, never the root: the root barrel re-exports every module, so referencing it made each
+ * subpath load the whole package, and a consumer type-checking with `skipLibCheck: false` then needed every optional
+ * peer installed.
+ *
+ * `library-references` carries only the libs that describe the language (`es2022`, `esnext.disposable`), which no
+ * consumer conflicts with. The ones that describe a host (`dom`, `dom.iterable`, `webworker`) and `types="node"` go
+ * only into the declarations that name one of their globals, found by resolving every name in the emitted
+ * declarations with the type checker. Otherwise a browser consumer of a pure subpath got all of `@types/node`, and its
+ * `setTimeout` returned `NodeJS.Timeout`.
  *
  * @returns A {@link Promise} that resolves when the declarations have been written.
  * @throws If a source module is named `library-references`, which would collide with the generated declaration.
@@ -230,17 +271,19 @@ export async function buildLibraryTypes(): Promise<void> {
   const allLibs = await collectAllLibs();
   const allTypes = collectAllTypes();
   const directives = buildAllReferenceLibDirectives(allLibs) + buildAllReferenceTypesDirectives(allTypes);
+  // Only the libs no consumer conflicts with. The environment globals go to the declarations that use them.
+  const sharedDirectives = buildAllReferenceLibDirectives(allLibs.filter((lib) => !isEnvironmentLib(lib)));
 
   await mkdir(join(RepoPaths.DistLib, RepoPaths.Cjs), { recursive: true });
   await mkdir(join(RepoPaths.DistLib, RepoPaths.Esm), { recursive: true });
-  await writeFile(join(RepoPaths.DistLib, RepoPaths.Cjs, LIBRARY_REFERENCES_FILE_NAME + RepoPaths.DctsExtension), directives);
-  await writeFile(join(RepoPaths.DistLib, RepoPaths.Esm, LIBRARY_REFERENCES_FILE_NAME + RepoPaths.DmtsExtension), directives);
+  await writeFile(join(RepoPaths.DistLib, RepoPaths.Cjs, LIBRARY_REFERENCES_FILE_NAME + RepoPaths.DctsExtension), sharedDirectives);
+  await writeFile(join(RepoPaths.DistLib, RepoPaths.Esm, LIBRARY_REFERENCES_FILE_NAME + RepoPaths.DmtsExtension), sharedDirectives);
 
-  for (const file of await readdirPosix(RepoPaths.Src, { recursive: true })) {
-    if (!file.endsWith(RepoPaths.DtsExtension) || file.startsWith(RepoPaths.TestHelpers)) {
-      continue;
-    }
+  const srcFiles = await readdirPosix(RepoPaths.Src, { recursive: true });
+  const declarationFiles = srcFiles.filter((file) => file.endsWith(RepoPaths.DtsExtension) && !file.startsWith(RepoPaths.TestHelpers));
+  const environmentDirectives = collectEnvironmentDirectives({ availableTypes: allTypes, declarationFiles });
 
+  for (const file of declarationFiles) {
     const folder = dirname(file);
     const name = basename(file, RepoPaths.DtsExtension);
     const content = await readFile(join(RepoPaths.Src, file), 'utf-8');
@@ -258,10 +301,11 @@ export async function buildLibraryTypes(): Promise<void> {
       ctsContent = directives + ctsContent;
       mtsContent = directives + mtsContent;
     } else {
+      const fileDirectives = environmentDirectives.get(file) ?? '';
       ctsContent = buildReferencePathDirective({ declarationFilePath: ctsPath, extension: RepoPaths.DctsExtension, moduleDirectory: RepoPaths.Cjs })
-        + ctsContent;
+        + fileDirectives + ctsContent;
       mtsContent = buildReferencePathDirective({ declarationFilePath: mtsPath, extension: RepoPaths.DmtsExtension, moduleDirectory: RepoPaths.Esm })
-        + mtsContent;
+        + fileDirectives + mtsContent;
     }
 
     await writeFile(ctsPath, ctsContent);
@@ -339,6 +383,41 @@ export async function runBuildSteps(steps: readonly string[] = LIBRARY_BUILD_STE
   }
 }
 
+/**
+ * Adds what a consumer needs loaded for one symbol a declaration names. A symbol any ES lib declares needs nothing,
+ * because no consumer conflicts with those libs. Otherwise each environment lib that declares it adds itself, and
+ * failing that `@types/node` adds `node`. A symbol declared in the package's own files adds nothing: the declaration
+ * that holds it carries its own directives.
+ *
+ * @param params - The symbol, the program it was resolved in, and the sets to add to.
+ */
+function addEnvironmentGlobals(params: AddEnvironmentGlobalsParams): void {
+  const { libs, program, symbol, types } = params;
+  const environmentLibs: string[] = [];
+  let isNode = false;
+
+  for (const declaration of symbol.declarations ?? []) {
+    const sourceFile = declaration.getSourceFile();
+    if (program.isSourceFileDefaultLibrary(sourceFile)) {
+      const lib = toLibName(sourceFile.fileName);
+      if (!isEnvironmentLib(lib)) {
+        return;
+      }
+      environmentLibs.push(lib);
+    } else if (sourceFile.fileName.includes(NODE_TYPES_PATH_SEGMENT)) {
+      isNode = true;
+    }
+  }
+
+  if (environmentLibs.length > 0) {
+    for (const lib of environmentLibs) {
+      libs.add(lib);
+    }
+  } else if (isNode) {
+    types.add('node');
+  }
+}
+
 function buildAllReferenceLibDirectives(libs: string[]): string {
   return `${
     libs
@@ -406,7 +485,7 @@ async function collectAllLibs(): Promise<string[]> {
   // The RESOLVED options, because a package's `tsconfig.json` inherits `lib` from the shared base. The resolved
   // names are file names (`lib.dom.iterable.d.ts`), so they are mapped back onto the names a directive takes.
   const { options } = parseTsConfig(RepoPaths.TsConfigJson);
-  const libs = new Set((options.lib ?? []).map((lib) => lib.toLowerCase().replace(/^lib\./, '').replace(/\.d\.ts$/, '')));
+  const libs = new Set((options.lib ?? []).map((lib) => toLibName(lib)));
 
   for (const file of await readdirPosix(RepoPaths.Src, { recursive: true })) {
     if (!file.endsWith('.ts')) {
@@ -428,6 +507,45 @@ function collectAllTypes(): string[] {
   return (options.types ?? [])
     .filter((type) => DECLARATION_REFERENCE_TYPES.has(type))
     .sort();
+}
+
+function collectEnvironmentDirectives(params: CollectEnvironmentDirectivesParams): Map<string, string> {
+  const { availableTypes, declarationFiles } = params;
+  const { options } = parseTsConfig(RepoPaths.TsConfigJson);
+  const program = createProgram({
+    options: { ...options, noEmit: true },
+    rootNames: declarationFiles.map((file) => resolveNative(RepoPaths.Src, file))
+  });
+  const checker = program.getTypeChecker();
+  const directivesByFile = new Map<string, string>();
+
+  for (const file of declarationFiles) {
+    // The program was handed every one of these as a root name, so each one is in it.
+    const sourceFile = ensureNonNullable(program.getSourceFile(resolveNative(RepoPaths.Src, file)));
+    const libs = new Set<string>();
+    const types = new Set<string>();
+
+    function visit(node: Node): void {
+      if (isIdentifier(node) || isStringLiteral(node)) {
+        const symbol = checker.getSymbolAtLocation(node);
+        if (symbol !== undefined) {
+          addEnvironmentGlobals({ libs, program, symbol: resolveAlias(checker, symbol), types });
+        }
+      }
+      forEachChild(node, visit);
+    }
+    visit(sourceFile);
+
+    const neededTypes = [...types].filter((type) => availableTypes.includes(type));
+    if (libs.size > 0 || neededTypes.length > 0) {
+      directivesByFile.set(
+        file,
+        (libs.size > 0 ? buildAllReferenceLibDirectives([...libs].sort()) : '') + buildAllReferenceTypesDirectives(neededTypes.sort())
+      );
+    }
+  }
+
+  return directivesByFile;
 }
 
 async function generateIndex(folder: string): Promise<GenerateIndexResult> {
@@ -475,6 +593,10 @@ async function handleIndexDirent(folder: string, dirent: Dirent): Promise<string
   return `export * as '${name}' from '${sourceFile}';`;
 }
 
+function isEnvironmentLib(lib: string): boolean {
+  return ENVIRONMENT_LIB_PREFIXES.some((prefix) => lib.startsWith(prefix));
+}
+
 function isExcludedFileName(name: string): boolean {
   return !name.endsWith(RepoPaths.TsExtension) || name.endsWith('.test.ts') || name === 'setup.ts' || name.endsWith('-setup.ts');
 }
@@ -483,6 +605,11 @@ function isExcludedFromIndex(folder: string, dirent: Dirent): boolean {
   const excludedNames: readonly string[] = [RepoPaths.IndexTs, RepoPaths.Types, RepoPaths.Styles, RepoPaths.TestHelpers];
   const isExcludedEntry = excludedNames.includes(dirent.name) || dirent.name.endsWith(RepoPaths.DtsExtension) || folder.split('/').includes(RepoPaths.Types);
   return isExcludedEntry || (dirent.isFile() && isExcludedFileName(dirent.name));
+}
+
+function resolveAlias(checker: TypeChecker, symbol: TsSymbol): TsSymbol {
+  // eslint-disable-next-line no-bitwise -- `SymbolFlags` is a bit set.
+  return (symbol.flags & SymbolFlags.Alias) === 0 ? symbol : checker.getAliasedSymbol(symbol);
 }
 
 async function setExport(params: SetExportParams): Promise<void> {
@@ -599,6 +726,19 @@ function toCtsContent(content: string): string {
 
 function toDistPath(params: ToDistPathParams): string {
   return normalizeIfRelative(join(RepoPaths.DistLib, params.format, params.importPath, params.name));
+}
+
+function toLibName(libFilePath: string): string {
+  // A lib a package replaced (`@typescript/lib-dom`, `@typescript/lib-dom/iterable.d.ts`) is named by its path, not by
+  // its file name, which is `index.d.ts` for the lib's root.
+  const replacementMatch = LIB_REPLACEMENT_REG_EXP.exec(libFilePath);
+  if (replacementMatch?.groups !== undefined) {
+    // The regular expression always captures both groups.
+    const lib = String(replacementMatch.groups['Lib']);
+    const subLib = String(replacementMatch.groups['SubLib']);
+    return (subLib === 'index' ? lib : `${lib}.${subLib.replaceAll('/', '.')}`).toLowerCase();
+  }
+  return basename(libFilePath).toLowerCase().replace(/^lib\./, '').replace(/\.d\.ts$/, '');
 }
 
 function toMtsContent(content: string): string {
