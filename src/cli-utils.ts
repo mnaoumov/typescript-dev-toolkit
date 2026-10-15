@@ -314,12 +314,16 @@ export async function wrapCliTask(taskFunction: () => Promisable<MaybeReturn<Cli
  * Safely executes a task function and returns a {@link CliTaskResult}. If the task function throws an error,
  * An error is caught, and a failure {@link CliTaskResult} is returned.
  *
+ * A task that returns nothing ends with the `process.exitCode` it left behind, so the common Node shape — report
+ * the findings, set `process.exitCode = 1`, return — still fails: {@link CliTaskResult.exit} calls `process.exit`,
+ * whose argument would otherwise override it with `0`.
+ *
  * @param taskFunction - The task function to execute.
  * @returns A {@link Promise} that resolves with a {@link CliTaskResult} representing the outcome of the task.
  */
 async function wrapResult(taskFunction: () => Promisable<MaybeReturn<CliTaskResult>>): Promise<CliTaskResult> {
   try {
-    return (await taskFunction()) as CliTaskResult | undefined ?? CliTaskResult.Success();
+    return (await taskFunction()) as CliTaskResult | undefined ?? CliTaskResult.FromExitCode(Number(process.exitCode ?? 0));
   } catch (error) {
     printError(new Error('An error occurred during task execution', { cause: error }));
     return CliTaskResult.Failure();
