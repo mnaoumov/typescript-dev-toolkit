@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 3.2.0
+
+- feat(nano-staged-config): leave out a shared task whose script the project lacks
+
 ## 3.1.0
 
 - feat(test-runners): add a jest runner, defineJestConfig and a dispatcher that picks the runner
