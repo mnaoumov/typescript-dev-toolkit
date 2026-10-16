@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 3.5.0
+
+- fix(library-build): treat node: specifiers and Electron builtins as builtins in validateDependencies
+
 ## 3.4.0
 
 - feat(library-build): add validateDependencies, refusing imports a consumer does not install
