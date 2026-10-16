@@ -1,6 +1,6 @@
 {
   "name": "@mnaoumov/typescript-dev-toolkit",
-  "version": "3.2.0",
+  "version": "3.3.0",
   "description": "Generic TypeScript project tooling: build, lint, format, spellcheck, test, gate and release scripts.",
   "keywords": [
     "typescript",

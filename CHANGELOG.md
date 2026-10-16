@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 3.3.0
+
+- feat(upstream-sync): ship the upstream sync as a sync-upstreams bin and a reusable workflow
+- docs(agents): say the standalone nano-staged entry has no .astro writer, and why
+- feat(library-build): take additional exports entries beside the generated ones
+
 ## 3.2.0
 
 - feat(nano-staged-config): leave out a shared task whose script the project lacks
