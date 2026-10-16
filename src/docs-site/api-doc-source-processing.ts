@@ -16,6 +16,7 @@ import {
   join,
   relative
 } from 'node:path';
+import { Node } from 'ts-morph';
 
 import type { TypeInfo } from './api-doc-types.ts';
 
@@ -110,10 +111,15 @@ export function collectFunctions(src: SourceFile, types: Map<string, TypeInfo>, 
 export function collectPackageDeclarations(src: SourceFile): void {
   for (const importDeclaration of src.getImportDeclarations()) {
     for (const namedImport of importDeclaration.getNamedImports()) {
-      // An unresolved import aliases nothing.
-      const declarations = namedImport.getNameNode().getSymbolOrThrow().getAliasedSymbol()?.getDeclarations() ?? [];
+      // An unresolved import aliases the checker's unknown symbol, which has no declarations.
+      // A renamed import carries its symbol on the local name.
+      const localNameNode = namedImport.getAliasNode() ?? namedImport.getNameNode();
+      const declarations = localNameNode.getSymbolOrThrow().getAliasedSymbolOrThrow().getDeclarations();
       for (const declaration of declarations) {
-        registerPackageDeclaration(namedImport.getName(), declaration.getSourceFile().getFilePath());
+        // Only a type is linked from type text; a function's name also matches words that are not references to it.
+        if (isTypeDeclaration(declaration)) {
+          registerPackageDeclaration(namedImport.getName(), declaration.getSourceFile().getFilePath());
+        }
       }
     }
   }
@@ -307,6 +313,10 @@ export function registerGenericTypeParams(types: Map<string, TypeInfo>): void {
 function isEntryFile(name: string): boolean {
   // The `.test.ts` clause covers *.test.ts, *.browser.test.ts, *.integration.test.ts
   return !(!name.endsWith('.ts') || name.endsWith('.d.ts') || ['__merged.ts', 'index.ts', 'setup.ts'].includes(name) || name.endsWith('-setup.ts') || name.endsWith('.test.ts'));
+}
+
+function isTypeDeclaration(declaration: Node): boolean {
+  return Node.isClassDeclaration(declaration) || Node.isInterfaceDeclaration(declaration) || Node.isTypeAliasDeclaration(declaration) || Node.isEnumDeclaration(declaration);
 }
 
 function qualifiedKey(namespace: string, name: string): string {
