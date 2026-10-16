@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 3.4.0
+
+- feat(library-build): add validateDependencies, refusing imports a consumer does not install
+
 ## 3.3.0
 
 - feat(upstream-sync): ship the upstream sync as a sync-upstreams bin and a reusable workflow
