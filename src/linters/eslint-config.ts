@@ -1023,7 +1023,7 @@ function getUnicornConfigs(context: EslintConfigContext): Linter.Config[] {
          * The suggested replacement is `Math.trunc(Number(x))`, which is longer than `parseInt(x, 10)` and no
          * clearer, and it is not the same function: `parseInt` stops at the first character that cannot be part
          * of the number, so `'12abc'` parses to 12 where `Number` yields `NaN`. Two of the reports read user
-         * input through that difference -- the page-jump box in the Dataview helper, and
+         * input through that difference -- the page-jump box in the `Dataview` helper, and
          * `NumberComponent.valueFromString`, whose lenient parse is part of a published component's behavior.
          * The rest parse machine-generated strings, where the two agree but the shorter spelling still wins.
          */
