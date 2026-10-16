@@ -1,1 +1,1 @@
-export { obsidianDevUtilsConfig as config } from '../src/commitlint-config.ts';
+export { commitlintConfig as config } from '../src/commitlint-config.ts';
