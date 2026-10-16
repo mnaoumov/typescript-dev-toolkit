@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 2.1.0
+
+- feat(commitlint): declare config-conventional and export commitlintConfig
+- docs: link the documentation site from the README
+- docs: cite obsidian-dataview's declarations as the validated example
+
 ## 2.0.0
 
 - feat(docs-site): add the shared documentation-site builder and this package's site
