@@ -99,7 +99,7 @@ export function myFunction(param: Type): ReturnType {
 
 `tsconfig.json` sets `skipLibCheck: true`. This is a deliberate exception to the usual "never weaken `@tsconfig/strictest`" stance: it lets `tsc` type-check our `.ts` files without failing on broken upstream `.d.ts` files we do not control (e.g. a given version's `obsidian.d.ts`, which has shipped `HistoryHandler`/`PromiseWithResolvers` type errors).
 
-The declarations we author (`src/@types/**`, `mnaoumov/obsidian-lib:src/@types/dataview/**`) are still fully validated. `buildCompileTypeScript()` (run by `build:compile:typescript`) does two passes:
+The declarations we author (`src/@types/**`, `mnaoumov/obsidian-dataview:src/@types/**`) are still fully validated. `buildCompileTypeScript()` (run by `build:compile:typescript`) does two passes:
 
 1. `tsc --build --force` — the normal compile, with `skipLibCheck: true`.
 2. An in-memory re-check via `checkProjectTypes()` (`src/check-project-types.ts`) with `skipLibCheck: false`, reporting **only** diagnostics whose source file is under the project root and outside `node_modules`. It prints `Ignored N diagnostic(s) outside the validated set.` — when upstream is fixed and `N` reaches `0`, the workaround is no longer doing anything and `skipLibCheck` can go back to `false`.
