@@ -531,6 +531,7 @@ function getInHousePluginConfigs(context: EslintConfigContext): Linter.Config[] 
         'typescript-dev-toolkit/no-unused-params-members': 'error',
         'typescript-dev-toolkit/no-used-underscore-variables': 'error',
         'typescript-dev-toolkit/params-options-name-match': 'error',
+        'typescript-dev-toolkit/prefer-logical-operator-over-ternary': 'error',
         'typescript-dev-toolkit/prefer-noop-async': 'error',
         'typescript-dev-toolkit/readonly-params-options-result-members': 'error',
         'typescript-dev-toolkit/require-method-template': 'error',
@@ -1004,6 +1005,12 @@ function getUnicornConfigs(context: EslintConfigContext): Linter.Config[] {
         'unicorn/prefer-iterator-helpers': 'off',
         // `Iterator#toArray` is ES2025. See the ES2022 floor note above.
         'unicorn/prefer-iterator-to-array': 'off',
+        /*
+         * Replaced by `typescript-dev-toolkit/prefer-logical-operator-over-ternary`, which reports the same and
+         * also fixes a boolean literal branch in TypeScript. Unicorn withholds that fix there, while
+         * `unicorn/prefer-ternary` keeps producing the shape, so `lint:fix` left an error it had just created.
+         */
+        'unicorn/prefer-logical-operator-over-ternary': 'off',
         /*
          * The suggested replacement is `Math.trunc(Number(x))`, which is longer than `parseInt(x, 10)` and no
          * clearer, and it is not the same function: `parseInt` stops at the first character that cannot be part
