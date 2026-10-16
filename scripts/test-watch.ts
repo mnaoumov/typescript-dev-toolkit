@@ -5,7 +5,7 @@
  */
 
 import { wrapCliTask } from '../src/cli-utils.ts';
-import { testWatch } from '../src/test-runners/vitest.ts';
+import { testWatch } from '../src/test-runners/auto.ts';
 
 await wrapCliTask(async () => {
   await testWatch({

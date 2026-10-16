@@ -154,10 +154,48 @@ import {
   test,
   testCoverage,
   testWatch
-} from '@mnaoumov/typescript-dev-toolkit/test-runners/vitest';
+} from '@mnaoumov/typescript-dev-toolkit/test-runners/auto';
 ```
 
-Runs the test suite with Vitest: once, once with v8 coverage, or in watch mode.
+Runs the test suite once, once with v8 coverage, or in watch mode, with the runner the project configures, found from the files at its root, in this order:
+
+1. `vitest.config.*`: [Vitest](https://vitest.dev/).
+2. `jest.config.*`, or a `jest` key in `package.json`: [Jest](https://jestjs.io/).
+
+A project with neither gets Vitest. A `vite.config.*` does not count, since a project can bundle with vite and test with jest. Pass `{ runner: 'jest' }` (or `'vitest'`) to choose one, `{ projects: ['unit-tests'] }` to run some projects only, and `{ minCoverageInPercents: 100 }` to `testCoverage` to fail below that coverage of lines, functions, branches and statements alike. Each runner also has a module of its own: `test-runners/vitest` and `test-runners/jest`. The two read `projects` differently: Vitest also runs each name's `name:*` sub-projects, while jest's `--selectProjects` matches a `displayName` exactly.
+
+#### Jest
+
+Jest and ts-jest are optional peers, so install them when you use jest:
+
+```bash
+npm install --save-dev jest ts-jest
+```
+
+`jest.config.ts`:
+
+```typescript
+import { defineJestConfig } from '@mnaoumov/typescript-dev-toolkit/test-runners/jest-config';
+
+export default defineJestConfig({
+  // Your own jest options; each one replaces its default.
+  testEnvironment: 'jsdom'
+});
+```
+
+`defineJestConfig` sets:
+
+- the tests: `src/**/*.test.ts`, never under `node_modules` or `dist`, in the `node` environment;
+- the ts-jest transform for `.ts`, `.tsx`, `.mts` and `.cts`, with `isolatedModules`, so each file is transpiled on its own without a type check, as Vitest does;
+- a `moduleNameMapper` entry that resolves a relative `./foo.js` import onto `./foo.ts`, which a `module: nodenext` project writes, and which TypeScript writes for `./foo.ts` under `rewriteRelativeImportExtensions`;
+- v8 coverage over `src/`, without the barrels, the declarations, the tests and the test helpers, into `coverage/`: the same files the Vitest library configuration reports.
+
+Every jest option you pass replaces its default, except `moduleNameMapper`, whose entries are added to the `.js` one. It also takes two options of its own:
+
+- `esm`: whether jest loads the project as ES modules (`extensionsToTreatAsEsm` and ts-jest's `useESM`). It defaults to `true` when `package.json` declares `"type": "module"`.
+- `tsJestOptions`: ts-jest options spread over the defaults, e.g. `{ tsconfig: 'tsconfig.test.json' }`. A `tsconfig` given here replaces the `{ isolatedModules: true }` default.
+
+Jest's ESM loader needs Node's `--experimental-vm-modules` flag. The jest runner adds it to `NODE_OPTIONS`, keeping what that variable already holds, by the same `"type": "module"` rule; pass `{ esm: false }` or `{ esm: true }` to override it. `testWatch` runs `jest --watch`, which needs a git or Mercurial repository to find the changed files.
 
 ### Branch gate
 

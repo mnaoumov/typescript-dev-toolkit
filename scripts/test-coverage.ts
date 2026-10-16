@@ -5,7 +5,7 @@
  */
 
 import { wrapCliTask } from '../src/cli-utils.ts';
-import { testCoverage } from '../src/test-runners/vitest.ts';
+import { testCoverage } from '../src/test-runners/auto.ts';
 
 await wrapCliTask(async () => {
   const FULL_COVERAGE_IN_PERCENTS = 100;
