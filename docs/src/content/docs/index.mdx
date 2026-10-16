@@ -1,0 +1,38 @@
+---
+title: TypeScript Dev Toolkit
+description: Build, lint, format, spellcheck, test, gate and release tooling for TypeScript packages.
+template: splash
+editUrl: false
+lastUpdated: false
+hero:
+    title: TypeScript Dev Toolkit
+    tagline: Build, lint, format, spellcheck, test, gate and release tooling for TypeScript packages.
+    actions:
+        - text: Commands
+          link: /typescript-dev-toolkit/guides/cli-commands/
+          icon: rocket
+        - text: API reference
+          link: /typescript-dev-toolkit/api/
+          icon: open-book
+          variant: secondary
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components'
+
+<CardGrid stagger>
+    <Card title="One gate" icon="approve-check">
+        The [branch gate](./guides/cli-commands/#branch-gate) runs the release's own preflight checks, so a branch learns in seconds what would fail its release.
+    </Card>
+
+    <Card title="Shared configs" icon="setting">
+        ESLint, markdownlint, cspell, dprint, commitlint and Vitest configurations every `@mnaoumov` package builds on.
+    </Card>
+
+    <Card title="Library builds" icon="puzzle">
+        Unbundled ESM and CommonJS output with validated declarations and a generated `exports` map.
+    </Card>
+
+    <Card title="Documentation sites" icon="open-book">
+        An Astro + Starlight site with an API reference generated from the package's TSDoc, linked to the other `@mnaoumov` sites.
+    </Card>
+</CardGrid>
