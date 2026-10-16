@@ -70,6 +70,16 @@ import {
 
 The pipeline every `@mnaoumov` package's `build:*` scripts call: the generated barrels, the declarations, the unbundled CommonJS and ESM output, and the `exports` map of `package.json`. `runBuildSteps` runs, in order, each step the project defines a script for.
 
+`generateLibraryExports` rebuilds the `exports` map from the source folders and throws when it changed, so the change is reviewed and committed. A package that also ships files no source folder builds passes them as `additionalExports`, keyed by subpath, and they go into the map after the generated entries:
+
+```typescript
+await generateLibraryExports({
+  additionalExports: {
+    './tsconfig/*': './tsconfig/*.json'
+  }
+});
+```
+
 ### Format code
 
 ```typescript
