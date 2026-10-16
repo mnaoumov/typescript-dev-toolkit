@@ -1,3 +1,5 @@
+import type { PackageJson } from 'type-fest';
+
 import {
   dirname,
   join,
@@ -27,7 +29,9 @@ import {
   obsidianDevUtilsConfig
 } from './nano-staged-config.ts';
 
-const { mockExistsSync, mockExit, mockGetPackageManagerRunCommand, mockLoadEnvFile, mockStdoutWrite } = vi.hoisted(() => ({
+const ALL_SCRIPTS = ['format', 'lint:fix', 'lint:md:fix', 'spellcheck'];
+
+const { mockExistsSync, mockExit, mockGetPackageManagerRunCommand, mockLoadEnvFile, mockReadPackageJsonSync, mockStdoutWrite } = vi.hoisted(() => ({
   mockExistsSync: vi.fn<(path: string) => boolean>(),
   mockExit: vi.fn(),
   /*
@@ -37,12 +41,21 @@ const { mockExistsSync, mockExit, mockGetPackageManagerRunCommand, mockLoadEnvFi
    */
   mockGetPackageManagerRunCommand: vi.fn<() => string[]>(() => ['npm', 'run']),
   mockLoadEnvFile: vi.fn(),
+  mockReadPackageJsonSync: vi.fn<() => PackageJson>(),
   mockStdoutWrite: vi.fn()
 }));
 
 vi.mock('./package-manager.ts', () => ({
   getPackageManagerRunCommand: mockGetPackageManagerRunCommand
 }));
+
+vi.mock('./npm.ts', () => ({
+  readPackageJsonSync: mockReadPackageJsonSync
+}));
+
+function mockScripts(scriptNames: readonly string[]): void {
+  mockReadPackageJsonSync.mockReturnValue({ scripts: Object.fromEntries(scriptNames.map((scriptName) => [scriptName, 'x'])) });
+}
 
 vi.mock('node:fs', async (importOriginal) => ({
   ...await importOriginal<typeof import('node:fs')>(),
@@ -69,6 +82,7 @@ describe('getNanoStagedConfig', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockExistsSync.mockReturnValue(false);
+    mockScripts(ALL_SCRIPTS);
     vi.stubEnv('NANO_STAGED', '');
   });
 
@@ -174,6 +188,7 @@ describe('getNanoStagedConfig with additional writer tasks', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockExistsSync.mockReturnValue(false);
+    mockScripts(ALL_SCRIPTS);
     vi.stubEnv('NANO_STAGED', undefined);
   });
 
@@ -206,6 +221,64 @@ describe('getNanoStagedConfig with additional writer tasks', () => {
   it('should reject an additional writer pattern that repeats a shared one', () => {
     expect(() => getNanoStagedConfig({ additionalWriterTasks: { '*.md': ['npm run other --'] } }))
       .toThrow('nano-staged writer pattern \'*.md\' is already a shared writer pattern.');
+  });
+});
+
+describe('getNanoStagedConfig with scripts the project lacks', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockExistsSync.mockReturnValue(false);
+    vi.stubEnv('NANO_STAGED', undefined);
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('should leave out a missing writer and drop a pattern left with none', async () => {
+    mockScripts(['lint:fix', 'spellcheck']);
+    const config = getNanoStagedConfig();
+
+    expect(toCommandPrefixes(config)).toEqual({
+      '!(*.{ts,tsx,mts}!(?))*': ['npm run spellcheck --'],
+      '*.{ts,tsx,mts}': ['npm run lint:fix --', 'npm run spellcheck --']
+    });
+    expect(await getClaimingKeys(config, 'README.md')).toEqual(['!(*.{ts,tsx,mts}!(?))*']);
+  });
+
+  it('should run no spellcheck when the project has no spellcheck script', () => {
+    mockScripts(['format', 'lint:fix', 'lint:md:fix']);
+
+    expect(toCommandPrefixes(getNanoStagedConfig())).toEqual({
+      '*.{ts,tsx,mts}': ['npm run lint:fix --', 'npm run format --'],
+      '*.md': ['npm run lint:md:fix --']
+    });
+  });
+
+  it.each(['src/main.ts', 'docs/guides/setup.md', 'LICENSE'])('should spellcheck %s when the project has only a spellcheck script', async (file) => {
+    mockScripts(['spellcheck']);
+    const config = getNanoStagedConfig();
+
+    expect(toCommandPrefixes(config)).toEqual({
+      '*': ['npm run spellcheck --']
+    });
+    expect(await getClaimingKeys(config, file)).toEqual(['*']);
+  });
+
+  it('should run nothing when the project has none of the scripts', () => {
+    mockReadPackageJsonSync.mockReturnValue({});
+
+    expect(getNanoStagedConfig()).toEqual({});
+  });
+
+  it('should keep an additional writer for a shared pattern whose shared writer is missing', () => {
+    mockScripts(['format', 'lint:fix', 'spellcheck']);
+
+    expect(toCommandPrefixes(getNanoStagedConfig({ additionalWriterTasks: { '*.md': ['npm run other --'] } }))).toEqual({
+      '!(*.{ts,tsx,mts}!(?)|*.md!(?))*': ['npm run spellcheck --'],
+      '*.{ts,tsx,mts}': ['npm run lint:fix --', 'npm run format --', 'npm run spellcheck --'],
+      '*.md': ['npm run other --', 'npm run spellcheck --']
+    });
   });
 });
 
