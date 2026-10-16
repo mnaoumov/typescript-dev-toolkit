@@ -8,7 +8,7 @@
     "eslint",
     "esbuild"
   ],
-  "homepage": "https://github.com/mnaoumov/typescript-dev-toolkit#readme",
+  "homepage": "https://mnaoumov.dev/typescript-dev-toolkit/",
   "bugs": {
     "url": "https://github.com/mnaoumov/typescript-dev-toolkit/issues"
   },
@@ -78,6 +78,26 @@
       "require": {
         "types": "./dist/lib/cjs/bundlers/esbuild-impl/*.d.cts",
         "default": "./dist/lib/cjs/bundlers/esbuild-impl/*.cjs"
+      }
+    },
+    "./docs-site": {
+      "import": {
+        "types": "./dist/lib/esm/docs-site/index.d.mts",
+        "default": "./dist/lib/esm/docs-site/index.mjs"
+      },
+      "require": {
+        "types": "./dist/lib/cjs/docs-site/index.d.cts",
+        "default": "./dist/lib/cjs/docs-site/index.cjs"
+      }
+    },
+    "./docs-site/*": {
+      "import": {
+        "types": "./dist/lib/esm/docs-site/*.d.mts",
+        "default": "./dist/lib/esm/docs-site/*.mjs"
+      },
+      "require": {
+        "types": "./dist/lib/cjs/docs-site/*.d.cts",
+        "default": "./dist/lib/cjs/docs-site/*.cjs"
       }
     },
     "./formatters": {
@@ -219,6 +239,7 @@
   },
   "files": [
     "**/package.json",
+    "assets/",
     "dist/",
     "!dist/*.tgz",
     "README.md",
@@ -235,6 +256,9 @@
     "build:types": "jiti scripts/build-types.ts",
     "build:validate-declarations": "jiti scripts/build-validate-declarations.ts",
     "commit": "jiti scripts/commit.ts",
+    "docs:build": "jiti scripts/docs-build.ts",
+    "docs:dev": "jiti scripts/docs-dev.ts",
+    "docs:preview": "jiti scripts/docs-preview.ts",
     "find-overexposed": "jiti scripts/find-overexposed.ts",
     "find-overexposed:fix": "jiti scripts/find-overexposed-fix.ts",
     "format": "jiti scripts/format.ts",
@@ -287,11 +311,16 @@
     "typescript-eslint": "^8.71.2"
   },
   "devDependencies": {
+    "@astrojs/markdown-satteri": "^0.4.4",
+    "@astrojs/starlight": "^0.42.6",
     "@commitlint/cli": "^21.2.2",
     "@commitlint/config-conventional": "^21.2.2",
     "@mnaoumov/typescript-test-toolkit": "^1.0.0",
+    "@resvg/resvg-js": "^2.6.2",
     "@total-typescript/ts-reset": "^0.6.1",
+    "@types/mdast": "^4.0.4",
     "@vitest/coverage-v8": "^5.0.1",
+    "astro": "^7.4.0",
     "better-typescript-lib": "^2.12.0",
     "czg": "^1.14.0",
     "dedent": "^1.7.2",
@@ -299,14 +328,55 @@
     "eslint-plugin-tsdoc": "^0.5.3",
     "husky": "^9.1.7",
     "nano-staged": "^1.0.2",
+    "satori": "^0.33.5",
+    "satteri": "^0.10.5",
+    "ts-morph": "^28.0.0",
     "tslib": "^2.8.1",
-    "vitest": "^5.0.1"
+    "typedoc-plugin-mdn-links": "^5.1.1",
+    "vitest": "^5.0.1",
+    "yaml": "^2.9.1"
   },
   "peerDependencies": {
-    "vitest": "^5.0.1"
+    "@astrojs/markdown-satteri": "^0.4.4",
+    "@astrojs/starlight": "^0.42.6",
+    "@resvg/resvg-js": "^2.6.2",
+    "astro": "^7.4.0",
+    "satori": "^0.33.5",
+    "satteri": "^0.10.5",
+    "ts-morph": "^28.0.0",
+    "typedoc-plugin-mdn-links": "^5.1.1",
+    "vitest": "^5.0.1",
+    "yaml": "^2.9.1"
   },
   "peerDependenciesMeta": {
+    "@astrojs/markdown-satteri": {
+      "optional": true
+    },
+    "@astrojs/starlight": {
+      "optional": true
+    },
+    "@resvg/resvg-js": {
+      "optional": true
+    },
+    "astro": {
+      "optional": true
+    },
+    "satori": {
+      "optional": true
+    },
+    "satteri": {
+      "optional": true
+    },
+    "ts-morph": {
+      "optional": true
+    },
+    "typedoc-plugin-mdn-links": {
+      "optional": true
+    },
     "vitest": {
+      "optional": true
+    },
+    "yaml": {
       "optional": true
     }
   },
