@@ -8,6 +8,7 @@
  */
 
 import { join } from 'node:path';
+import process from 'node:process';
 
 import type { DocsSiteConfig } from './docs-site-config.ts';
 
@@ -47,13 +48,15 @@ export async function buildDocsSite(config: DocsSiteConfig): Promise<void> {
  * Generates the API reference, then serves the site with `astro dev` until it is stopped.
  *
  * @param config - The site's configuration.
+ * @param astroArguments - The arguments appended to `astro dev`, such as `--port 4399`. Defaults to the script's own
+ *   command-line arguments, so `npm run docs:dev -- --port 4399` reaches Astro.
  */
-export async function devDocsSite(config: DocsSiteConfig): Promise<void> {
+export async function devDocsSite(config: DocsSiteConfig, astroArguments: readonly string[] = getScriptArguments()): Promise<void> {
   const resolved = resolveDocsSiteConfig(config);
   await generateApiDocs({ rootDirectory: resolved.rootDirectory, settings: resolved.apiDocSettings, sourceDirectory: resolved.sourceDirectory });
   // `ASTRO_DEV_BACKGROUND` forces Astro's foreground dev server. Astro otherwise switches to a background launcher
   // (hardcoded 30s startup timeout) under an agent / non-interactive environment.
-  await execFromRoot(['astro', 'dev'], {
+  await execFromRoot(['astro', 'dev', ...astroArguments], {
     cwd: resolved.rootDirectory,
     env: {
       ASTRO_DEV_BACKGROUND: '1'
@@ -66,8 +69,15 @@ export async function devDocsSite(config: DocsSiteConfig): Promise<void> {
  * Serves the last build with `astro preview` until it is stopped.
  *
  * @param config - The site's configuration.
+ * @param astroArguments - The arguments appended to `astro preview`, such as `--port 4399`. Defaults to the script's
+ *   own command-line arguments, so `npm run docs:preview -- --port 4399` reaches Astro.
  */
-export async function previewDocsSite(config: DocsSiteConfig): Promise<void> {
+export async function previewDocsSite(config: DocsSiteConfig, astroArguments: readonly string[] = getScriptArguments()): Promise<void> {
   const resolved = resolveDocsSiteConfig(config);
-  await execFromRoot(['astro', 'preview'], { cwd: resolved.rootDirectory, isInteractive: true });
+  await execFromRoot(['astro', 'preview', ...astroArguments], { cwd: resolved.rootDirectory, isInteractive: true });
+}
+
+function getScriptArguments(): string[] {
+  const [, , ...scriptArguments] = process.argv;
+  return scriptArguments;
 }
