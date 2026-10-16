@@ -2,6 +2,7 @@ import { noopAsync } from '@mnaoumov/typescript-lib/function';
 import { castTo } from '@mnaoumov/typescript-lib/object-utils';
 import { join } from 'node:path';
 import {
+  afterEach,
   beforeEach,
   describe,
   expect,
@@ -86,16 +87,56 @@ describe('docs-site commands', () => {
   });
 
   it('serves the dev server in the foreground after generating the API pages', async () => {
-    await devDocsSite(CONFIG);
+    await devDocsSite(CONFIG, []);
 
     expect(generateApiDocs).toHaveBeenCalledOnce();
     expect(execFromRoot).toHaveBeenCalledWith(['astro', 'dev'], { cwd: process.cwd(), env: { ASTRO_DEV_BACKGROUND: '1' }, isInteractive: true });
   });
 
+  it('passes its arguments on to astro dev', async () => {
+    await devDocsSite(CONFIG, ['--port', '4399']);
+
+    expect(execFromRoot).toHaveBeenCalledWith(['astro', 'dev', '--port', '4399'], {
+      cwd: process.cwd(),
+      env: { ASTRO_DEV_BACKGROUND: '1' },
+      isInteractive: true
+    });
+  });
+
   it('previews the last build', async () => {
-    await previewDocsSite(CONFIG);
+    await previewDocsSite(CONFIG, []);
 
     expect(generateApiDocs).not.toHaveBeenCalled();
     expect(execFromRoot).toHaveBeenCalledWith(['astro', 'preview'], { cwd: process.cwd(), isInteractive: true });
+  });
+
+  it('passes its arguments on to astro preview', async () => {
+    await previewDocsSite(CONFIG, ['--port', '4399']);
+
+    expect(execFromRoot).toHaveBeenCalledWith(['astro', 'preview', '--port', '4399'], { cwd: process.cwd(), isInteractive: true });
+  });
+
+  describe('without explicit arguments', () => {
+    const originalArgv = process.argv;
+
+    afterEach(() => {
+      process.argv = originalArgv;
+    });
+
+    it('passes the script\'s own command-line arguments on to astro dev', async () => {
+      process.argv = ['node', 'scripts/docs-dev.ts', '--host'];
+
+      await devDocsSite(CONFIG);
+
+      expect(execFromRoot).toHaveBeenCalledWith(['astro', 'dev', '--host'], { cwd: process.cwd(), env: { ASTRO_DEV_BACKGROUND: '1' }, isInteractive: true });
+    });
+
+    it('passes the script\'s own command-line arguments on to astro preview', async () => {
+      process.argv = ['node', 'scripts/docs-preview.ts', '--port', '4399'];
+
+      await previewDocsSite(CONFIG);
+
+      expect(execFromRoot).toHaveBeenCalledWith(['astro', 'preview', '--port', '4399'], { cwd: process.cwd(), isInteractive: true });
+    });
   });
 });

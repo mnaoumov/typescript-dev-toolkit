@@ -166,6 +166,8 @@ import {
 
 Builds, serves or previews a package's Astro + Starlight documentation site: the guides under `docs/src/content/docs`, and an API reference generated from the package's TSDoc. The build also renders an Open Graph card per page and checks every link of the output. Each takes the same configuration the site's `astro.config.ts` passes to `defineDocsSiteConfig` (`@mnaoumov/typescript-dev-toolkit/docs-site/astro-config`). Astro, Starlight and the generator's other dependencies are optional peers, which a project installs only to build a site.
 
+`devDocsSite` and `previewDocsSite` pass the script's own command-line arguments on to `astro dev` and `astro preview`, so `npm run docs:preview -- --port 4399` serves on that port. Pass an array as the second argument to give Astro other arguments.
+
 #### Repository homepage
 
 Set `repoHomepage` in the site's configuration to have `buildDocsSite` keep the repository's GitHub homepage pointing at the site. The URL it expects is the site's own: Astro's `site` plus its `base`, with a trailing slash.
