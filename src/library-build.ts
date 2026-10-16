@@ -118,6 +118,13 @@ export interface BuildLibraryOptions {
  */
 export interface GenerateLibraryExportsOptions {
   /**
+   * Entries for files that are not built from a source folder (a folder of shared `tsconfig` presets, ambient `.d.ts`
+   * files), keyed by subpath. They go into the map after the generated entries, as given, and count toward its change
+   * check; no subpath stub is written for them. A key a source folder already generates throws.
+   */
+  readonly additionalExports?: Readonly<Record<string, PackageJson.Exports>> | undefined;
+
+  /**
    * An export condition to put first in every entry, mapping the subpath onto its TypeScript source. Only a
    * repository holding several packages that import each other needs one; nothing outside it sets the condition, and
    * the sources it points at do not ship, so the publish has to strip it again. Omitted, the map has none.
@@ -322,7 +329,7 @@ export async function buildLibraryTypes(): Promise<void> {
  * @throws If the map changed, so the change gets reviewed and committed rather than shipped unseen.
  */
 export async function generateLibraryExports(options: GenerateLibraryExportsOptions = {}): Promise<void> {
-  const { sourceCondition } = options;
+  const { additionalExports = {}, sourceCondition } = options;
   const srcFolders: string[] = [RepoPaths.Src];
 
   for (const dirent of await readdirPosix(RepoPaths.Src, { recursive: true, withFileTypes: true })) {
@@ -350,6 +357,14 @@ export async function generateLibraryExports(options: GenerateLibraryExportsOpti
     for (const srcFolder of srcFolders) {
       await setExport({ exportConditions, isWildcard: false, sourceCondition, srcFolder });
       await setExport({ exportConditions, isWildcard: true, sourceCondition, srcFolder });
+    }
+
+    for (const [subpath, entry] of Object.entries(additionalExports)) {
+      if (exportConditions[subpath] !== undefined) {
+        throw new Error(`The additional export '${subpath}' collides with an entry generated from a source folder.`);
+      }
+
+      exportConditions[subpath] = entry;
     }
 
     isChanged = !isDeepEqual(oldExports, packageJson.exports);

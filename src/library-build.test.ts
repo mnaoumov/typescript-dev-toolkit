@@ -502,6 +502,32 @@ describe('generateLibraryExports', () => {
     await expect(generateLibraryExports()).resolves.toBeUndefined();
   });
 
+  it('puts the additional exports after the generated entries and counts them toward the change check', async () => {
+    await writeLibraryTree();
+    const additionalExports = {
+      './tsconfig/*': './tsconfig/*.json',
+      './types/*': { types: './types/*.d.ts' }
+    };
+
+    await expect(generateLibraryExports({ additionalExports })).rejects.toThrow('Package exports have changed');
+
+    const packageJson = JSON.parse(await readFile('package.json', 'utf-8')) as PackageJsonWithExports;
+    expect(Object.keys(packageJson.exports)).toEqual(['.', './*', './@types/*', './no-index/*', './sub', './sub/*', './tsconfig/*', './types/*']);
+    expect(packageJson.exports['./types/*']).toEqual({ types: './types/*.d.ts' });
+    expect(existsSync('tsconfig/package.json')).toBe(false);
+
+    await expect(generateLibraryExports({ additionalExports })).resolves.toBeUndefined();
+    await expect(generateLibraryExports()).rejects.toThrow('Package exports have changed');
+  });
+
+  it('refuses an additional export whose subpath a source folder already generates', async () => {
+    await writeLibraryTree();
+
+    await expect(generateLibraryExports({ additionalExports: { './sub': './elsewhere.js' } })).rejects.toThrow(
+      'The additional export \'./sub\' collides with an entry generated from a source folder.'
+    );
+  });
+
   it('writes a types-only stub for a types folder that has an index', async () => {
     await writeFiles({
       'dist/lib/cjs/@types/index.d.cts': '',
