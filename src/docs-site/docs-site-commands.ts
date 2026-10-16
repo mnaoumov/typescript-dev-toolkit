@@ -17,10 +17,12 @@ import { assertDocsLinksResolve } from './docs-links.ts';
 import { getDocsSiteAssetsDirectory } from './docs-site-assets.ts';
 import { resolveDocsSiteConfig } from './docs-site-config.ts';
 import { generateOgImages } from './og-images.ts';
+import { syncRepoHomepage } from './repo-homepage.ts';
 
 /**
  * Builds the site: generates the API reference and the Open Graph cards, runs `astro build`, then checks every link
- * of the output.
+ * of the output. With {@link DocsSiteConfig.repoHomepage} on, it then checks the repository's GitHub homepage against
+ * the site's URL.
  *
  * @param config - The site's configuration.
  */
@@ -36,6 +38,9 @@ export async function buildDocsSite(config: DocsSiteConfig): Promise<void> {
   });
   await execFromRoot(['astro', 'build'], { cwd: resolved.rootDirectory });
   await assertDocsLinksResolve({ outputDirectory: resolved.distDirectory, siteBaseUrl: resolved.siteBaseUrl });
+  if (resolved.repoHomepage !== 'off') {
+    await syncRepoHomepage({ homepageUrl: resolved.siteBaseUrl, mode: resolved.repoHomepage, owner: resolved.owner, repo: resolved.repo });
+  }
 }
 
 /**

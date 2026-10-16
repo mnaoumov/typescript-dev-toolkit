@@ -8,5 +8,6 @@ import type { DocsSiteConfig } from '../src/docs-site/docs-site-config.ts';
 
 export const DOCS_SITE_CONFIG: DocsSiteConfig = {
   repo: 'typescript-dev-toolkit',
+  repoHomepage: 'set',
   title: 'TypeScript Dev Toolkit'
 };

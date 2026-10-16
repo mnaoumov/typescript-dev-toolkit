@@ -22,11 +22,13 @@ import {
 } from './docs-site-commands.ts';
 import { resolveDocsSiteConfig } from './docs-site-config.ts';
 import { generateOgImages } from './og-images.ts';
+import { syncRepoHomepage } from './repo-homepage.ts';
 
 vi.mock('../root.ts', () => ({ execFromRoot: vi.fn() }));
 vi.mock('./api-docs.ts', () => ({ generateApiDocs: vi.fn() }));
 vi.mock('./docs-links.ts', () => ({ assertDocsLinksResolve: vi.fn() }));
 vi.mock('./og-images.ts', () => ({ generateOgImages: vi.fn() }));
+vi.mock('./repo-homepage.ts', () => ({ syncRepoHomepage: vi.fn() }));
 
 const CONFIG: DocsSiteConfig = { repo: 'typescript-dev-toolkit', title: 'TypeScript Dev Toolkit' };
 
@@ -69,6 +71,18 @@ describe('docs-site commands', () => {
     });
     expect(execFromRoot).toHaveBeenCalledWith(['astro', 'build'], { cwd: resolved.rootDirectory });
     expect(assertDocsLinksResolve).toHaveBeenCalledWith({ outputDirectory: resolved.distDirectory, siteBaseUrl: 'https://mnaoumov.dev/typescript-dev-toolkit/' });
+    expect(syncRepoHomepage).not.toHaveBeenCalled();
+  });
+
+  it('checks the repository homepage against the site URL after the build when asked', async () => {
+    await buildDocsSite({ ...CONFIG, owner: 'someone', repoHomepage: 'check', siteOrigin: 'https://example.com' });
+
+    expect(syncRepoHomepage).toHaveBeenCalledWith({
+      homepageUrl: 'https://example.com/typescript-dev-toolkit/',
+      mode: 'check',
+      owner: 'someone',
+      repo: 'typescript-dev-toolkit'
+    });
   });
 
   it('serves the dev server in the foreground after generating the API pages', async () => {

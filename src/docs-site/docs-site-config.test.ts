@@ -60,10 +60,12 @@ describe('resolveDocsSiteConfig', () => {
       githubUrl: 'https://github.com/mnaoumov/typescript-lib',
       guidesDirectory: 'guides',
       ogOutputDirectory: join(root, 'docs', 'public', 'og'),
+      owner: 'mnaoumov',
       packageName: '@mnaoumov/typescript-lib',
       packageVersion: '1.2.3',
       publicDirectory: join(root, 'docs', 'public'),
       repo: 'typescript-lib',
+      repoHomepage: 'off',
       rootDirectory: root,
       siteBaseUrl: 'https://mnaoumov.dev/typescript-lib/',
       siteOrigin: 'https://mnaoumov.dev',
@@ -84,6 +86,7 @@ describe('resolveDocsSiteConfig', () => {
       owner: 'someone',
       packageSites,
       repo: 'pkg',
+      repoHomepage: 'set',
       rootDirectory: root,
       siteOrigin: 'https://example.com',
       sourceDirectory: 'lib',
@@ -94,6 +97,8 @@ describe('resolveDocsSiteConfig', () => {
     expect(resolved.apiDocSettings.externalTypeLinks).toBe(externalTypeLinks);
     expect(resolved.guidesDirectory).toBe('manual');
     expect(resolved.githubUrl).toBe('https://github.com/someone/pkg');
+    expect(resolved.owner).toBe('someone');
+    expect(resolved.repoHomepage).toBe('set');
     expect(resolved.apiDocSettings.packageSites).toBe(packageSites);
     expect(resolved.siteBaseUrl).toBe('https://example.com/pkg/');
     expect(resolved.sourceDirectory).toBe(join(root, 'lib'));
