@@ -29,7 +29,7 @@ import {
 /**
  * The name the rule is registered under.
  */
-export const NO_FORBIDDEN_PATTERNS_RULE_NAME = 'obsidian-dev-utils/no-forbidden-patterns';
+export const NO_FORBIDDEN_PATTERNS_RULE_NAME = 'typescript-dev-toolkit/no-forbidden-patterns';
 
 type Commit = Parameters<AsyncRule>[0];
 

@@ -85,7 +85,7 @@ describe('defineEslintConfigs', () => {
     const inHousePlugins = getRegisteredPlugins(configs).flatMap((plugins) => plugins[IN_HOUSE_ESLINT_PLUGIN_NAME] ?? []);
     expect(inHousePlugins.length).toBeGreaterThan(0);
     expect(inHousePlugins.every((plugin) => plugin === inHouseEslintPlugin)).toBe(true);
-    expect(findRuleEntry(configs, 'obsidian-dev-utils/no-unused-params-members')).toBe('error');
+    expect(findRuleEntry(configs, 'typescript-dev-toolkit/no-unused-params-members')).toBe('error');
   });
 
   it('should let the context be edited and append the custom configurations last', () => {
@@ -119,16 +119,14 @@ describe('defineEslintConfigs', () => {
 });
 
 describe('getTypeScriptEslintConfigs', () => {
-  it('should register the plugin it is given and pin the Node version it is given', () => {
-    const inHousePlugin: ESLint.Plugin = { rules: { ...inHouseEslintPlugin.rules } };
+  it('should register the generic in-house plugin and pin the Node version it is given', () => {
     const configs = getTypeScriptEslintConfigs({
       context: createDefaultEslintConfigContext(),
-      inHousePlugin,
       minimumNodeVersion: '>=16.16.0'
     });
 
     const inHousePlugins = getRegisteredPlugins(configs).flatMap((plugins) => plugins[IN_HOUSE_ESLINT_PLUGIN_NAME] ?? []);
-    expect(inHousePlugins).toEqual([inHousePlugin]);
+    expect(inHousePlugins).toEqual([inHouseEslintPlugin]);
     expect(findRuleEntry(configs, 'n/no-unsupported-features/es-builtins')).toEqual(['error', { version: '>=16.16.0' }]);
     expect(findRuleEntry(configs, 'n/no-unsupported-features/node-builtins')).toEqual(['error', { ignores: ['Blob', 'File'], version: '>=16.16.0' }]);
   });

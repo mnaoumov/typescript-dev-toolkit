@@ -3,11 +3,9 @@
  *
  * The generic in-house ESLint rules, and the plugin that registers them.
  *
- * Every in-house rule is registered under ONE namespace, {@link IN_HOUSE_ESLINT_PLUGIN_NAME}, whichever package
- * defines it, so a disable comment naming `obsidian-dev-utils/<rule>` keeps working however the rules are split
- * between packages. ESLint refuses two different plugin objects under one namespace in a single configuration, so a
- * package adding rules of its own builds ONE plugin from {@link genericInHouseEslintRules} plus its own and hands
- * that to the generic configuration, rather than registering a second plugin beside {@link inHouseEslintPlugin}.
+ * The generic rules are registered under {@link IN_HOUSE_ESLINT_PLUGIN_NAME}, the name of the package that defines
+ * them. A package adding rules of its own registers them under its own name, as a plugin of its own beside
+ * {@link inHouseEslintPlugin}.
  */
 
 import type { ESLint } from 'eslint';
@@ -23,10 +21,9 @@ import { requireMethodTemplate } from './require-method-template.ts';
 import { requireSuperCall } from './require-super-call.ts';
 
 /**
- * The namespace every in-house rule is registered under. It keeps the name of the library the rules started in,
- * because existing disable comments name it.
+ * The namespace the generic in-house rules are registered under: the name of the package that defines them.
  */
-export const IN_HOUSE_ESLINT_PLUGIN_NAME = 'obsidian-dev-utils';
+export const IN_HOUSE_ESLINT_PLUGIN_NAME = 'typescript-dev-toolkit';
 
 /**
  * The generic in-house rules, keyed by their name inside {@link IN_HOUSE_ESLINT_PLUGIN_NAME}.

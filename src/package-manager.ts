@@ -475,7 +475,7 @@ function warnAboutSeveralClaimants(params: WarnAboutSeveralClaimantsParams): voi
     ? 'Delete the stale lockfile, or declare "packageManager" in package.json, to settle it.'
     : 'Delete the stale lockfile to settle it.';
   const message = [
-    `obsidian-dev-utils: more than one package manager claims ${root}.`,
+    `typescript-dev-toolkit: more than one package manager claims ${root}.`,
     `Lockfiles: ${lockfileNames}.`,
     `package.json "packageManager": ${declaredPackageManager ?? 'not set'}.`,
     `Using ${packageManager}.`,

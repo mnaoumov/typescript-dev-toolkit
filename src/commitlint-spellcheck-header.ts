@@ -31,7 +31,7 @@ import { resolvePathFromRootSafe } from './root.ts';
 /**
  * The name the rule is registered under.
  */
-export const SPELLCHECK_HEADER_RULE_NAME = 'obsidian-dev-utils/spellcheck-header';
+export const SPELLCHECK_HEADER_RULE_NAME = 'typescript-dev-toolkit/spellcheck-header';
 
 /**
  * The npm script whose presence opts a project into the check.
