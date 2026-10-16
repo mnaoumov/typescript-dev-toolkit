@@ -51,6 +51,19 @@ describe('api-doc package sites', () => {
     expect(getPackageTypeUrl('Own')).toBeUndefined();
   });
 
+  it('ignores declarations in a module the owning site does not document', () => {
+    registerPackageDeclaration(
+      'MarkdownlintCli2ConfigurationSchema',
+      '/repo/node_modules/@mnaoumov/typescript-dev-toolkit/dist/lib/esm/linters/markdownlint-types/@types/markdownlint-cli2-config-schema.d.mts'
+    );
+    registerPackageDeclaration('SetupOptions', '/repo/node_modules/@mnaoumov/obsidian-lib/dist/lib/esm/test-runners/vitest-setup.d.mts');
+    registerPackageDeclaration('Barrel', '/repo/node_modules/@mnaoumov/obsidian-lib/dist/lib/esm/modals/index.d.mts');
+
+    expect(getPackageTypeUrl('MarkdownlintCli2ConfigurationSchema')).toBeUndefined();
+    expect(getPackageTypeUrl('SetupOptions')).toBeUndefined();
+    expect(getPackageTypeUrl('Barrel')).toBeUndefined();
+  });
+
   it('never links a name two packages declare', () => {
     configureTestApiDocs({ packageSites: new Map([['@mnaoumov/a', 'https://a/'], ['@mnaoumov/b', 'https://b/']]) });
     registerPackageDeclaration('Twice', '/r/node_modules/@mnaoumov/a/dist/lib/esm/x.d.mts');

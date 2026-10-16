@@ -6,13 +6,15 @@
  * A type is recognized by where its declaration lives, not by its name: a declaration under
  * `node_modules/<package>/dist/lib/{esm,cjs}/<path>.d.{mts,cts}` of a package in
  * {@link ApiDocSettings.packageSites} is the page `<site>api/<path>/<Type>/`, built with the generator's own slug
- * rules, because that site was generated from the same tree.
+ * rules, because that site was generated from the same tree. A module that generator skips (`@types`, `index`,
+ * `*-setup`, ...) has no page, so a type declared there is not linked.
  */
 
 import { getMandatoryNamedGroup } from '@mnaoumov/typescript-lib/reg-exp';
 
 import type { ApiDocSettings } from './api-doc-settings.ts';
 
+import { isDocumentedModulePath } from './api-doc-documented-files.ts';
 import { toRouteSegmentPreserveCase } from './api-doc-route-segments.ts';
 import { getApiDocSettings } from './api-doc-settings.ts';
 
@@ -95,7 +97,8 @@ function toPackageTypeUrl(params: ToPackageTypeUrlParams): string | undefined {
 
   const packageName = getMandatoryNamedGroup(match, 'Package');
   const path = getMandatoryNamedGroup(match, 'Path');
-  if (packageName === settings.packageName) {
+  // The owning site's generator skipped that module, so no page exists to link to.
+  if (packageName === settings.packageName || !isDocumentedModulePath(path)) {
     return undefined;
   }
 

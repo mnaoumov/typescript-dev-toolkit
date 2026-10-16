@@ -22,6 +22,10 @@ import type { TypeInfo } from './api-doc-types.ts';
 
 import { GENERIC_TYPE_PARAMS } from './api-doc-constants.ts';
 import {
+  isDocumentedDirectoryName,
+  isDocumentedFileName
+} from './api-doc-documented-files.ts';
+import {
   extractClassInfo,
   extractEnumInfo,
   extractInterfaceInfo,
@@ -36,11 +40,6 @@ import {
 import { registerPackageDeclaration } from './api-doc-package-sites.ts';
 import { getApiDocSettings } from './api-doc-settings.ts';
 import { simplifyType } from './api-doc-text-utils.ts';
-
-/**
-Directory names whose entire subtree is excluded from documentation.
- */
-const EXCLUDED_DIR_SEGMENTS = new Set(['@types', 'styles', 'test-helpers']);
 
 /**
  * Collect top-level exported functions.
@@ -225,11 +224,11 @@ export function findEntryFiles(directory: string): string[] {
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
     const fullPath = join(directory, entry.name);
     if (entry.isDirectory()) {
-      if (EXCLUDED_DIR_SEGMENTS.has(entry.name)) {
+      if (!isDocumentedDirectoryName(entry.name)) {
         continue;
       }
       results.push(...findEntryFiles(fullPath));
-    } else if (isEntryFile(entry.name)) {
+    } else if (isDocumentedFileName(entry.name)) {
       results.push(fullPath);
     }
   }
@@ -308,11 +307,6 @@ export function registerGenericTypeParams(types: Map<string, TypeInfo>): void {
       }
     }
   }
-}
-
-function isEntryFile(name: string): boolean {
-  // The `.test.ts` clause covers *.test.ts, *.browser.test.ts, *.integration.test.ts
-  return !(!name.endsWith('.ts') || name.endsWith('.d.ts') || ['__merged.ts', 'index.ts', 'setup.ts'].includes(name) || name.endsWith('-setup.ts') || name.endsWith('.test.ts'));
 }
 
 function isTypeDeclaration(declaration: Node): boolean {
