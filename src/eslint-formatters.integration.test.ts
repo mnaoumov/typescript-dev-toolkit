@@ -4,10 +4,17 @@ import type { Linter } from 'eslint';
 import stylistic from '@stylistic/eslint-plugin';
 import { ESLint } from 'eslint';
 import { spawnSync } from 'node:child_process';
+import {
+  mkdtempSync,
+  rmSync,
+  writeFileSync
+} from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import process from 'node:process';
 import { parser } from 'typescript-eslint';
 import {
+  afterAll,
   describe,
   expect,
   it
@@ -15,14 +22,50 @@ import {
 
 import { defineEslintConfigs } from './linters/eslint-config.ts';
 
-// The real dprint and the real ESLint run here, because the only thing worth proving is what a mock replaces: that
-// dprint's output and the shared config's `@stylistic` rules agree. Each fixture is formatted, fixed with every
-// `@stylistic` rule the shared config enables, and formatted again. A rule that fights dprint shows up as a second
-// format that changes the fixed text, or as a report left after it — which is how `wrap-iife` and `jsx-quotes`
-// were found, one gate failure at a time, before this test existed.
+// The real formatters and the real ESLint run here, because the only thing worth proving is what a mock replaces: that
+// each formatter's output, with its shared configuration, and the shared config's `@stylistic` rules agree. Each
+// fixture is formatted, fixed with every `@stylistic` rule the shared config enables, and formatted again. A rule that
+// fights the formatter shows up as a second format that changes the fixed text, or as a report left after it — which
+// is how `wrap-iife` and `jsx-quotes` were found against dprint, one gate failure at a time, before this test existed.
 const REPOSITORY_ROOT = join(import.meta.dirname, '..');
 const DPRINT_JSON_PATH = join(REPOSITORY_ROOT, 'dprint.json');
 const DPRINT_BIN_PATH = join(REPOSITORY_ROOT, 'node_modules/dprint/bin.cjs');
+const PRETTIER_JSON_PATH = join(REPOSITORY_ROOT, 'assets/prettier.json');
+const PRETTIER_BIN_PATH = join(REPOSITORY_ROOT, 'node_modules/prettier/bin/prettier.cjs');
+const BIOME_JSON_PATH = join(REPOSITORY_ROOT, 'assets/biome.json');
+const BIOME_BIN_PATH = join(REPOSITORY_ROOT, 'node_modules/@biomejs/biome/bin/biome');
+
+// Biome resolves a configuration's VCS root against the folder of the configuration it was handed, so the shared one
+// is extended from a project of its own, as a consumer's `biome.json` does.
+const BIOME_PROJECT_FOLDER = mkdtempSync(join(tmpdir(), 'biome-project-'));
+// The shared configuration reads `.gitignore`, and Biome looks for it only inside a git repository.
+spawnSync('git', ['init', '--quiet'], { cwd: BIOME_PROJECT_FOLDER });
+writeFileSync(join(BIOME_PROJECT_FOLDER, '.gitignore'), '');
+writeFileSync(join(BIOME_PROJECT_FOLDER, 'biome.json'), JSON.stringify({ extends: [BIOME_JSON_PATH.replaceAll('\\', '/')] }));
+
+afterAll(() => {
+  rmSync(BIOME_PROJECT_FOLDER, { force: true, recursive: true });
+});
+
+interface FormatterCase {
+  readonly format: (text: string, fileName: string) => string;
+  readonly name: string;
+}
+
+const FORMATTERS: readonly FormatterCase[] = [
+  {
+    format: (text, fileName) => runFormatter([DPRINT_BIN_PATH, 'fmt', '--config', DPRINT_JSON_PATH, '--stdin', fileName], REPOSITORY_ROOT, text),
+    name: 'dprint'
+  },
+  {
+    format: (text, fileName) => runFormatter([PRETTIER_BIN_PATH, '--config', PRETTIER_JSON_PATH, '--stdin-filepath', fileName], REPOSITORY_ROOT, text),
+    name: 'prettier'
+  },
+  {
+    format: (text, fileName) => runFormatter([BIOME_BIN_PATH, 'format', '--stdin-file-path', fileName], BIOME_PROJECT_FOLDER, text),
+    name: 'biome'
+  }
+];
 
 const TS_FIXTURE = `import {a1} from 'm1';
 import { b1, b2 } from 'm2';
@@ -126,18 +169,6 @@ function createStylisticEslint(rules: Linter.RulesRecord, shouldFix: boolean): E
   });
 }
 
-function formatWithDprint(text: string, fileName: string): string {
-  const result = spawnSync(process.execPath, [DPRINT_BIN_PATH, 'fmt', '--config', DPRINT_JSON_PATH, '--stdin', fileName], {
-    cwd: REPOSITORY_ROOT,
-    encoding: 'utf-8',
-    input: text
-  });
-  if (result.status !== 0) {
-    throw new Error(`dprint failed on ${fileName}: ${result.stderr}`);
-  }
-  return result.stdout;
-}
-
 async function getEnabledStylisticRules(): Promise<Linter.RulesRecord> {
   const eslint = new ESLint({ cwd: REPOSITORY_ROOT, overrideConfig: defineEslintConfigs(), overrideConfigFile: true });
   const config = await eslint.calculateConfigForFile(join(REPOSITORY_ROOT, 'src/fixture.tsx')) as Linter.Config;
@@ -151,19 +182,31 @@ async function getEnabledStylisticRules(): Promise<Linter.RulesRecord> {
   return rules;
 }
 
-describe('the shared ESLint config against the shared dprint.json', () => {
+function runFormatter(arguments_: string[], cwd: string, text: string): string {
+  const result = spawnSync(process.execPath, arguments_, {
+    cwd,
+    encoding: 'utf-8',
+    input: text
+  });
+  if (result.status !== 0) {
+    throw new Error(`Formatting failed: ${arguments_.join(' ')}\n${result.stdout}\n${result.stderr}`);
+  }
+  return result.stdout;
+}
+
+describe.each(FORMATTERS)('the shared ESLint config against the shared $name configuration', ({ format }) => {
   it.each([
     { fileName: 'fixture.ts', fixture: TS_FIXTURE },
     { fileName: 'fixture.tsx', fixture: TSX_FIXTURE }
-  ])('should leave no @stylistic report and nothing for dprint to undo in $fileName', async ({ fileName, fixture }) => {
+  ])('should leave no @stylistic report and nothing for the formatter to undo in $fileName', async ({ fileName, fixture }) => {
     const rules = await getEnabledStylisticRules();
     expect(Object.keys(rules)).not.toHaveLength(0);
     const filePath = join(REPOSITORY_ROOT, 'src', fileName);
 
-    const formatted = formatWithDprint(fixture, fileName);
+    const formatted = format(fixture, fileName);
     const [fixResult] = await createStylisticEslint(rules, true).lintText(formatted, { filePath });
     const fixed = fixResult?.output ?? formatted;
-    const reformatted = formatWithDprint(fixed, fileName);
+    const reformatted = format(fixed, fileName);
     expect(reformatted).toBe(fixed);
 
     const [lintResult] = await createStylisticEslint(rules, false).lintText(reformatted, { filePath });

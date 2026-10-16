@@ -70,6 +70,16 @@ export enum RepoPaths {
   Bin = '.bin',
 
   /**
+  Biome configuration file.
+   */
+  BiomeJson = 'biome.json',
+
+  /**
+  Biome configuration file, with comments.
+   */
+  BiomeJsonc = 'biome.jsonc',
+
+  /**
   Bun lockfile.
    */
   BunLock = 'bun.lock',

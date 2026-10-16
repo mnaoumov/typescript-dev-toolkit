@@ -589,6 +589,7 @@ function getPerfectionistConfigs(context: EslintConfigContext): Linter.Config[] 
  * violating probe with the shared `dprint.json` and linting the result: the rule still reports there. Every other
  * rule of `stylistic.configs.recommended` was dropped, because dprint fixes it already, or because it fought dprint
  * (`wrap-iife`, whose parentheses dprint strips, `jsx-quotes` against `quoteStyle`, `operator-linebreak`, `indent`).
+ * The kept rules agree with the shared Prettier and Biome configurations too, so either can own layout instead.
  *
  * @param context - The {@link EslintConfigContext}.
  * @returns The configs.
