@@ -56,6 +56,21 @@ export interface BrokenLink {
 }
 
 /**
+ * Options for {@link collectBrokenExternalLinks}.
+ */
+export interface CollectBrokenExternalLinksOptions {
+  /**
+   * The maximum number of in-flight probes against one host. Defaults to {@link DEFAULT_EXTERNAL_LINK_PER_HOST_CONCURRENCY}.
+   */
+  readonly perHostConcurrency?: number;
+
+  /**
+   * How a transient failure is retried.
+   */
+  readonly retry?: ExternalLinkRetryOptions;
+}
+
+/**
  * A single built documentation page to validate.
  */
 export interface DocumentationPage {
@@ -68,6 +83,57 @@ export interface DocumentationPage {
    * The page's path relative to the build-output root, e.g. `api/foo/index.html`.
    */
   relativePath: string;
+}
+
+/**
+ * What one probe of an external URL learned.
+ */
+export interface ExternalLinkProbeResult {
+  /**
+   * How long the server asked the client to wait before asking again (its `Retry-After` header), when it said.
+   */
+  readonly retryAfterInMilliseconds?: number | undefined;
+
+  /**
+   * The HTTP status, or {@link NETWORK_FAILURE_STATUS} when no response was received.
+   */
+  readonly status: number;
+}
+
+/**
+ * How {@link collectBrokenExternalLinks} retries a transient failure: a network failure, an HTTP `429` or an HTTP `5xx`.
+ *
+ * Each wait doubles from {@link ExternalLinkRetryOptions.initialDelayInMilliseconds} up to
+ * {@link ExternalLinkRetryOptions.maxDelayInMilliseconds}, is jittered into its upper half, and is never shorter than the
+ * server's `Retry-After`. The waits of one URL never add up to more than
+ * {@link ExternalLinkRetryOptions.totalBudgetInMilliseconds}; the status of the last attempt is final.
+ */
+export interface ExternalLinkRetryOptions {
+  /**
+   * The first wait. Defaults to {@link DEFAULT_EXTERNAL_LINK_RETRY_INITIAL_DELAY_IN_MILLISECONDS}.
+   */
+  readonly initialDelayInMilliseconds?: number;
+
+  /**
+   * The longest single wait the backoff grows to. Defaults to {@link DEFAULT_EXTERNAL_LINK_RETRY_MAX_DELAY_IN_MILLISECONDS}.
+   */
+  readonly maxDelayInMilliseconds?: number;
+
+  /**
+   * Returns a number in `[0, 1)` for the jitter. Defaults to `Math.random`.
+   */
+  readonly random?: () => number;
+
+  /**
+   * Waits the given time. Defaults to a `setTimeout`.
+   */
+  readonly sleep?: (milliseconds: number) => Promise<void>;
+
+  /**
+   * The most one URL may spend waiting between its attempts. Defaults to
+   * {@link DEFAULT_EXTERNAL_LINK_RETRY_TOTAL_BUDGET_IN_MILLISECONDS}.
+   */
+  readonly totalBudgetInMilliseconds?: number;
 }
 
 /**
@@ -94,33 +160,95 @@ export interface LinkCheckFileSystem {
 }
 
 /**
+ * The default {@link CollectBrokenExternalLinksOptions.perHostConcurrency}. A documentation site links thousands of
+ * pages of its sibling sites, all on one host, and GitHub Pages answers a burst of them with a `503`.
+ */
+export const DEFAULT_EXTERNAL_LINK_PER_HOST_CONCURRENCY = 8;
+
+/**
+ * The default {@link ExternalLinkRetryOptions.initialDelayInMilliseconds}.
+ */
+export const DEFAULT_EXTERNAL_LINK_RETRY_INITIAL_DELAY_IN_MILLISECONDS = 1000;
+
+/**
+ * The default {@link ExternalLinkRetryOptions.maxDelayInMilliseconds}.
+ */
+export const DEFAULT_EXTERNAL_LINK_RETRY_MAX_DELAY_IN_MILLISECONDS = 16_000;
+
+/**
+ * The default {@link ExternalLinkRetryOptions.totalBudgetInMilliseconds}.
+ */
+export const DEFAULT_EXTERNAL_LINK_RETRY_TOTAL_BUDGET_IN_MILLISECONDS = 45_000;
+
+const HTTP_TOO_MANY_REQUESTS_STATUS = 429;
+const HTTP_SERVER_ERROR_MIN_STATUS = 500;
+const MILLISECONDS_PER_SECOND = 1000;
+const JITTER_FLOOR = 0.5;
+const BACKOFF_FACTOR = 2;
+
+interface PendingProbe {
+  readonly host: string;
+  readonly index: number;
+  readonly pageUrl: string;
+  readonly url: string;
+}
+
+/**
  * Validates the deduplicated external URLs over the network through a bounded concurrency pool.
  *
+ * A network failure, an HTTP `429` and an HTTP `5xx` are retried with an exponential, jittered backoff that honors
+ * `Retry-After` (see {@link ExternalLinkRetryOptions}); any other status, a `404` included, is final at once. Probes of
+ * one host are also capped at {@link CollectBrokenExternalLinksOptions.perHostConcurrency}, and a probe of another host
+ * is started while one host is at its cap.
+ *
  * @param targets - The unique external URL → referencing page map from {@link collectExternalTargets}.
- * @param fetchUrlStatus - Injected probe returning the HTTP status for a URL (`0` for a network failure).
+ * @param fetchUrlStatus - Injected probe returning the HTTP status for a URL (`0` for a network failure), or an
+ *   {@link ExternalLinkProbeResult} that also carries the server's `Retry-After`.
  * @param concurrency - The maximum number of in-flight probes.
+ * @param options - The per-host cap and the retry policy.
  * @returns Every external URL that did not return HTTP `200`, in the map's iteration order.
  */
 export async function collectBrokenExternalLinks(
   targets: Map<string, string>,
-  fetchUrlStatus: (url: string) => Promise<number>,
-  concurrency: number
+  fetchUrlStatus: (url: string) => Promise<ExternalLinkProbeResult | number>,
+  concurrency: number,
+  options: CollectBrokenExternalLinksOptions = {}
 ): Promise<BrokenLink[]> {
-  const entries = [...targets];
-  const results: (BrokenLink | null)[] = Array.from({ length: entries.length }, () => null);
-  let nextIndex = 0;
+  const perHostConcurrency = Math.max(1, options.perHostConcurrency ?? DEFAULT_EXTERNAL_LINK_PER_HOST_CONCURRENCY);
+  const pending: PendingProbe[] = [...targets].map(([url, pageUrl], index) => ({ host: new URL(url).host, index, pageUrl, url }));
+  const results: (BrokenLink | null)[] = Array.from({ length: pending.length }, () => null);
+  const inFlightByHost = new Map<string, number>();
+  const waiters: (() => void)[] = [];
 
   async function runWorker(): Promise<void> {
-    for (let index = nextIndex++; index < entries.length; index = nextIndex++) {
-      const [externalUrl, pageUrl] = ensureNonNullable(entries[index]);
-      const httpStatus = await fetchUrlStatus(externalUrl);
-      if (httpStatus !== HTTP_OK_STATUS) {
-        results[index] = { httpStatus, pageUrl, reason: 'external-error', targetUrl: externalUrl };
+    while (pending.length > 0) {
+      const position = pending.findIndex((probe) => (inFlightByHost.get(probe.host) ?? 0) < perHostConcurrency);
+      if (position === -1) {
+        // Every pending URL is on a host at its cap, so a probe is in flight there and wakes this worker when it ends.
+        await new Promise<void>((resolvePromise) => {
+          waiters.push(resolvePromise);
+        });
+        continue;
+      }
+
+      const [probe] = pending.splice(position, 1);
+      const { host, index, pageUrl, url } = ensureNonNullable(probe);
+      inFlightByHost.set(host, (inFlightByHost.get(host) ?? 0) + 1);
+      try {
+        const httpStatus = await probeWithRetry(url, fetchUrlStatus, options.retry ?? {});
+        if (httpStatus !== HTTP_OK_STATUS) {
+          results[index] = { httpStatus, pageUrl, reason: 'external-error', targetUrl: url };
+        }
+      } finally {
+        inFlightByHost.set(host, ensureNonNullable(inFlightByHost.get(host)) - 1);
+        for (const wake of waiters.splice(0)) {
+          wake();
+        }
       }
     }
   }
 
-  const workerCount = Math.max(1, Math.min(concurrency, entries.length));
+  const workerCount = Math.max(1, Math.min(concurrency, pending.length));
   await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
 
   // Indexed assignment above keeps failures in the map's iteration order; drop the successful gaps.
@@ -282,6 +410,27 @@ export function isInternalDocUrl(targetUrl: URL, siteBaseUrl: string): boolean {
 }
 
 /**
+ * Reads an HTTP `Retry-After` header, which is either a number of seconds or an HTTP date.
+ *
+ * @param headerValue - The header's value, or `null` when the response has none.
+ * @param nowInMilliseconds - The current time, against which a date is measured.
+ * @returns How long to wait, never negative, or `undefined` when the header is absent or unreadable.
+ */
+export function parseRetryAfterInMilliseconds(headerValue: null | string, nowInMilliseconds: number): number | undefined {
+  const trimmed = headerValue?.trim() ?? '';
+  if (trimmed === '') {
+    return undefined;
+  }
+
+  if (/^\d+$/u.test(trimmed)) {
+    return Number(trimmed) * MILLISECONDS_PER_SECOND;
+  }
+
+  const dateInMilliseconds = Date.parse(trimmed);
+  return Number.isNaN(dateInMilliseconds) ? undefined : Math.max(0, dateInMilliseconds - nowInMilliseconds);
+}
+
+/**
  * Resolves an output-relative path to an absolute path inside the build-output root, rejecting
  * paths that escape it via `..` segments.
  *
@@ -301,4 +450,47 @@ export function resolveWithinRoot(outputRootPath: string, outputRelativePath: st
 
 function describeHttpStatus(httpStatus: number | undefined): string {
   return httpStatus === undefined || httpStatus === NETWORK_FAILURE_STATUS ? 'a network failure' : `HTTP ${String(httpStatus)}`;
+}
+
+function isTransientStatus(status: number): boolean {
+  return status === NETWORK_FAILURE_STATUS || status === HTTP_TOO_MANY_REQUESTS_STATUS || status >= HTTP_SERVER_ERROR_MIN_STATUS;
+}
+
+/*
+ * A site linking its sibling sites probes thousands of URLs on one host, and in CI GitHub Pages answers a few of them
+ * with a 503, or drops the connection, while the page serves 200 a moment later. Three attempts a second apart gave up
+ * too soon for that (2026-10-16), so the wait grows until the budget is spent.
+ */
+async function probeWithRetry(
+  url: string,
+  fetchUrlStatus: (url: string) => Promise<ExternalLinkProbeResult | number>,
+  retry: ExternalLinkRetryOptions
+): Promise<number> {
+  const initialDelayInMilliseconds = retry.initialDelayInMilliseconds ?? DEFAULT_EXTERNAL_LINK_RETRY_INITIAL_DELAY_IN_MILLISECONDS;
+  const maxDelayInMilliseconds = retry.maxDelayInMilliseconds ?? DEFAULT_EXTERNAL_LINK_RETRY_MAX_DELAY_IN_MILLISECONDS;
+  const totalBudgetInMilliseconds = retry.totalBudgetInMilliseconds ?? DEFAULT_EXTERNAL_LINK_RETRY_TOTAL_BUDGET_IN_MILLISECONDS;
+  const random = retry.random ?? Math.random;
+  const sleep = retry.sleep ?? sleepWithTimeout;
+
+  let waitedInMilliseconds = 0;
+  for (let attempt = 0;; attempt++) {
+    const probeResult = await fetchUrlStatus(url);
+    const { retryAfterInMilliseconds, status } = typeof probeResult === 'number' ? { retryAfterInMilliseconds: undefined, status: probeResult } : probeResult;
+    const remainingInMilliseconds = totalBudgetInMilliseconds - waitedInMilliseconds;
+    if (!isTransientStatus(status) || remainingInMilliseconds <= 0) {
+      return status;
+    }
+
+    const backoffInMilliseconds = Math.min(maxDelayInMilliseconds, initialDelayInMilliseconds * BACKOFF_FACTOR ** attempt);
+    const jitteredInMilliseconds = backoffInMilliseconds * (JITTER_FLOOR + (1 - JITTER_FLOOR) * random());
+    const delayInMilliseconds = Math.min(remainingInMilliseconds, Math.max(jitteredInMilliseconds, retryAfterInMilliseconds ?? 0));
+    await sleep(delayInMilliseconds);
+    waitedInMilliseconds += delayInMilliseconds;
+  }
+}
+
+function sleepWithTimeout(milliseconds: number): Promise<void> {
+  return new Promise((resolvePromise) => {
+    globalThis.setTimeout(resolvePromise, milliseconds);
+  });
 }

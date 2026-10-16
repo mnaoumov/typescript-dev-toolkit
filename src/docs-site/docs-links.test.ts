@@ -46,13 +46,21 @@ function createSite(files: Readonly<Partial<Record<string, string>>>): string {
   return root;
 }
 
+// Fires every timer at once: the fetch timeout, and every retry wait of a transient failure.
+function fireTimersAtOnce(): void {
+  vi.spyOn(globalThis, 'setTimeout').mockImplementation(castTo<typeof setTimeout>((callback: () => void) => {
+    callback();
+    return 0;
+  }));
+}
+
 function stubFetch(statusByUrl: ReadonlyMap<string, 'throw' | number>): ReturnType<typeof vi.fn> {
   const fetchMock = vi.fn((url: string) => {
     const status = statusByUrl.get(url) ?? HTTP_OK;
     if (status === 'throw') {
       return Promise.reject(new Error('offline'));
     }
-    return Promise.resolve({ body: status === HTTP_OK ? { cancel: vi.fn(() => noopAsync()) } : null, status });
+    return Promise.resolve({ body: status === HTTP_OK ? { cancel: vi.fn(() => noopAsync()) } : null, headers: new Headers(), status });
   });
   vi.stubGlobal('fetch', fetchMock);
   return fetchMock;
@@ -73,6 +81,7 @@ describe('assertDocsLinksResolve', () => {
   });
 
   it('reports missing pages, missing fragments and failing external links', async () => {
+    fireTimersAtOnce();
     stubFetch(new Map<string, 'throw' | number>([['https://example.com/gone', HTTP_NOT_FOUND], ['https://example.com/offline', 'throw']]));
     const root = createSite({
       'index.html': [
@@ -102,10 +111,7 @@ describe('assertDocsLinksResolve', () => {
 
   it('aborts an external request that takes too long', async () => {
     // The timeout fires at once, so the request starts already aborted.
-    vi.spyOn(globalThis, 'setTimeout').mockImplementation(castTo<typeof setTimeout>((callback: () => void) => {
-      callback();
-      return 0;
-    }));
+    fireTimersAtOnce();
     vi.stubGlobal('fetch', vi.fn((_url: string, init: RequestInit) => init.signal?.aborted ? Promise.reject(new Error('aborted')) : Promise.resolve({ body: null, status: HTTP_OK })));
     const root = createSite({ 'index.html': '<a href="https://example.com/slow">s</a>' });
 

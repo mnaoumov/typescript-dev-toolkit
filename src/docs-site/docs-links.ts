@@ -18,6 +18,7 @@ import { resolve } from 'node:path';
 
 import type {
   DocumentationPage,
+  ExternalLinkProbeResult,
   LinkCheckFileSystem
 } from './link-check.ts';
 
@@ -28,6 +29,7 @@ import {
   extractIds,
   formatBrokenLinks,
   NETWORK_FAILURE_STATUS,
+  parseRetryAfterInMilliseconds,
   resolveWithinRoot
 } from './link-check.ts';
 import {
@@ -123,7 +125,7 @@ function createFileSystem(params: CreateFileSystemParams): LinkCheckFileSystem {
   };
 }
 
-async function fetchUrlStatus(url: string): Promise<number> {
+async function fetchUrlStatus(url: string): Promise<ExternalLinkProbeResult> {
   const controller = new AbortController();
   const timeoutId = globalThis.setTimeout(() => {
     controller.abort();
@@ -135,9 +137,12 @@ async function fetchUrlStatus(url: string): Promise<number> {
     // Without this the per-host connection pool stalls and same-host requests
     // serialize, turning a ~3s run into minutes.
     await response.body?.cancel();
-    return response.status;
+    return {
+      retryAfterInMilliseconds: parseRetryAfterInMilliseconds(response.headers.get('retry-after'), Date.now()),
+      status: response.status
+    };
   } catch {
-    return NETWORK_FAILURE_STATUS;
+    return { status: NETWORK_FAILURE_STATUS };
   } finally {
     globalThis.clearTimeout(timeoutId);
   }
