@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## 3.0.0
+
+- feat(eslint-config)!: let dprint own layout and keep only the stylistic rules it cannot express
+- test(docs-site): give the hundred-card progress test a timeout that fits a loaded machine
+
 ## 2.2.0
 
 - fix(docs-site): never link a type declared in a module the owning site does not document
