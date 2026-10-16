@@ -554,6 +554,49 @@ interface SpawnViaShellParams {
 }
 
 /**
+ * Returns the length of the command line as the operating system will actually see it, which on Windows is
+ * NOT the length of the string passed in.
+ *
+ * {@link spawnViaShell} routes the command through `cmd.exe`, and two things are spent between here and
+ * there, neither of them visible in the assembled command:
+ * - Node's `spawn(…, { shell: true })` wraps it as `<comspec> /d /s /c "<command>"`.
+ * - {@link cmdEscapeCommandLine} `^`-escapes every one of `cmd.exe`'s metacharacters, which on a list of
+ *   quoted paths is a few percent of the whole (measured: +236 chars on a 7216-char invocation).
+ *
+ * Both are ours to compute, so they are computed rather than guessed. What is NOT computable from here is
+ * what the spawned command does to its own arguments — see {@link WINDOWS_CHILD_EXPANSION_RESERVE}.
+ *
+ * The platform branch here MUST stay in sync with the one in {@link spawnViaShell}.
+ *
+ * @param commandLine - The assembled command line, before any shell wrapping.
+ * @returns The length in characters of what reaches the operating system.
+ */
+export function getEffectiveCommandLineLength(commandLine: string): number {
+  if (process.platform !== 'win32') {
+    return commandLine.length;
+  }
+
+  const comspec = process.env['comspec'] ?? 'cmd.exe';
+  const CMD_WRAPPER = ' /d /s /c ""';
+  return comspec.length + CMD_WRAPPER.length + commandEscapeCommandLine(commandLine).length;
+}
+
+/**
+ * Returns the max command line length to size an {@link ExecArgument} batch against — the platform maximum
+ * less {@link WINDOWS_CHILD_EXPANSION_RESERVE}.
+ *
+ * Deliberately more conservative than {@link getMaxCommandLength}, because the two answer different
+ * questions. Exceeding the plain-command limit is a hard failure the caller cannot avoid, so that check
+ * stays exact. Exceeding the batching limit only costs one extra invocation, so that check may — and
+ * should — leave room to spare.
+ *
+ * @returns The max length in characters available to a single batch.
+ */
+export function getMaxBatchCommandLength(): number {
+  return getMaxCommandLength() - (process.platform === 'win32' ? WINDOWS_CHILD_EXPANSION_RESERVE : 0);
+}
+
+/**
  * Builds a command-line string from an argument array, quoted for the shell that
  * {@link spawnViaShell} will route through on the current platform.
  *
@@ -700,49 +743,6 @@ async function executeBatches(params: ExecuteBatchesParams): Promise<ExecResult 
  */
 function getChildEnv(): NodeJS.ProcessEnv {
   return buildChildEnv(process.env, process.allowedNodeEnvironmentFlags);
-}
-
-/**
- * Returns the length of the command line as the operating system will actually see it, which on Windows is
- * NOT the length of the string passed in.
- *
- * {@link spawnViaShell} routes the command through `cmd.exe`, and two things are spent between here and
- * there, neither of them visible in the assembled command:
- * - Node's `spawn(…, { shell: true })` wraps it as `<comspec> /d /s /c "<command>"`.
- * - {@link cmdEscapeCommandLine} `^`-escapes every one of `cmd.exe`'s metacharacters, which on a list of
- *   quoted paths is a few percent of the whole (measured: +236 chars on a 7216-char invocation).
- *
- * Both are ours to compute, so they are computed rather than guessed. What is NOT computable from here is
- * what the spawned command does to its own arguments — see {@link WINDOWS_CHILD_EXPANSION_RESERVE}.
- *
- * The platform branch here MUST stay in sync with the one in {@link spawnViaShell}.
- *
- * @param commandLine - The assembled command line, before any shell wrapping.
- * @returns The length in characters of what reaches the operating system.
- */
-function getEffectiveCommandLineLength(commandLine: string): number {
-  if (process.platform !== 'win32') {
-    return commandLine.length;
-  }
-
-  const comspec = process.env['comspec'] ?? 'cmd.exe';
-  const CMD_WRAPPER = ' /d /s /c ""';
-  return comspec.length + CMD_WRAPPER.length + commandEscapeCommandLine(commandLine).length;
-}
-
-/**
- * Returns the max command line length to size an {@link ExecArgument} batch against — the platform maximum
- * less {@link WINDOWS_CHILD_EXPANSION_RESERVE}.
- *
- * Deliberately more conservative than {@link getMaxCommandLength}, because the two answer different
- * questions. Exceeding the plain-command limit is a hard failure the caller cannot avoid, so that check
- * stays exact. Exceeding the batching limit only costs one extra invocation, so that check may — and
- * should — leave room to spare.
- *
- * @returns The max length in characters available to a single batch.
- */
-function getMaxBatchCommandLength(): number {
-  return getMaxCommandLength() - (process.platform === 'win32' ? WINDOWS_CHILD_EXPANSION_RESERVE : 0);
 }
 
 /**
