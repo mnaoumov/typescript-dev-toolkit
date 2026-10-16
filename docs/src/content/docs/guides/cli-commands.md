@@ -269,6 +269,59 @@ export const DOCS_SITE_CONFIG: DocsSiteConfig = {
 
 It never fails the build. A workflow's `GITHUB_TOKEN` can read the homepage but cannot change repository settings, so in CI `'set'` reports the mismatch like `'check'`, as a `::warning::` annotation. Pass the token to the build step as `GH_TOKEN` so `gh` can read the repository; run `docs:build` once locally, or the printed command, to set it.
 
+### Sync upstreams
+
+```bash
+npx sync-upstreams [--dry-run] [--only=<name>[,<name>]] [--base=<branch>] [--config=<path>]
+```
+
+For a repository that vendors upstream code: checks every upstream that `upstreams.json` lists and opens or updates one PR per upstream that moved, on the branch `upstream/<name>`. The PR carries the upstream compare link, the changed upstream files, the output of the handler and the verify command, and the diff summary of what was generated. A failing handler or verify still opens the PR, as a draft, so a breaking upstream change is seen rather than skipped. Nothing is merged automatically.
+
+```json
+{
+  "verify": "npm run lint && npm test",
+  "upstreams": [
+    {
+      "name": "sample",
+      "repo": "owner/sample",
+      "ref": "main",
+      "commit": "<the commit the vendored copy matches>",
+      "paths": ["src/**"],
+      "handler": "npm run sync:sample"
+    },
+    {
+      "name": "lib",
+      "npm": "some-lib",
+      "tag": "latest",
+      "version": "1.2.3",
+      "handler": "npm run sync:lib",
+      "verify": "npm run build"
+    }
+  ]
+}
+```
+
+A git entry follows a branch or tag on GitHub, pinned to a commit, and a move that touches none of its `paths` (globs) opens no PR. An npm entry follows a dist-tag (`latest` when absent), pinned to a version. The handler is a shell command that turns the newer upstream into changes in this repository; it runs with `UPSTREAM_NAME` and `UPSTREAM_TARGET` (the new commit or version) set, and the sync then records the new pin unless the handler already moved it. An entry's own `verify` replaces the top-level one.
+
+`--dry-run` prints each PR and changes nothing. `--base` names the branch the PRs target (`main` by default). `GITHUB_TOKEN` is sent to the GitHub API when set, and `gh` must be authenticated for anything but a dry run. The same logic is importable from `@mnaoumov/typescript-dev-toolkit/upstream-sync` (`syncUpstreams`) and `@mnaoumov/typescript-dev-toolkit/upstream-sync-cli` (`runSyncUpstreamsCli`).
+
+To run it on a schedule, call the reusable workflow, pinned to a release tag:
+
+```yaml
+on:
+  schedule:
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+  pull-requests: write
+jobs:
+  sync:
+    uses: mnaoumov/typescript-dev-toolkit/.github/workflows/sync-upstreams.yml@3.3.0
+```
+
+It takes `install-command` (`npm ci`), `setup-command` (none), `sync-command` (`npx sync-upstreams`), `node-version-file` (`.nvmrc`), `config`, `base` (the branch the workflow runs on), `only` and `dry-run` as inputs. A PR opened with `GITHUB_TOKEN` triggers no other workflow, which is why the verify command runs inside the sync.
+
 ## Script entry points
 
 Run the commands through `npm run` with a [jiti](https://github.com/unjs/jiti) entry point per script:
