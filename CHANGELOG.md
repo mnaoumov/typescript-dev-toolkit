@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 2.2.0
+
+- fix(docs-site): never link a type declared in a module the owning site does not document
+- fix(nano-staged): batch the staged paths so a large commit fits the command line
+- feat(eslint-config): fix a boolean literal ternary branch in TypeScript
+
 ## 2.1.0
 
 - feat(commitlint): declare config-conventional and export commitlintConfig
