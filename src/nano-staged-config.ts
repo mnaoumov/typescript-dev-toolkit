@@ -4,12 +4,20 @@
  * Shared nano-staged configuration for pre-commit hooks.
  */
 
+import {
+  isAbsolute,
+  relative
+} from 'node:path';
 import process from 'node:process';
 
 import {
   isEnvVariableOff,
   loadEnvFileIfExists
 } from './env-toggle.ts';
+import {
+  getEffectiveCommandLineLength,
+  getMaxBatchCommandLength
+} from './exec.ts';
 import { getPackageManagerRunCommand } from './package-manager.ts';
 
 /**
@@ -20,9 +28,31 @@ export interface GetNanoStagedConfigOptions {
    * Repo-specific file-rewriting tasks, keyed by the nano-staged pattern that claims their files.
    *
    * Each gets spellcheck appended and its files removed from the spellcheck-only key, exactly like the shared
-   * writers. A pattern must not contain `/`, and must not repeat a shared writer pattern.
+   * writers. A pattern must not contain `/`, and must not repeat a shared writer pattern. Each command is a
+   * prefix the staged paths are appended to, in batches, like the shared ones (`npm run lint:fix --`).
    */
   readonly additionalWriterTasks?: Readonly<Record<string, readonly string[]>>;
+}
+
+/**
+ * A nano-staged configuration whose every key is a {@link NanoStagedTask}.
+ */
+export type NanoStagedConfig = Record<string, NanoStagedTask>;
+
+/**
+ * A function-valued nano-staged task: it receives the staged files its pattern claims and returns the
+ * commands to run over them, in order.
+ */
+export type NanoStagedTask = (context: NanoStagedTaskContext) => string[];
+
+/**
+ * What nano-staged passes to a function-valued task.
+ */
+export interface NanoStagedTaskContext {
+  /**
+   * The absolute paths of the staged files the task's pattern claims.
+   */
+  readonly filenames: readonly string[];
 }
 
 /**
@@ -34,6 +64,23 @@ export interface GetNanoStagedConfigOptions {
 const PACKAGE_MANAGER_RUN_COMMAND = getPackageManagerRunCommand().join(' ');
 
 const SPELLCHECK_COMMAND = `${PACKAGE_MANAGER_RUN_COMMAND} spellcheck --`;
+
+/**
+ * Room left in every batch for the resolved path of the package manager's executable.
+ *
+ * nano-staged runs `npm` as the absolute path of `npm.cmd` (`<comspec> /D /S /C "<path>" "<arg>" …`), which
+ * the batch cannot see, so a full Windows `MAX_PATH` is set aside for it.
+ */
+const EXECUTABLE_PATH_RESERVE = 260;
+
+/**
+ * The characters nano-staged's command tokenizer cannot carry inside an argument.
+ *
+ * A function-valued task returns its commands as STRINGS, and nano-staged splits each one with
+ * `stringArgvToArray`, which emits a quoted token twice (once bare, once with its quotes) and has no escape.
+ * So a path holding whitespace or a quote cannot be passed as itself.
+ */
+const TOKENIZER_UNSAFE_CHARACTERS_REG_EXP = /[\s"']/g;
 
 /**
  * The tasks that REWRITE a staged file, keyed by the nano-staged pattern that claims it.
@@ -66,14 +113,15 @@ const WRITER_TASKS: Readonly<Record<string, readonly string[]>> = {
  * (TypeScript compilation, unit tests) are left to CI.
  *
  * Commands run through the package manager that owns the tree — `npm run ... --`, `bun run ... --`, and
- * so on — so nano-staged file paths are forwarded as CLI arguments.
+ * so on — so nano-staged file paths are forwarded as CLI arguments, batched to fit the command line (see
+ * `toBatchedTask`).
  *
  * Spellcheck is partitioned across the keys rather than given a catch-all `'*'` key (see
  * `partitionSpellcheck`). A repo adding a file-rewriting task of its own passes it to
  * {@link getNanoStagedConfig} as `additionalWriterTasks` rather than spreading this object and adding a key,
  * which would reintroduce the overlap for that key's files.
  */
-export const obsidianDevUtilsConfig: Record<string, string[]> = partitionSpellcheck(WRITER_TASKS);
+export const obsidianDevUtilsConfig: NanoStagedConfig = partitionSpellcheck(WRITER_TASKS);
 
 const NANO_STAGED_ENV_VARIABLE = 'NANO_STAGED';
 
@@ -97,7 +145,7 @@ const NANO_STAGED_ENV_VARIABLE = 'NANO_STAGED';
  * @param options - The optional options.
  * @returns The nano-staged task configuration. Does not return when the opt-out is active.
  */
-export function getNanoStagedConfig(options?: GetNanoStagedConfigOptions): Record<string, string[]> {
+export function getNanoStagedConfig(options?: GetNanoStagedConfigOptions): NanoStagedConfig {
   loadEnvFileIfExists();
 
   if (isEnvVariableOff(NANO_STAGED_ENV_VARIABLE)) {
@@ -116,6 +164,44 @@ export function getNanoStagedConfig(options?: GetNanoStagedConfigOptions): Recor
   }
 
   return partitionSpellcheck({ ...WRITER_TASKS, ...additionalWriterTasks });
+}
+
+/**
+ * Splits command arguments into batches that each fit one command line after a given prefix.
+ *
+ * Each argument is costed as nano-staged passes it on Windows — quoted, then `^`-escaped by `cmd.exe`'s
+ * rules — through {@link getEffectiveCommandLineLength}, and the budget is {@link getMaxBatchCommandLength},
+ * which already holds back the reserve for the `npm` → `cmd.exe` → `.bin` shim chain re-expanding the
+ * arguments. An argument too long for any batch still gets a batch of its own: it fails loudly there, which
+ * dropping it would not.
+ *
+ * @param prefix - The command the arguments are appended to.
+ * @param commandArguments - The arguments to split.
+ * @returns The batches, in order, together holding every argument once.
+ */
+function batchCommandArguments(prefix: string, commandArguments: readonly string[]): string[][] {
+  const emptyLength = getEffectiveCommandLineLength('');
+  const budget = getMaxBatchCommandLength() - EXECUTABLE_PATH_RESERVE - getEffectiveCommandLineLength(prefix);
+  const batches: string[][] = [];
+  let batch: string[] = [];
+  let batchLength = 0;
+
+  for (const commandArgument of commandArguments) {
+    const argumentLength = getEffectiveCommandLineLength(` "${commandArgument}"`) - emptyLength;
+    if (batch.length > 0 && batchLength + argumentLength > budget) {
+      batches.push(batch);
+      batch = [];
+      batchLength = 0;
+    }
+    batch.push(commandArgument);
+    batchLength += argumentLength;
+  }
+
+  if (batch.length > 0) {
+    batches.push(batch);
+  }
+
+  return batches;
 }
 
 /**
@@ -140,7 +226,7 @@ export function getNanoStagedConfig(options?: GetNanoStagedConfigOptions): Recor
  * @param writerTasks - The file-rewriting tasks, keyed by the pattern that claims their files.
  * @returns The configuration, with the spellcheck step partitioned across the keys.
  */
-function partitionSpellcheck(writerTasks: Readonly<Record<string, readonly string[]>>): Record<string, string[]> {
+function partitionSpellcheck(writerTasks: Readonly<Record<string, readonly string[]>>): NanoStagedConfig {
   const patterns = Object.keys(writerTasks);
   const patternWithSlash = patterns.find((pattern) => pattern.includes('/'));
   if (patternWithSlash !== undefined) {
@@ -148,13 +234,61 @@ function partitionSpellcheck(writerTasks: Readonly<Record<string, readonly strin
   }
 
   const complementPattern = `!(${patterns.map((pattern) => `${pattern}!(?)`).join('|')})*`;
-  const config: Record<string, string[]> = {
-    [complementPattern]: [SPELLCHECK_COMMAND]
+  const config: NanoStagedConfig = {
+    [complementPattern]: toBatchedTask([SPELLCHECK_COMMAND])
   };
 
   for (const [pattern, commands] of Object.entries(writerTasks)) {
-    config[pattern] = [...commands, SPELLCHECK_COMMAND];
+    config[pattern] = toBatchedTask([...commands, SPELLCHECK_COMMAND]);
   }
 
   return config;
+}
+
+/**
+ * Builds a task that runs each command over every staged file it receives, in as many batches as the command
+ * line needs.
+ *
+ * nano-staged appends a string task's files to ONE command, so a commit staging a few hundred files ran
+ * `npm run lint:fix -- <every path>` and failed on Windows with `The command line is too long.`, refusing
+ * exactly the whole-repo commits that most need the hook. A function-valued task builds its own commands
+ * instead, and these are batched against the same budget `exec()` uses (see `batchCommandArguments`).
+ *
+ * The commands keep their order: every batch of the first command runs before any batch of the second,
+ * because nano-staged runs one key's commands one after another, so a writer still finishes before the next
+ * writer, and spellcheck still reads the rewritten files.
+ *
+ * @param commands - The command prefixes, in the order they run.
+ * @returns The task.
+ */
+function toBatchedTask(commands: readonly string[]): NanoStagedTask {
+  return ({ filenames }) => {
+    const commandArguments = filenames.map((filename) => toCommandArgument(filename));
+    return commands.flatMap((command) => batchCommandArguments(command, commandArguments).map((batch) => `${command} ${batch.join(' ')}`));
+  };
+}
+
+/**
+ * Turns a staged file's absolute path into the argument a batched task passes for it.
+ *
+ * The path is made relative to the working directory, where nano-staged and the task both run, which roughly
+ * halves its length and so the number of batches; a path outside it stays absolute. A relative path starting
+ * with `-` gets `./`, so no tool reads it as an option.
+ *
+ * Whitespace and quotes become `?`, because nano-staged's tokenizer cannot carry them (see
+ * {@link TOKENIZER_UNSAFE_CHARACTERS_REG_EXP}). Every tool the tasks run (ESLint, dprint, cspell,
+ * markdownlint-cli2) takes its paths as globs, and `?` matches exactly the one character it replaced, so the
+ * file is still found; a sibling differing only in that character would match too, which costs a lint of an
+ * extra file, not a missed one.
+ *
+ * @param filename - The absolute path of the staged file.
+ * @returns The argument.
+ */
+function toCommandArgument(filename: string): string {
+  const relativePath = relative(process.cwd(), filename);
+  let commandArgument = (relativePath.startsWith('..') || isAbsolute(relativePath) ? filename : relativePath).replaceAll('\\', '/');
+  if (commandArgument.startsWith('-')) {
+    commandArgument = `./${commandArgument}`;
+  }
+  return commandArgument.replaceAll(TOKENIZER_UNSAFE_CHARACTERS_REG_EXP, '?');
 }

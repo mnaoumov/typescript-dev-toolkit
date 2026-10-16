@@ -1,6 +1,7 @@
 import {
   dirname,
-  join
+  join,
+  resolve
 } from 'node:path';
 import {
   fileURLToPath,
@@ -15,6 +16,12 @@ import {
   vi
 } from 'vitest';
 
+import type { NanoStagedConfig } from './nano-staged-config.ts';
+
+import {
+  getEffectiveCommandLineLength,
+  getMaxBatchCommandLength
+} from './exec.ts';
 import {
   getNanoStagedConfig,
   obsidianDevUtilsConfig
@@ -116,9 +123,20 @@ interface GlobToRegexResult {
   readonly regex: RegExp;
 }
 
-async function getClaimingKeys(config: Record<string, string[]>, file: string): Promise<string[]> {
+const SAMPLE_FILE = 'src/main.ts';
+
+interface NanoStagedUtilsModule {
+  stringArgvToArray: (command: string) => string[];
+}
+
+async function getClaimingKeys(config: NanoStagedConfig, file: string): Promise<string[]> {
   const globToRegex = await loadGlobToRegex();
   return Object.keys(config).filter((pattern) => globToRegex(pattern, { extended: true, globstar: pattern.includes('/') }).regex.test(file));
+}
+
+async function importNanoStagedModule<T>(fileName: string): Promise<T> {
+  const entryPath = fileURLToPath(import.meta.resolve('nano-staged'));
+  return await import(pathToFileURL(join(dirname(entryPath), fileName)).href) as T;
 }
 
 /*
@@ -126,9 +144,30 @@ async function getClaimingKeys(config: Record<string, string[]>, file: string): 
  * the dialect that actually runs. It is not in the package's `exports`, hence the path built off the entry.
  */
 async function loadGlobToRegex(): Promise<GlobToRegexModule['globToRegex']> {
-  const entryPath = fileURLToPath(import.meta.resolve('nano-staged'));
-  const $module = await import(pathToFileURL(join(dirname(entryPath), 'glob-to-regex.js')).href) as GlobToRegexModule;
+  const $module = await importNanoStagedModule<GlobToRegexModule>('glob-to-regex.js');
   return $module.globToRegex;
+}
+
+/*
+ * The tokenizer nano-staged splits a function-valued task's commands with, loaded from the installed package
+ * for the same reason as the glob compiler.
+ */
+async function loadStringArgvToArray(): Promise<NanoStagedUtilsModule['stringArgvToArray']> {
+  const $module = await importNanoStagedModule<NanoStagedUtilsModule>('utils.js');
+  return $module.stringArgvToArray;
+}
+
+/*
+ * Every key is a function now, so a key's command list is read off a one-file run, with the file stripped
+ * back off each command.
+ */
+function toCommandPrefixes(config: NanoStagedConfig): Record<string, string[]> {
+  return Object.fromEntries(
+    Object.entries(config).map(([pattern, task]) => [
+      pattern,
+      task({ filenames: [resolve(SAMPLE_FILE)] }).map((command) => command.slice(0, -` ${SAMPLE_FILE}`.length))
+    ])
+  );
 }
 
 describe('getNanoStagedConfig with additional writer tasks', () => {
@@ -149,7 +188,7 @@ describe('getNanoStagedConfig with additional writer tasks', () => {
   it('should re-partition spellcheck around an additional writer', async () => {
     const config = getNanoStagedConfig({ additionalWriterTasks: { '*.astro': ['npm run lint:fix --'] } });
 
-    expect(config).toEqual({
+    expect(toCommandPrefixes(config)).toEqual({
       '!(*.{ts,tsx,mts}!(?)|*.md!(?)|*.astro!(?))*': ['npm run spellcheck --'],
       '*.{ts,tsx,mts}': ['npm run lint:fix --', 'npm run format --', 'npm run spellcheck --'],
       '*.astro': ['npm run lint:fix --', 'npm run spellcheck --'],
@@ -172,7 +211,7 @@ describe('getNanoStagedConfig with additional writer tasks', () => {
 
 describe('obsidianDevUtilsConfig', () => {
   it('should run every task through npm when npm owns the tree', () => {
-    expect(obsidianDevUtilsConfig).toEqual({
+    expect(toCommandPrefixes(obsidianDevUtilsConfig)).toEqual({
       '*.{ts,tsx,mts}': ['npm run lint:fix --', 'npm run format --', 'npm run spellcheck --'],
       '*.md': ['npm run lint:md:fix --', 'npm run spellcheck --'],
       [COMPLEMENT_KEY]: ['npm run spellcheck --']
@@ -211,7 +250,7 @@ describe('obsidianDevUtilsConfig', () => {
 
     const { obsidianDevUtilsConfig: bunConfig } = await import('./nano-staged-config.ts');
 
-    expect(bunConfig).toEqual({
+    expect(toCommandPrefixes(bunConfig)).toEqual({
       '*.{ts,tsx,mts}': ['bun run lint:fix --', 'bun run format --', 'bun run spellcheck --'],
       '*.md': ['bun run lint:md:fix --', 'bun run spellcheck --'],
       [COMPLEMENT_KEY]: ['bun run spellcheck --']
@@ -225,15 +264,84 @@ describe('obsidianDevUtilsConfig', () => {
    * writers of one file raced and whichever finished last won.
    */
   it('should keep both file-rewriting tasks under one key, in order', () => {
-    const keysRewritingTypeScript = Object.entries(obsidianDevUtilsConfig)
+    const keysRewritingTypeScript = Object.entries(toCommandPrefixes(obsidianDevUtilsConfig))
       .filter(([, commands]) => commands.some((command) => command.includes('lint:fix') || command.includes(' format ')))
       .map(([key]) => key);
 
     expect(keysRewritingTypeScript).toEqual(['*.{ts,tsx,mts}']);
-    expect(obsidianDevUtilsConfig['*.{ts,tsx,mts}']).toEqual([
+    expect(toCommandPrefixes(obsidianDevUtilsConfig)['*.{ts,tsx,mts}']).toEqual([
       'npm run lint:fix --',
       'npm run format --',
       'npm run spellcheck --'
+    ]);
+  });
+});
+
+describe('batched tasks', () => {
+  const TYPE_SCRIPT_KEY = '*.{ts,tsx,mts}';
+  const STAGED_FILE_COUNT = 2000;
+
+  /*
+   * The defect this pins. A string task appends every staged path to ONE command, so a commit staging 342
+   * `.ts` files ran `npm run lint:fix -- <342 paths>` and failed on Windows with `The command line is too
+   * long.`. 2000 paths of ~100 characters overflow the POSIX budget too, so this splits on every platform.
+   */
+  it('should run every command over every staged file, in batches that each fit the command line', () => {
+    const relativePaths = Array.from(
+      { length: STAGED_FILE_COUNT },
+      (_, index) => `src/some/deeply/nested/folder/for/a/whole/repository/sweep/module-number-${String(index).padStart(5, '0')}.ts`
+    );
+    const task = obsidianDevUtilsConfig[TYPE_SCRIPT_KEY];
+    if (!task) {
+      throw new Error(`Missing ${TYPE_SCRIPT_KEY} key`);
+    }
+
+    const commands = task({ filenames: relativePaths.map((relativePath) => resolve(relativePath)) });
+
+    const prefixes = ['npm run lint:fix --', 'npm run format --', 'npm run spellcheck --'];
+    const budget = getMaxBatchCommandLength() - 260;
+    let previousPrefixIndex = 0;
+    for (const command of commands) {
+      const prefixIndex = prefixes.findIndex((prefix) => command.startsWith(`${prefix} `));
+      expect(prefixIndex).toBeGreaterThanOrEqual(previousPrefixIndex);
+      previousPrefixIndex = prefixIndex;
+      const quoted = command.split(' ').map((token, index) => index < 4 ? token : `"${token}"`).join(' ');
+      expect(getEffectiveCommandLineLength(quoted)).toBeLessThanOrEqual(budget + getEffectiveCommandLineLength(''));
+    }
+
+    for (const prefix of prefixes) {
+      const prefixCommands = commands.filter((command) => command.startsWith(`${prefix} `));
+      expect(prefixCommands.length).toBeGreaterThan(1);
+      expect(prefixCommands.flatMap((command) => command.slice(prefix.length + 1).split(' '))).toEqual(relativePaths);
+    }
+  });
+
+  it('should run nothing when no staged file is claimed', () => {
+    expect(obsidianDevUtilsConfig[TYPE_SCRIPT_KEY]?.({ filenames: [] })).toEqual([]);
+  });
+
+  it('should keep a path outside the working directory absolute and protect one that looks like an option', () => {
+    const outsidePath = resolve('..', 'elsewhere', 'outside.ts');
+    const commands = obsidianDevUtilsConfig[TYPE_SCRIPT_KEY]?.({ filenames: [outsidePath, resolve('-dash.ts')] });
+
+    expect(commands?.[0]).toBe(`npm run lint:fix -- ${outsidePath.replaceAll('\\', '/')} ./-dash.ts`);
+  });
+
+  /*
+   * A function-valued task's commands are split by nano-staged's own tokenizer, which emits a quoted token
+   * twice and has no escape. So each argument must come back out of it as exactly one token, and a path with
+   * a space or a quote goes in as a `?` glob that still names the file.
+   */
+  it('should hand every path through nano-staged\'s tokenizer as exactly one argument', async () => {
+    const stringArgvToArray = await loadStringArgvToArray();
+    const commands = obsidianDevUtilsConfig[TYPE_SCRIPT_KEY]?.({
+      filenames: [resolve('src/a b/view.tsx'), resolve('src/it\'s "quoted".ts'), resolve('src/main.ts')]
+    }) ?? [];
+
+    expect(commands.map((command) => stringArgvToArray(command))).toEqual([
+      ['npm', 'run', 'lint:fix', '--', 'src/a?b/view.tsx', 'src/it?s??quoted?.ts', 'src/main.ts'],
+      ['npm', 'run', 'format', '--', 'src/a?b/view.tsx', 'src/it?s??quoted?.ts', 'src/main.ts'],
+      ['npm', 'run', 'spellcheck', '--', 'src/a?b/view.tsx', 'src/it?s??quoted?.ts', 'src/main.ts']
     ]);
   });
 });

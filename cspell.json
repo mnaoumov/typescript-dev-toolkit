@@ -66,6 +66,7 @@
     "editability",
     "EISDIR",
     "elink",
+    "ENAMETOOLONG",
     "ENOTEMPTY",
     "errorbox",
     "etags",
