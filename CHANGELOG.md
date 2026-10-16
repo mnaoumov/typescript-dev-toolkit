@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## 3.1.0
+
+- feat(test-runners): add a jest runner, defineJestConfig and a dispatcher that picks the runner
+- feat(formatters): support Prettier and Biome as formatters and Biome as linter
+- fix(docs-site): pass the script's arguments on to astro dev and astro preview
+- fix(docs-site): back off longer on a transient external link failure, and cap the probes per host
+- feat(docs-site): optionally keep the repository's GitHub homepage pointing at the site
+- docs(site): show the package logo as the splash hero image
+
 ## 3.0.0
 
 - feat(eslint-config)!: let dprint own layout and keep only the stylistic rules it cannot express
