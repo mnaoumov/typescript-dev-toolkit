@@ -166,6 +166,26 @@ import {
 
 Builds, serves or previews a package's Astro + Starlight documentation site: the guides under `docs/src/content/docs`, and an API reference generated from the package's TSDoc. The build also renders an Open Graph card per page and checks every link of the output. Each takes the same configuration the site's `astro.config.ts` passes to `defineDocsSiteConfig` (`@mnaoumov/typescript-dev-toolkit/docs-site/astro-config`). Astro, Starlight and the generator's other dependencies are optional peers, which a project installs only to build a site.
 
+#### Repository homepage
+
+Set `repoHomepage` in the site's configuration to have `buildDocsSite` keep the repository's GitHub homepage pointing at the site. The URL it expects is the site's own: Astro's `site` plus its `base`, with a trailing slash.
+
+```typescript
+export const DOCS_SITE_CONFIG: DocsSiteConfig = {
+  owner: 'your-account',
+  repo: 'your-package',
+  repoHomepage: 'set',
+  siteOrigin: 'https://your-account.github.io',
+  title: 'Your Package'
+};
+```
+
+- `'off'` (the default) does nothing.
+- `'check'` compares the homepage with the site's URL and, on a mismatch, prints a warning with the `gh repo edit <owner>/<repo> --homepage <url>` line that fixes it.
+- `'set'` also sets a mismatched homepage, through the `gh` CLI with the credentials it already has.
+
+It never fails the build. A workflow's `GITHUB_TOKEN` can read the homepage but cannot change repository settings, so in CI `'set'` reports the mismatch like `'check'`, as a `::warning::` annotation. Pass the token to the build step as `GH_TOKEN` so `gh` can read the repository; run `docs:build` once locally, or the printed command, to set it.
+
 ## Script entry points
 
 Run the commands through `npm run` with a [jiti](https://github.com/unjs/jiti) entry point per script:

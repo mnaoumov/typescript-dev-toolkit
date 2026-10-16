@@ -9,6 +9,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import type { ApiDocSettings } from './api-doc-settings.ts';
+import type { RepoHomepageMode } from './repo-homepage.ts';
 
 import { DEFAULT_PACKAGE_SITES } from './api-doc-package-sites.ts';
 
@@ -55,6 +56,15 @@ export interface DocsSiteConfig {
    * The repository's name. The site is served under it: `<siteOrigin>/<repo>/`.
    */
   readonly repo: string;
+
+  /**
+   * What `buildDocsSite` does, after the build, about the repository's GitHub homepage: compare it with the site's
+   * URL and report a mismatch (`check`), or also set it (`set`). It reads and writes through the `gh` CLI, and
+   * only ever warns. A workflow's `GITHUB_TOKEN` can read the homepage but not set it, so in CI `set` reports too.
+   *
+   * @default 'off'
+   */
+  readonly repoHomepage?: RepoHomepageMode;
 
   /**
    * The repository root, holding `package.json`, `tsconfig.json` and `node_modules`.
@@ -143,6 +153,11 @@ export interface ResolvedDocsSiteConfig {
   readonly ogOutputDirectory: string;
 
   /**
+   * See {@link DocsSiteConfig.owner}.
+   */
+  readonly owner: string;
+
+  /**
    * The documented package's name, read from the root `package.json`.
    */
   readonly packageName: string;
@@ -161,6 +176,11 @@ export interface ResolvedDocsSiteConfig {
    * See {@link DocsSiteConfig.repo}.
    */
   readonly repo: string;
+
+  /**
+   * See {@link DocsSiteConfig.repoHomepage}.
+   */
+  readonly repoHomepage: RepoHomepageMode;
 
   /**
    * See {@link DocsSiteConfig.rootDirectory}.
@@ -208,6 +228,7 @@ export function resolveDocsSiteConfig(config: DocsSiteConfig): ResolvedDocsSiteC
     owner = 'mnaoumov',
     packageSites = DEFAULT_PACKAGE_SITES,
     repo,
+    repoHomepage = 'off',
     rootDirectory = process.cwd(),
     siteOrigin = 'https://mnaoumov.dev',
     sourceDirectory = 'src',
@@ -245,10 +266,12 @@ export function resolveDocsSiteConfig(config: DocsSiteConfig): ResolvedDocsSiteC
     githubUrl,
     guidesDirectory,
     ogOutputDirectory: join(publicDirectory, 'og'),
+    owner,
     packageName: packageJson.name,
     packageVersion: packageJson.version,
     publicDirectory,
     repo,
+    repoHomepage,
     rootDirectory,
     siteBaseUrl: `${siteOrigin}/${repo}/`,
     siteOrigin,
