@@ -584,52 +584,84 @@ function getPerfectionistConfigs(context: EslintConfigContext): Linter.Config[] 
   }]);
 }
 
+/**
+ * Layout belongs to dprint. Only the `@stylistic` rules dprint cannot express are kept, each verified by formatting a
+ * violating probe with the shared `dprint.json` and linting the result: the rule still reports there. Every other
+ * rule of `stylistic.configs.recommended` was dropped, because dprint fixes it already, or because it fought dprint
+ * (`wrap-iife`, whose parentheses dprint strips, `jsx-quotes` against `quoteStyle`, `operator-linebreak`, `indent`).
+ *
+ * @param context - The {@link EslintConfigContext}.
+ * @returns The configs.
+ */
 function getStylisticConfigs(context: EslintConfigContext): Linter.Config[] {
   return defineConfig([
     {
-      extends: [
-        stylistic.configs.recommended,
-        stylistic.configs.customize({
-          arrowParens: true,
-          braceStyle: '1tbs',
-          commaDangle: 'never',
-          semi: true
-        })
-      ],
       files: context.allFiles(),
+      plugins: {
+        '@stylistic': stylistic
+      },
       rules: {
-        '@stylistic/generator-star-spacing': 'off',
-        '@stylistic/indent': 'off',
-        '@stylistic/indent-binary-ops': 'off',
-        '@stylistic/jsx-one-expression-per-line': 'off',
-        '@stylistic/no-extra-semi': 'error',
-        '@stylistic/object-curly-newline': [
+        // The dprint `arrowFunction.useParentheses` default, `maintain`, keeps `x => x`.
+        '@stylistic/arrow-parens': ['error', 'always'],
+        // Not layout: it removes or adds the braces themselves, which dprint never does.
+        '@stylistic/jsx-curly-brace-presence': [
           'error',
           {
-            ExportDeclaration: {
-              minProperties: 2,
-              multiline: true
-            },
-            ImportDeclaration: {
-              minProperties: 2,
-              multiline: true
-            }
+            children: 'never',
+            // eslint-disable-next-line unicorn/name-replacements -- `propElementValues` is the rule's own option name.
+            propElementValues: 'always',
+            props: 'never'
           }
         ],
-        '@stylistic/operator-linebreak': [
+        // The dprint formatter keeps blank lines as written and never inserts one.
+        '@stylistic/lines-between-class-members': [
           'error',
-          'before',
+          'always',
           {
-            overrides: {
-              '=': 'after'
-            }
+            exceptAfterOverload: true,
+            exceptAfterSingleLine: true
           }
         ],
+        // The dprint formatter keeps a numeric literal's text, so `.5` and `2.` stay.
+        '@stylistic/no-floating-decimal': 'error',
+        // Not layout: it asks for parentheses that change how the expression reads, which dprint never adds.
+        '@stylistic/no-mixed-operators': [
+          'error',
+          {
+            allowSamePrecedence: true,
+            groups: [
+              ['==', '!=', '===', '!==', '>', '>=', '<', '<='],
+              ['&&', '||'],
+              ['in', 'instanceof']
+            ]
+          }
+        ],
+        // The dprint formatter replaces tab indentation but leaves a tab inside a comment.
+        '@stylistic/no-tabs': 'error',
+        // The dprint `quoteProps` default is `preserve`.
+        '@stylistic/quote-props': ['error', 'consistent-as-needed'],
+        // The dprint `quoteStyle` covers string literals only, and leaves a template literal with no substitution.
         '@stylistic/quotes': [
           'error',
           'single',
           {
             allowTemplateLiterals: 'never'
+          }
+        ],
+        // The dprint formatter adds the space after `//` but not after `/*` or before `*/`.
+        '@stylistic/spaced-comment': [
+          'error',
+          'always',
+          {
+            block: {
+              balanced: true,
+              exceptions: ['*'],
+              markers: ['!']
+            },
+            line: {
+              exceptions: ['/', '#'],
+              markers: ['/']
+            }
           }
         ]
       }
