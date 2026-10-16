@@ -5,7 +5,8 @@
  *
  * Every bare specifier in the scanned folders (`dist/lib` and `bin` by default, code and declarations, ESM and
  * CommonJS) must name a package in `dependencies`, `optionalDependencies` or `peerDependencies`, the package itself,
- * or a Node builtin; a declaration file's import may also be served by the package's `@types` one. A package in
+ * or a builtin (any `node:` specifier, Node's own, and Electron's `electron` and `original-fs`); a declaration
+ * file's import may also be served by the package's `@types` one. A package in
  * `devDependencies` only is present in the package's own repository and absent from a
  * consumer's install, so nothing there fails, and the consumer gets `Cannot find module`.
  */
@@ -31,6 +32,12 @@ import { RepoPaths } from './repo-paths.ts';
  */
 export const DEFAULT_VALIDATE_DEPENDENCIES_FOLDERS: readonly string[] = [RepoPaths.DistLib, 'bin'];
 
+/**
+ * The modules Electron provides to its own processes, which no package installs: Node's `isBuiltin` does not know them.
+ * `electron` also covers its `electron/main`, `electron/renderer` and `electron/common` subpaths.
+ */
+const ELECTRON_BUILTIN_PACKAGE_NAMES: ReadonlySet<string> = new Set(['electron', 'original-fs']);
+const NODE_SCHEME = 'node:';
 const DECLARATION_FILE_PATTERN = /\.d\.(?:cts|mts|ts)$/u;
 const SCANNED_FILE_PATTERN = /\.(?:cjs|cts|js|mjs|mts|ts)$/u;
 const TYPES_SCOPE = '@types/';
@@ -125,16 +132,21 @@ function getImportSpecifiers(sourceText: string): string[] {
  * Gets the package a bare specifier names.
  *
  * @param specifier - The module specifier.
- * @returns The package name, or `null` for a relative or absolute path or a Node builtin.
+ * @returns The package name, or `null` for a relative or absolute path, a builtin of Node or Electron, or any
+ * `node:`-scheme specifier: no package name can start with `node:`, and Electron's `node:original-fs` is one Node's own
+ * list lacks.
  */
 function getPackageName(specifier: string): null | string {
-  if (specifier.startsWith('.') || specifier.startsWith('/') || isBuiltin(specifier)) {
+  if (
+    specifier.startsWith('.') || specifier.startsWith('/') || specifier.startsWith(NODE_SCHEME) || isBuiltin(specifier)
+  ) {
     return null;
   }
 
   const segments = specifier.split('/');
   const segmentCount = specifier.startsWith('@') ? SCOPED_PACKAGE_NAME_SEGMENT_COUNT : 1;
-  return segments.slice(0, segmentCount).join('/');
+  const packageName = segments.slice(0, segmentCount).join('/');
+  return ELECTRON_BUILTIN_PACKAGE_NAMES.has(packageName) ? null : packageName;
 }
 
 /**
