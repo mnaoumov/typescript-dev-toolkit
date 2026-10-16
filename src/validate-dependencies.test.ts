@@ -99,6 +99,28 @@ describe('validateDependencies', () => {
     );
   });
 
+  it('passes for every node: specifier and for Electron builtins, which Node does not list', async () => {
+    await writeFiles({
+      'dist/lib/cjs/a.cjs': [
+        'const fs = window.require(\'node:original-fs\');',
+        'const fs2 = require(\'original-fs\');',
+        'const { ipcRenderer } = require(\'electron\');',
+        'const { webUtils } = require(\'electron/renderer\');'
+      ].join('\n'),
+      'dist/lib/esm/a.d.mts': 'import type { App } from \'electron/main\';\nexport declare const app: App;\n'
+    });
+
+    await expect(validateDependencies()).resolves.toBeUndefined();
+  });
+
+  it('still reports a package whose name only starts like an Electron builtin', async () => {
+    await writeFiles({
+      'dist/lib/a.mjs': 'import \'electron-store\';\n'
+    });
+
+    await expect(validateDependencies()).rejects.toThrow(/:\ndist\/lib\/a\.mjs: electron-store$/u);
+  });
+
   it('lets a declaration file import a package its @types package serves, and only a declaration file', async () => {
     await writeFiles({
       'dist/lib/a.d.ts': 'import type { Node } from \'estree\';\nimport type { X } from \'@typed/scoped\';\n',
