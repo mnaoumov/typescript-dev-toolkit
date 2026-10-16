@@ -27,6 +27,18 @@ import {
 } from '../root.ts';
 
 /**
+ * The flat configuration files ESLint reads.
+ */
+const ESLINT_CONFIG_FILE_NAMES: readonly string[] = [
+  RepoPaths.EslintConfigJs,
+  RepoPaths.EslintConfigMjs,
+  RepoPaths.EslintConfigCjs,
+  RepoPaths.EslintConfigTs,
+  RepoPaths.EslintConfigMts,
+  RepoPaths.EslintConfigCts
+];
+
+/**
  * The flags that make a WARNING count as a finding, passed on every run.
  *
  * ESLint exits `0` when a run reported warnings and no errors, so without `--max-warnings 0` the gate reads a
@@ -176,6 +188,15 @@ export function describeFailureToLint(result: ExecResult): string {
 }
 
 /**
+ * Says whether the project configures ESLint itself.
+ *
+ * @returns Whether an `eslint.config.*` file exists at the project root.
+ */
+export function hasEslintConfig(): boolean {
+  return ESLINT_CONFIG_FILE_NAMES.some((fileName) => existsSync(resolvePathFromRootSafe({ path: fileName })));
+}
+
+/**
  * Lint the project with ESLint.
  *
  * @param options - The {@link LintOptions}.
@@ -184,21 +205,7 @@ export function describeFailureToLint(result: ExecResult): string {
  */
 export async function lint(options?: LintOptions): Promise<void> {
   const { defaultConfigFilePath, paths, shouldFix } = options ?? {};
-  const configFiles = [
-    RepoPaths.EslintConfigJs,
-    RepoPaths.EslintConfigMjs,
-    RepoPaths.EslintConfigCjs,
-    RepoPaths.EslintConfigTs,
-    RepoPaths.EslintConfigMts,
-    RepoPaths.EslintConfigCts
-  ];
-
-  const doesConfigFileExist = configFiles.some((configFile) => {
-    const configFilePath = resolvePathFromRootSafe({ path: configFile });
-    return existsSync(configFilePath);
-  });
-
-  if (!doesConfigFileExist && defaultConfigFilePath) {
+  if (!hasEslintConfig() && defaultConfigFilePath) {
     getLibDebugger('ESLint:lint')('ESLint configuration file not found. Creating default config...');
     await cp(defaultConfigFilePath, resolvePathFromRootSafe({ path: basename(defaultConfigFilePath) }));
   }

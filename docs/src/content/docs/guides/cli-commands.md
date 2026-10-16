@@ -6,7 +6,7 @@ description: Build, lint, format, spellcheck, test, gate and release commands, c
 `@mnaoumov/typescript-dev-toolkit` exposes its commands as functions, one module per tool. Each is identified by its import subpath. Import one and call it from a script:
 
 ```typescript
-import { lint } from '@mnaoumov/typescript-dev-toolkit/linters/eslint';
+import { lint } from '@mnaoumov/typescript-dev-toolkit/linters/auto';
 
 await lint();
 ```
@@ -73,20 +73,53 @@ The pipeline every `@mnaoumov` package's `build:*` scripts call: the generated b
 ### Format code
 
 ```typescript
-import { format } from '@mnaoumov/typescript-dev-toolkit/formatters/dprint';
+import { format } from '@mnaoumov/typescript-dev-toolkit/formatters/auto';
 ```
 
-Formats the code with [dprint](https://dprint.dev/). Pass `{ rewrite: false }` to check the formatting without changing anything.
+Formats the code with the formatter the project configures, found from the files at its root, in this order:
+
+1. `dprint.json`: [dprint](https://dprint.dev/).
+2. A Prettier configuration (`.prettierrc*`, `prettier.config.*`, or a `prettier` key in `package.json`): [Prettier](https://prettier.io/).
+3. `biome.json` or `biome.jsonc`: [Biome](https://biomejs.dev/).
+
+A project with none of them gets dprint. Pass `{ formatter: 'prettier' }` (or `'biome'`, `'dprint'`) to choose one, and `{ rewrite: false }` to check the formatting without changing anything. Each formatter also has a module of its own: `formatters/dprint`, `formatters/prettier` and `formatters/biome`.
+
+Prettier and Biome are optional peers, so install the one you use (`npm install --save-dev prettier` or `npm install --save-dev @biomejs/biome`). The package ships a shared configuration for each, written to match the dprint style as closely as the tool allows: single quotes, no trailing commas, semicolons, two-space indentation, parentheses around every arrow parameter, and a 120-column line, because both re-wrap every statement to their line width.
+
+For Prettier, `prettier.config.mjs`:
+
+```javascript
+import { getPrettierConfig } from '@mnaoumov/typescript-dev-toolkit/formatters/prettier';
+
+export default {
+  ...getPrettierConfig(),
+  // Your own options.
+};
+```
+
+A project with no Prettier configuration at all is formatted with the shared one. Markdown and lockfiles are left alone, as with dprint, and `.gitignore` and `.prettierignore` are honored.
+
+For Biome, `biome.json`:
+
+```json
+{
+  "extends": ["./node_modules/@mnaoumov/typescript-dev-toolkit/assets/biome.json"]
+}
+```
+
+A project with no `biome.json` gets that file written on the first run. The shared configuration reads `.gitignore`, so the project must be a git repository.
 
 ### Lint code
 
 ```typescript
-import { lint } from '@mnaoumov/typescript-dev-toolkit/linters/eslint';
+import { lint } from '@mnaoumov/typescript-dev-toolkit/linters/auto';
 ```
 
-Lints the code with ESLint. A warning fails it. Pass `{ shouldFix: true }` to apply the autofixes.
+Lints the code with ESLint when the project has an `eslint.config.*` file, with Biome when it has only a `biome.json` or `biome.jsonc`, and with ESLint when it has neither. Pass `{ linter: 'biome' }` or `{ linter: 'eslint' }` to choose one, and `{ shouldFix: true }` to apply the autofixes. A warning fails either linter.
 
-A run that never finished linting (a rule crash, a broken config or path) is reported as such rather than as findings, because the two need different fixes.
+ESLint (`linters/eslint`) reports a run that never finished linting (a rule crash, a broken config or path) as such rather than as findings, because the two need different fixes. The shared ESLint config keeps only the nine `@stylistic` rules a formatter cannot express, and a test checks that they agree with dprint, Prettier and Biome alike, so any of the three can own layout beside it.
+
+Biome (`linters/biome`) lints with its recommended rules from the shared `biome.json`, which also turns off `useLiteralKeys` (TypeScript's `noPropertyAccessFromIndexSignature` asks for the opposite) and the unused-variable rules in `.astro`, `.svelte` and `.vue` files, whose markup Biome does not read.
 
 ### Lint Markdown
 
@@ -209,7 +242,7 @@ Each script wraps its command in `wrapCliTask`, which turns a thrown error into 
 
 ```typescript
 import { wrapCliTask } from '@mnaoumov/typescript-dev-toolkit/cli-utils';
-import { lint } from '@mnaoumov/typescript-dev-toolkit/linters/eslint';
+import { lint } from '@mnaoumov/typescript-dev-toolkit/linters/auto';
 
 await wrapCliTask(async () => {
   await lint();
