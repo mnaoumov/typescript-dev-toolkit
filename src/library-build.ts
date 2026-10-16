@@ -96,8 +96,8 @@ export const LIBRARY_BUILD_STEPS: readonly string[] = [
 ];
 
 /**
- * The export condition the `obsidian-dev-utils` workspace maps every subpath onto its TypeScript source with, so a
- * package there can import a sibling package's source before anything is built. Pass it to
+ * The export condition a repository holding several packages maps every subpath onto its TypeScript source with, so
+ * a package there can import a sibling package's source before anything is built. Pass it to
  * {@link generateLibraryExports} through {@link GenerateLibraryExportsOptions.sourceCondition}.
  */
 export const SOURCE_CONDITION = '@mnaoumov/source';

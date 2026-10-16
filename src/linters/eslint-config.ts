@@ -11,10 +11,7 @@
 
 /* v8 ignore start -- Declarative ESLint rule/plugin configuration; correctness is verified by running ESLint, not unit tests. */
 
-import type {
-  ESLint,
-  Linter
-} from 'eslint';
+import type { Linter } from 'eslint';
 
 /* eslint-disable no-magic-numbers -- We disabled magic numbers because they are used all over the configs. */
 import commentsConfigs from '@eslint-community/eslint-plugin-eslint-comments/configs';
@@ -84,22 +81,10 @@ export interface GetTypeScriptEslintConfigsParams {
   readonly context: EslintConfigContext;
 
   /**
-   * The plugin registered under the in-house namespace. A project-type layer that adds in-house rules of its own
-   * passes ONE plugin carrying the generic rules and its own, because ESLint refuses two plugins under one namespace.
-   * Defaults to the plugin carrying the generic rules alone.
-   */
-  readonly inHousePlugin?: ESLint.Plugin;
-
-  /**
    * The oldest Node version shipped source has to run on, as a semver range. When omitted, `eslint-plugin-n` reads
    * the `engines` field of the project's `package.json`.
    */
   readonly minimumNodeVersion?: string;
-}
-
-interface GetInHousePluginConfigsParams {
-  readonly context: EslintConfigContext;
-  readonly inHousePlugin: ESLint.Plugin;
 }
 
 interface GetNodeCompatConfigsParams {
@@ -399,7 +384,7 @@ export function getGlobalIgnoreConfigs(): Linter.Config[] {
      * On top of `.gitignore`, not instead of it: git excludes Claude Code's worktree folder through
      * `.git/info/exclude`, which `includeIgnoreFile` above does not read. See `lint-ignores.ts`.
      */
-    globalIgnores([CLAUDE_WORKTREES_IGNORE_GLOB], 'obsidian-dev-utils/claude-worktrees')
+    globalIgnores([CLAUDE_WORKTREES_IGNORE_GLOB], 'typescript-dev-toolkit/claude-worktrees')
   );
 }
 
@@ -420,7 +405,7 @@ export function getTypeScriptEslintConfigs(params: GetTypeScriptEslintConfigsPar
     ...getUnicornConfigs(context),
     ...getEslintImportResolverTypescriptConfigs(),
     ...getEslintCommentsConfigs(context),
-    ...getInHousePluginConfigs({ context, inHousePlugin: params.inHousePlugin ?? inHouseEslintPlugin }),
+    ...getInHousePluginConfigs(context),
     ...getNodeCompatConfigs({ context, minimumNodeVersion: params.minimumNodeVersion })
   );
 }
@@ -529,27 +514,27 @@ function getImportXConfigs(context: EslintConfigContext): Linter.Config[] {
   ]);
 }
 
-function getInHousePluginConfigs(params: GetInHousePluginConfigsParams): Linter.Config[] {
+function getInHousePluginConfigs(context: EslintConfigContext): Linter.Config[] {
   return defineConfig([
     {
-      files: params.context.allFiles(),
+      files: context.allFiles(),
       plugins: {
-        [IN_HOUSE_ESLINT_PLUGIN_NAME]: params.inHousePlugin
+        [IN_HOUSE_ESLINT_PLUGIN_NAME]: inHouseEslintPlugin
       },
       rules: {
-        'obsidian-dev-utils/no-async-callback-to-unsafe-return': 'error',
+        'typescript-dev-toolkit/no-async-callback-to-unsafe-return': 'error',
         /*
          * Measured over 32 plugins built on this config before it was turned on (2026-09-24): 29 had no finding,
          * the other three had 8 between them, every one a genuinely dead link.
          */
-        'obsidian-dev-utils/no-unresolved-jsdoc-link': 'error',
-        'obsidian-dev-utils/no-unused-params-members': 'error',
-        'obsidian-dev-utils/no-used-underscore-variables': 'error',
-        'obsidian-dev-utils/params-options-name-match': 'error',
-        'obsidian-dev-utils/prefer-noop-async': 'error',
-        'obsidian-dev-utils/readonly-params-options-result-members': 'error',
-        'obsidian-dev-utils/require-method-template': 'error',
-        'obsidian-dev-utils/require-super-call': 'off'
+        'typescript-dev-toolkit/no-unresolved-jsdoc-link': 'error',
+        'typescript-dev-toolkit/no-unused-params-members': 'error',
+        'typescript-dev-toolkit/no-used-underscore-variables': 'error',
+        'typescript-dev-toolkit/params-options-name-match': 'error',
+        'typescript-dev-toolkit/prefer-noop-async': 'error',
+        'typescript-dev-toolkit/readonly-params-options-result-members': 'error',
+        'typescript-dev-toolkit/require-method-template': 'error',
+        'typescript-dev-toolkit/require-super-call': 'off'
       }
     }
   ]);
@@ -742,7 +727,7 @@ function getUnicornConfigs(context: EslintConfigContext): Linter.Config[] {
          * `getLibraryDebugger`, renaming exported API after the package it belongs to.
          *
          * Convention: `params` is the parameter-bag convention, enforced by
-         * `obsidian-dev-utils/params-options-name-match`, which requires bag types to be named
+         * `typescript-dev-toolkit/params-options-name-match`, which requires bag types to be named
          * `<Owner>Params` / `<Owner>Options`. Expanding it to `Parameters` would put the two rules in direct
          * contradiction and break 300+ exported type names.
          *

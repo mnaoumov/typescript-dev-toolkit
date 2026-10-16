@@ -128,7 +128,7 @@ export async function buildCompileTypeScript(): Promise<void> {
  *
  * This function recursively reads the contents of the templates folder and copies each file to the
  * corresponding path under {@link RepoPaths.DistTemplates}, so consumers can copy the
- * templates from `node_modules/obsidian-dev-utils/dist/templates`. A trailing `.template` on a source
+ * templates from `node_modules/@mnaoumov/typescript-dev-toolkit/dist/templates`. A trailing `.template` on a source
  * file name is stripped in the destination (e.g. `eslint.config.mts.template` is copied as
  * `eslint.config.mts`), so an active config template can live in the repo under a name that the
  * corresponding tool does not auto-discover.

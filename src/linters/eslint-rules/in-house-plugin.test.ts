@@ -12,7 +12,7 @@ import {
 
 describe('in-house plugin', () => {
   it('should keep the namespace existing disable comments name', () => {
-    expect(IN_HOUSE_ESLINT_PLUGIN_NAME).toBe('obsidian-dev-utils');
+    expect(IN_HOUSE_ESLINT_PLUGIN_NAME).toBe('typescript-dev-toolkit');
   });
 
   it('should register every generic rule', () => {
