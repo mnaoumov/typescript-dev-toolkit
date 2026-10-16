@@ -19,6 +19,9 @@
   "license": "MIT",
   "author": "Michael Naumov",
   "type": "module",
+  "bin": {
+    "sync-upstreams": "bin/sync-upstreams.mjs"
+  },
   "exports": {
     ".": {
       "import": {
@@ -240,6 +243,7 @@
   "files": [
     "**/package.json",
     "assets/",
+    "bin/",
     "dist/",
     "!dist/*.tgz",
     "README.md",

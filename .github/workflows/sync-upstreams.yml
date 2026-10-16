@@ -1,0 +1,120 @@
+name: Sync Upstreams
+
+# A reusable workflow for a repository that vendors upstream code. It checks every upstream that `upstreams.json` lists
+# and opens or updates one PR per upstream that moved, on the branch `upstream/<name>`. Each PR carries the upstream
+# compare link, the changed upstream files, the results of the handler and the verify command, and the diff summary of
+# what was generated. A failing handler or verify still opens the PR, as a draft, so a breaking upstream change is seen
+# rather than skipped. Nothing is ever merged automatically.
+#
+# A PR opened with GITHUB_TOKEN does not trigger other workflows, which is why the verify command runs here.
+#
+# The default sync command runs the `sync-upstreams` bin of the installed toolkit, which ships from 3.3.0 on. The caller
+# grants the permissions and owns the schedule, and pins the workflow to a release tag:
+#
+#   on:
+#     schedule:
+#       - cron: '17 4 * * *'
+#     workflow_dispatch:
+#       inputs:
+#         only:
+#           description: Comma-separated upstream names to check (all when empty)
+#           default: ''
+#         dry-run:
+#           description: Print the PRs instead of pushing them
+#           type: boolean
+#           default: false
+#   permissions:
+#     contents: write
+#     pull-requests: write
+#   jobs:
+#     sync:
+#       uses: mnaoumov/typescript-dev-toolkit/.github/workflows/sync-upstreams.yml@3.3.0
+#       with:
+#         only: ${{ inputs.only }}
+#         dry-run: ${{ inputs.dry-run || false }}
+
+on:
+  workflow_call:
+    inputs:
+      node-version-file:
+        description: The file naming the Node.js version
+        type: string
+        default: .nvmrc
+      install-command:
+        description: The command that installs the dependencies, the toolkit among them
+        type: string
+        default: npm ci
+      setup-command:
+        description: A command to run after the install and before the sync, such as a build (none when empty)
+        type: string
+        default: ''
+      sync-command:
+        description: The command that runs the sync; the base branch, the names and the dry-run flag are appended
+        type: string
+        default: npx sync-upstreams
+      config:
+        description: The path to upstreams.json (the one at the repository root when empty)
+        type: string
+        default: ''
+      base:
+        description: The branch the PRs target (the branch the workflow runs on when empty)
+        type: string
+        default: ''
+      only:
+        description: Comma-separated upstream names to check (all when empty)
+        type: string
+        default: ''
+      dry-run:
+        description: Print the PRs instead of pushing them
+        type: boolean
+        default: false
+
+concurrency:
+  group: sync-upstreams-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GITHUB_TOKEN: ${{ github.token }}
+      HUSKY: 0
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: ${{ inputs.node-version-file }}
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: ${{ inputs.install-command }}
+
+      - name: Setup
+        if: inputs.setup-command != ''
+        run: ${{ inputs.setup-command }}
+
+      - name: Configure git
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+      - name: Sync upstreams
+        env:
+          BASE: ${{ inputs.base || github.ref_name }}
+          CONFIG: ${{ inputs.config }}
+          DRY_RUN: ${{ inputs.dry-run }}
+          ONLY: ${{ inputs.only }}
+          SYNC_COMMAND: ${{ inputs.sync-command }}
+        run: |
+          args=("--base=$BASE")
+          if [ -n "$CONFIG" ]; then args+=("--config=$CONFIG"); fi
+          if [ -n "$ONLY" ]; then args+=("--only=$ONLY"); fi
+          if [ "$DRY_RUN" = 'true' ]; then args+=('--dry-run'); fi
+          # The command is the caller's own input, so it is split into words on purpose.
+          $SYNC_COMMAND "${args[@]}"
