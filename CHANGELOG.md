@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 2.0.0
+
+- feat(docs-site): add the shared documentation-site builder and this package's site
+- feat(eslint)!: register the in-house rules under the typescript-dev-toolkit namespace
+- docs: mark plugin names as code in AGENTS.md and comments
+
 ## 1.3.1
 
 - fix(markdownlint): skip linkinator when linkCheckExcludeGlobs leaves no file
