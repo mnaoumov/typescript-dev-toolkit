@@ -18,6 +18,7 @@ import {
   getEffectiveCommandLineLength,
   getMaxBatchCommandLength
 } from './exec.ts';
+import { readPackageJsonSync } from './npm.ts';
 import { getPackageManagerRunCommand } from './package-manager.ts';
 
 /**
@@ -63,7 +64,9 @@ export interface NanoStagedTaskContext {
  */
 const PACKAGE_MANAGER_RUN_COMMAND = getPackageManagerRunCommand().join(' ');
 
-const SPELLCHECK_COMMAND = `${PACKAGE_MANAGER_RUN_COMMAND} spellcheck --`;
+const SPELLCHECK_SCRIPT_NAME = 'spellcheck';
+
+const SPELLCHECK_COMMAND = toScriptCommand(SPELLCHECK_SCRIPT_NAME);
 
 /**
  * Room left in every batch for the resolved path of the package manager's executable.
@@ -83,7 +86,8 @@ const EXECUTABLE_PATH_RESERVE = 260;
 const TOKENIZER_UNSAFE_CHARACTERS_REG_EXP = /[\s"']/g;
 
 /**
- * The tasks that REWRITE a staged file, keyed by the nano-staged pattern that claims it.
+ * The npm scripts that REWRITE a staged file, in the order they run, keyed by the nano-staged pattern that
+ * claims it.
  *
  * `lint:fix` and `format` both rewrite the file, so they have to share one key: nano-staged runs its
  * per-pattern groups under `Promise.all` (`run()` in `nano-staged/lib/cmd-runner.js`), and sequences only
@@ -96,15 +100,12 @@ const TOKENIZER_UNSAFE_CHARACTERS_REG_EXP = /[\s"']/g;
  * `globalIgnores` already puts it: a path ESLint ignores is reported as a warning and exits 0 when it is
  * passed explicitly, so it costs a console line rather than a failed commit and needs no key here.
  */
-const WRITER_TASKS: Readonly<Record<string, readonly string[]>> = {
-  '*.{ts,tsx,mts}': [
-    `${PACKAGE_MANAGER_RUN_COMMAND} lint:fix --`,
-    `${PACKAGE_MANAGER_RUN_COMMAND} format --`
-  ],
-  '*.md': [
-    `${PACKAGE_MANAGER_RUN_COMMAND} lint:md:fix --`
-  ]
+const WRITER_SCRIPT_NAMES: Readonly<Record<string, readonly string[]>> = {
+  '*.{ts,tsx,mts}': ['lint:fix', 'format'],
+  '*.md': ['lint:md:fix']
 };
+
+const WRITER_TASKS: Readonly<Record<string, readonly string[]>> = toWriterTasks(() => true);
 
 /**
  * Nano-staged configuration that runs file-based lint, format, and spellcheck on staged files.
@@ -121,7 +122,7 @@ const WRITER_TASKS: Readonly<Record<string, readonly string[]>> = {
  * {@link getNanoStagedConfig} as `additionalWriterTasks` rather than spreading this object and adding a key,
  * which would reintroduce the overlap for that key's files.
  */
-export const obsidianDevUtilsConfig: NanoStagedConfig = partitionSpellcheck(WRITER_TASKS);
+export const obsidianDevUtilsConfig: NanoStagedConfig = partitionSpellcheck(WRITER_TASKS, true);
 
 const NANO_STAGED_ENV_VARIABLE = 'NANO_STAGED';
 
@@ -133,6 +134,12 @@ const NANO_STAGED_ENV_VARIABLE = 'NANO_STAGED';
  * skipped. This mirrors husky's own `HUSKY=0` switch, but scoped to the nano-staged step (so the
  * commit-msg hook still runs). Otherwise it returns {@link obsidianDevUtilsConfig}, or — when
  * `additionalWriterTasks` are given — the same configuration re-partitioned with those writers added.
+ *
+ * A shared task whose npm script the project's `package.json` does not declare is left out, so a project
+ * without, say, markdownlint does not fail its first commit that stages a `.md` file on a missing script. A
+ * writer pattern left with no writer is dropped, and spellcheck runs only when `spellcheck` is declared, in
+ * which case its files fall to the spellcheck-only key. The `additionalWriterTasks` are the caller's own and
+ * are kept as given.
  *
  * `NANO_STAGED` is not an npm script, so it carries its own switch rather than the script-name-derived one
  * every npm script gets — but both share the same notion of an off value, via {@link isEnvVariableOff}.
@@ -153,17 +160,21 @@ export function getNanoStagedConfig(options?: GetNanoStagedConfigOptions): NanoS
     process.exit(0);
   }
 
+  const scriptNames = new Set(Object.keys(readPackageJsonSync().scripts ?? {}));
+  const hasAllSharedScripts = [SPELLCHECK_SCRIPT_NAME, ...Object.values(WRITER_SCRIPT_NAMES).flat()]
+    .every((scriptName) => scriptNames.has(scriptName));
   const additionalWriterTasks = options?.additionalWriterTasks ?? {};
-  if (Object.keys(additionalWriterTasks).length === 0) {
+  if (hasAllSharedScripts && Object.keys(additionalWriterTasks).length === 0) {
     return obsidianDevUtilsConfig;
   }
 
-  const duplicatePattern = Object.keys(additionalWriterTasks).find((pattern) => Object.hasOwn(WRITER_TASKS, pattern));
+  const writerTasks = toWriterTasks((scriptName) => scriptNames.has(scriptName));
+  const duplicatePattern = Object.keys(additionalWriterTasks).find((pattern) => Object.hasOwn(writerTasks, pattern));
   if (duplicatePattern !== undefined) {
     throw new Error(`nano-staged writer pattern '${duplicatePattern}' is already a shared writer pattern.`);
   }
 
-  return partitionSpellcheck({ ...WRITER_TASKS, ...additionalWriterTasks });
+  return partitionSpellcheck({ ...writerTasks, ...additionalWriterTasks }, scriptNames.has(SPELLCHECK_SCRIPT_NAME));
 }
 
 /**
@@ -223,17 +234,26 @@ function batchCommandArguments(prefix: string, commandArguments: readonly string
  * construction no longer holds -- hence the throw. The unit test pins the partition against the installed
  * nano-staged compiler, so a release that changes its dialect fails there rather than in a commit.
  *
+ * Without spellcheck there is nothing to partition: each writer key runs its own commands, and no complement
+ * key is emitted.
+ *
  * @param writerTasks - The file-rewriting tasks, keyed by the pattern that claims their files.
+ * @param shouldSpellcheck - Whether the project has a `spellcheck` script to run.
  * @returns The configuration, with the spellcheck step partitioned across the keys.
  */
-function partitionSpellcheck(writerTasks: Readonly<Record<string, readonly string[]>>): NanoStagedConfig {
+function partitionSpellcheck(writerTasks: Readonly<Record<string, readonly string[]>>, shouldSpellcheck: boolean): NanoStagedConfig {
+  if (!shouldSpellcheck) {
+    return Object.fromEntries(Object.entries(writerTasks).map(([pattern, commands]) => [pattern, toBatchedTask(commands)]));
+  }
+
   const patterns = Object.keys(writerTasks);
   const patternWithSlash = patterns.find((pattern) => pattern.includes('/'));
   if (patternWithSlash !== undefined) {
     throw new Error(`nano-staged writer pattern '${patternWithSlash}' contains '/', which the spellcheck partition cannot express.`);
   }
 
-  const complementPattern = `!(${patterns.map((pattern) => `${pattern}!(?)`).join('|')})*`;
+  // `!()*` would compile to a lookahead that rejects every path, so with no writer the complement is everything.
+  const complementPattern = patterns.length === 0 ? '*' : `!(${patterns.map((pattern) => `${pattern}!(?)`).join('|')})*`;
   const config: NanoStagedConfig = {
     [complementPattern]: toBatchedTask([SPELLCHECK_COMMAND])
   };
@@ -291,4 +311,32 @@ function toCommandArgument(filename: string): string {
     commandArgument = `./${commandArgument}`;
   }
   return commandArgument.replaceAll(TOKENIZER_UNSAFE_CHARACTERS_REG_EXP, '?');
+}
+
+/**
+ * Builds the command prefix that runs an npm script over the paths appended to it.
+ *
+ * @param scriptName - The script name.
+ * @returns The command prefix, such as `npm run lint:fix --`.
+ */
+function toScriptCommand(scriptName: string): string {
+  return `${PACKAGE_MANAGER_RUN_COMMAND} ${scriptName} --`;
+}
+
+/**
+ * Builds the shared writer tasks from {@link WRITER_SCRIPT_NAMES}, keeping only the scripts a filter accepts
+ * and dropping a pattern left with none.
+ *
+ * @param shouldIncludeScript - Whether to run a given script.
+ * @returns The writer tasks, keyed by the pattern that claims their files.
+ */
+function toWriterTasks(shouldIncludeScript: (scriptName: string) => boolean): Record<string, readonly string[]> {
+  const writerTasks: Record<string, readonly string[]> = {};
+  for (const [pattern, scriptNames] of Object.entries(WRITER_SCRIPT_NAMES)) {
+    const commands = scriptNames.filter((scriptName) => shouldIncludeScript(scriptName)).map((scriptName) => toScriptCommand(scriptName));
+    if (commands.length > 0) {
+      writerTasks[pattern] = commands;
+    }
+  }
+  return writerTasks;
 }
