@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 3.6.4
+
+- fix(docs-site): keep the target of a bare {@link} in plain-text descriptions
+
 ## 3.6.3
 
 - fix(docs-site): escape the braces of a function's return type on its API page
