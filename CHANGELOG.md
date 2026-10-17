@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 3.6.3
+
+- fix(docs-site): escape the braces of a function's return type on its API page
+
 ## 3.6.2
 
 - fix(docs-site): re-render the OG cards when the site logo changes
