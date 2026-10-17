@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## 3.6.2
+
+- fix(docs-site): re-render the OG cards when the site logo changes
+- docs: replace the site logo and favicon with the approved mark
+
 ## 3.6.1
 
 - fix(svelte-wrapper-plugin): load esbuild-svelte at setup, not at module load
