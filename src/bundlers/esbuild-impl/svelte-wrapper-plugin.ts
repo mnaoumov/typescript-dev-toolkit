@@ -4,42 +4,65 @@
  * Svelte wrapper esbuild plugin.
  */
 
-/* v8 ignore start -- esbuild plugin wrapping esbuild-svelte with svelte-preprocess; requires a live esbuild context. */
-
-import type { Plugin } from 'esbuild';
+import type {
+  Plugin,
+  PluginBuild
+} from 'esbuild';
 
 import { extractDefaultExportInterop } from '@mnaoumov/typescript-lib/object-utils';
-import esbuildSvelte_ from 'esbuild-svelte';
-import { sveltePreprocess } from 'svelte-preprocess';
 
 import { readPackageJson } from '../../npm.ts';
 
-const esbuildSvelte = extractDefaultExportInterop(esbuildSvelte_);
+const MISSING_SVELTE_MESSAGE_REG_EXP = /Cannot find (?:module|package) 'svelte(?:\/[^']*)?'/;
+const MODULE_NOT_FOUND_CODES = new Set(['ERR_MODULE_NOT_FOUND', 'MODULE_NOT_FOUND']);
+const SVELTE_FILTER = /\.svelte$/;
+
+/**
+ * Checks whether an error is the one loading `esbuild-svelte` throws when the `svelte` package is not installed.
+ *
+ * `esbuild-svelte` imports `svelte/compiler` when it loads, and package managers that do not install peers (Yarn 1)
+ * leave `svelte` out of a project that has no Svelte components.
+ *
+ * @param error - The error to check.
+ * @returns Whether the error says that the `svelte` package cannot be found.
+ */
+export function isMissingSveltePackageError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const code = (error as Partial<Record<'code', unknown>>).code;
+  return typeof code === 'string' && MODULE_NOT_FOUND_CODES.has(code) && MISSING_SVELTE_MESSAGE_REG_EXP.test(error.message);
+}
 
 /**
  * Wraps the esbuild-svelte plugin to ensure that the correct format is used.
+ *
+ * `esbuild-svelte` and `svelte-preprocess` are loaded when the plugin is set up, not when this module is imported. When
+ * the `svelte` package is not installed, a build with no `.svelte` file succeeds, and a build that reaches one fails
+ * with an error that names the missing package.
  *
  * @param isProductionBuild - Whether the build is a production build.
  * @returns The esbuild plugin.
  */
 export function svelteWrapperPlugin(isProductionBuild: boolean): Plugin {
-  const esbuildSveltePlugin = esbuildSvelte({
-    compilerOptions: {
-      css: 'injected',
-      dev: !isProductionBuild
-    },
-    moduleCompilerOptions: {
-      dev: !isProductionBuild
-    },
-    preprocess: sveltePreprocess()
-  });
-
   return {
     name: 'svelte-wrapper',
     async setup(build): Promise<void> {
+      let sveltePlugin: Plugin;
+      try {
+        sveltePlugin = await createEsbuildSveltePlugin(isProductionBuild);
+      } catch (error) {
+        if (!isMissingSveltePackageError(error)) {
+          throw error;
+        }
+        registerMissingSvelteLoader(build);
+        return;
+      }
+
       const packageJson = await readPackageJson();
       const format = packageJson.type === 'module' ? 'esm' : 'cjs';
-      await esbuildSveltePlugin.setup({
+      await sveltePlugin.setup({
         ...build,
         initialOptions: {
           ...build.initialOptions,
@@ -50,4 +73,27 @@ export function svelteWrapperPlugin(isProductionBuild: boolean): Plugin {
   };
 }
 
+/* v8 ignore start -- loads esbuild-svelte with svelte-preprocess; esbuild-svelte compiles only inside a live esbuild build. */
+async function createEsbuildSveltePlugin(isProductionBuild: boolean): Promise<Plugin> {
+  const [esbuildSvelteModule, { sveltePreprocess }] = await Promise.all([import('esbuild-svelte'), import('svelte-preprocess')]);
+  const esbuildSvelte = extractDefaultExportInterop(esbuildSvelteModule.default);
+  return esbuildSvelte({
+    compilerOptions: {
+      css: 'injected',
+      dev: !isProductionBuild
+    },
+    moduleCompilerOptions: {
+      dev: !isProductionBuild
+    },
+    preprocess: sveltePreprocess()
+  });
+}
 /* v8 ignore stop */
+
+function registerMissingSvelteLoader(build: PluginBuild): void {
+  build.onLoad({ filter: SVELTE_FILTER }, (arguments_) => ({
+    errors: [{
+      text: `Cannot compile ${arguments_.path}: the \`svelte\` package is not installed. Install \`svelte\` in the project to build Svelte components.`
+    }]
+  }));
+}
