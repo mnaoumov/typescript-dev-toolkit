@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 3.6.1
+
+- fix(svelte-wrapper-plugin): load esbuild-svelte at setup, not at module load
+
 ## 3.6.0
 
 - feat(library-build): let generateLibraryIndex leave named modules off the barrels
