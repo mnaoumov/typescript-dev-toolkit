@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 3.6.0
+
+- feat(library-build): let generateLibraryIndex leave named modules off the barrels
+
 ## 3.5.0
 
 - fix(library-build): treat node: specifiers and Electron builtins as builtins in validateDependencies
