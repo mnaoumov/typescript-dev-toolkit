@@ -60,7 +60,7 @@ jobs:
             docs/src/content/docs/api
             docs/src/generated-sidebar.json
             docs/public/og
-          key: docs-gen-${{ hashFiles('src/**/*.ts', 'assets/docs-site/**', 'docs/src/content/docs/**/*.md', 'docs/src/content/docs/**/*.mdx', 'astro.config.ts', 'package-lock.json') }}
+          key: docs-gen-${{ hashFiles('src/**/*.ts', 'assets/docs-site/**', 'docs/src/content/docs/**/*.md', 'docs/src/content/docs/**/*.mdx', 'docs/public/favicon.svg', 'astro.config.ts', 'package-lock.json') }}
           restore-keys: |
             docs-gen-
 

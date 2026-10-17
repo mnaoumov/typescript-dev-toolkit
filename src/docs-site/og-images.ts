@@ -6,6 +6,7 @@
 
 import type { Font } from 'satori';
 
+import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import {
   mkdir,
@@ -57,14 +58,21 @@ export interface GenerateOgImagesParams {
   readonly outputDirectory: string;
 }
 
-type CacheManifest = Partial<Record<string, string>>;
+interface CacheManifest {
+  // Each page's content hash, by slug.
+  readonly cards: CardHashes;
+  // The hash of the logo every card carries. The page hashes cannot see it, so a different logo drops them all.
+  readonly logoHash: string;
+}
+
+type CardHashes = Partial<Record<string, string>>;
 
 interface GenerateImagesWithPoolOptions {
   readonly brandText: string;
+  readonly cards: CardHashes;
   readonly changedPages: PageEntry[];
   readonly fonts: Font[];
   readonly logoDataUri: null | string;
-  readonly manifest: CacheManifest;
   readonly outputDirectory: string;
 }
 
@@ -88,7 +96,7 @@ const FRONT_MATTER_REG_EXP = /^---\r?\n(?<FrontMatter>[\s\S]*?)\r?\n---(?:\r?\n|
  * Generates the Open Graph cards.
  *
  * A card is re-rendered only when its title, description, signature or badge changed, tracked by a hash manifest
- * beside the cards. Missing content or fonts skip the step with a warning rather than failing the build.
+ * beside the cards. A different logo file re-renders every card. Missing content or fonts skip the step with a warning rather than failing the build.
  *
  * @param options - The options.
  */
@@ -112,8 +120,10 @@ export async function generateOgImages(options: GenerateOgImagesParams): Promise
   await walkDirectory(contentDocsDirectory, contentDocsDirectory, pages);
   console.warn(`OG images: found ${String(pages.length)} pages`);
 
+  const logoHash = await computeLogoHash(faviconPath);
   const manifest = await loadCacheManifest(manifestPath);
-  const changedPages = pages.filter((page) => manifest[page.slug] !== page.hash);
+  const cards = manifest?.logoHash === logoHash ? { ...manifest.cards } : {};
+  const changedPages = pages.filter((page) => cards[page.slug] !== page.hash);
   console.warn(`OG images: ${String(changedPages.length)} changed / ${String(pages.length)} total`);
 
   if (changedPages.length === 0) {
@@ -127,15 +137,20 @@ export async function generateOgImages(options: GenerateOgImagesParams): Promise
     console.warn(`OG images: favicon not found (${faviconPath}); rendering cards without a logo.`);
   }
 
-  await generateImagesWithPool({ brandText, changedPages, fonts, logoDataUri, manifest, outputDirectory });
+  await generateImagesWithPool({ brandText, cards, changedPages, fonts, logoDataUri, outputDirectory });
 
+  const newManifest: CacheManifest = { cards, logoHash };
   await mkdir(dirname(manifestPath), { recursive: true });
-  await writeFile(manifestPath, JSON.stringify(manifest, null, MANIFEST_INDENT));
+  await writeFile(manifestPath, JSON.stringify(newManifest, null, MANIFEST_INDENT));
   console.warn(`OG images: done. Generated ${String(changedPages.length)} images.`);
 }
 
+async function computeLogoHash(faviconPath: string): Promise<string> {
+  return existsSync(faviconPath) ? createHash('sha256').update(await readFile(faviconPath)).digest('hex') : '';
+}
+
 async function generateImagesWithPool(options: GenerateImagesWithPoolOptions): Promise<void> {
-  const { brandText, changedPages, fonts, logoDataUri, manifest, outputDirectory } = options;
+  const { brandText, cards, changedPages, fonts, logoDataUri, outputDirectory } = options;
   let completed = 0;
   let index = 0;
 
@@ -144,7 +159,7 @@ async function generateImagesWithPool(options: GenerateImagesWithPoolOptions): P
       const outputPath = `${outputDirectory}/${page.slug}.png`;
       await mkdir(dirname(outputPath), { recursive: true });
       await writeFile(outputPath, await renderOgImage(page.params, { brandText, fonts, logoDataUri }));
-      manifest[page.slug] = page.hash;
+      cards[page.slug] = page.hash;
       completed++;
       if (completed % PROGRESS_LOG_INTERVAL === 0) {
         console.warn(`  ${String(completed)}/${String(changedPages.length)} images generated...`);
@@ -157,8 +172,16 @@ async function generateImagesWithPool(options: GenerateImagesWithPoolOptions): P
   }));
 }
 
-async function loadCacheManifest(manifestPath: string): Promise<CacheManifest> {
-  return existsSync(manifestPath) ? (JSON.parse(await readFile(manifestPath, 'utf-8')) as CacheManifest) : {};
+async function loadCacheManifest(manifestPath: string): Promise<CacheManifest | null> {
+  if (!existsSync(manifestPath)) {
+    return null;
+  }
+  // A manifest written before the logo was tracked is a flat slug-to-hash map: it has no `logoHash`, so every card
+  // re-renders once.
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf-8')) as Partial<CacheManifest>;
+  return typeof manifest.logoHash === 'string' && typeof manifest.cards === 'object'
+    ? { cards: manifest.cards, logoHash: manifest.logoHash }
+    : null;
 }
 
 function parseFrontMatter(content: string): Partial<Record<string, unknown>> {

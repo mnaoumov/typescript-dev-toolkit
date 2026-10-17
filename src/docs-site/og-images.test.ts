@@ -26,6 +26,11 @@ import { generateOgImages } from './og-images.ts';
 const FONTS_DIRECTORY = join(import.meta.dirname, '..', '..', 'assets', 'docs-site', 'fonts');
 const FAVICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4"><rect width="4" height="4" fill="#8b6ff5"/></svg>';
 
+interface Manifest {
+  readonly cards: object;
+  readonly logoHash: string;
+}
+
 const roots: string[] = [];
 
 beforeEach(() => {
@@ -80,13 +85,57 @@ describe('generateOgImages', () => {
     expect(existsSync(join(options.outputDirectory, 'guides/intro.png'))).toBe(true);
     expect(existsSync(join(options.outputDirectory, 'index.png'))).toBe(true);
     expect(existsSync(join(options.outputDirectory, 'untitled.png'))).toBe(false);
-    const manifest = JSON.parse(readFileSync(join(options.outputDirectory, '.cache-manifest.json'), 'utf-8')) as object;
-    expect(Object.keys(manifest).sort()).toEqual(['api/x/Alpha', 'guides/intro', 'index']);
+    const manifest = JSON.parse(readFileSync(join(options.outputDirectory, '.cache-manifest.json'), 'utf-8')) as Manifest;
+    expect(Object.keys(manifest.cards).sort()).toEqual(['api/x/Alpha', 'guides/intro', 'index']);
+    expect(manifest.logoHash).toMatch(/^[0-9a-f]{64}$/);
 
     const modified = statSync(join(options.outputDirectory, 'index.png')).mtimeMs;
     await generateOgImages(options);
     expect(statSync(join(options.outputDirectory, 'index.png')).mtimeMs).toBe(modified);
     expect(console.warn).toHaveBeenCalledWith('All OG images up to date.');
+  }, 60_000);
+
+  it('re-renders every card when the logo changes', async () => {
+    const root = createRoot({
+      'content/a.md': '---\ntitle: A\n---\n',
+      'content/b.md': '---\ntitle: B\n---\n',
+      'favicon.svg': FAVICON
+    });
+    const options = getOptions(root);
+    await generateOgImages(options);
+
+    writeFileSync(options.faviconPath, FAVICON.replace('#8b6ff5', '#ff0000'));
+    vi.mocked(console.warn).mockClear();
+    await generateOgImages(options);
+
+    expect(console.warn).toHaveBeenCalledWith('OG images: 2 changed / 2 total');
+  }, 60_000);
+
+  it('re-renders every card when the logo is removed', async () => {
+    const root = createRoot({ 'content/a.md': '---\ntitle: A\n---\n', 'favicon.svg': FAVICON });
+    const options = getOptions(root);
+    await generateOgImages(options);
+
+    rmSync(options.faviconPath);
+    vi.mocked(console.warn).mockClear();
+    await generateOgImages(options);
+
+    expect(console.warn).toHaveBeenCalledWith('OG images: 1 changed / 1 total');
+  }, 60_000);
+
+  it.each([
+    ['a flat manifest from before the logo was tracked', { index: 'stale' }],
+    ['a manifest without cards', { logoHash: 'stale' }]
+  ])('re-renders every card from %s', async (_name, manifest) => {
+    const root = createRoot({
+      'content/index.md': '---\ntitle: Home\n---\n',
+      'favicon.svg': FAVICON,
+      'og/.cache-manifest.json': JSON.stringify(manifest)
+    });
+
+    await generateOgImages(getOptions(root));
+
+    expect(console.warn).toHaveBeenCalledWith('OG images: 1 changed / 1 total');
   }, 60_000);
 
   it('renders without a logo when the favicon is missing', async () => {
