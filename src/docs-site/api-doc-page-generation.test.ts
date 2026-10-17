@@ -145,6 +145,20 @@ describe('api-doc page generation fallbacks', () => {
     expect(lines).toContain('<ConstructorBlock signature="new Alpha()" />');
   });
 
+  it('escapes the braces of an inferred object return type, so MDX does not open an expression', () => {
+    const lines: string[] = [];
+    const codeSpan = '`{ watch }`';
+    renderFunctionPage(
+      lines,
+      createTypeInfo({
+        kind: 'function',
+        methods: [createMemberInfo({ returnDescription: `The ${codeSpan} config, or {}.`, returnType: '{ watch?: Alpha; }', signature: 'alpha()' })]
+      }),
+      new Map()
+    );
+    expect(lines.find((line) => line.startsWith('**Returns:**'))).toBe(String.raw`**Returns:** \{ watch?: Alpha; \} — The ${codeSpan} config, or \{\}.`);
+  });
+
   it('marks an undocumented optional parameter as optional and leaves a required one blank', () => {
     const lines: string[] = [];
     renderMethodOverloadMdx(

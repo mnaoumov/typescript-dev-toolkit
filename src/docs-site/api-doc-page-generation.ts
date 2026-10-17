@@ -41,6 +41,7 @@ import {
   escapeMarkdown,
   escapeMdxAngleBrackets,
   escapeMdxBraces,
+  escapeMdxProse,
   escapeYaml,
   getDisplayName,
   getImportStatement,
@@ -547,8 +548,8 @@ export function renderFunctionPage(lines: string[], info: TypeInfo, allTypes: Ma
     lines.push('');
   }
 
-  const returnDesc = $function.returnDescription ? ` — ${escapeMdxAngleBrackets(resolveLinks($function.returnDescription, allTypes, info.namespace))}` : '';
-  lines.push(`**Returns:** ${escapeMdxAngleBrackets(renderTypeWithLinks($function.returnType, allTypes, info.name, info.namespace))}${returnDesc}`, '');
+  const returnDesc = $function.returnDescription ? ` — ${escapeMdxProse(resolveLinks($function.returnDescription, allTypes, info.namespace))}` : '';
+  lines.push(`**Returns:** ${escapeMdxBraces(escapeMdxAngleBrackets(renderTypeWithLinks($function.returnType, allTypes, info.name, info.namespace)))}${returnDesc}`, '');
 
   for (const example of $function.examples) {
     lines.push('**Example:**', '', renderExampleMdx(example, allTypes, info.namespace), '');
