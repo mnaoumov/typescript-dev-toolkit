@@ -70,6 +70,7 @@ describe('api-doc text utilities', () => {
     const MAX_SIGNATURE_LENGTH = 160;
     expect(truncateSignature(`  ${'alpha '.repeat(REPEATED_WORD_COUNT)}  `)).toHaveLength(MAX_SIGNATURE_LENGTH);
     expect(stripMarkdown('**Alpha** {@link Bravo | Bravo label} [Charlie](https://example.com)')).toBe('Alpha Bravo label Charlie');
+    expect(stripMarkdown('It installs the {@link Bravo} and the {@link Bravo.charlie } it reports to.')).toBe('It installs the Bravo and the Bravo.charlie it reports to.');
   });
 
   it('truncates over-long descriptions at a word boundary', () => {

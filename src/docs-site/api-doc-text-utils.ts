@@ -378,7 +378,12 @@ const OG_DESCRIPTION_MAX_LENGTH = 160;
  * @returns The plain text, at most 160 characters.
  */
 export function stripMarkdown(text: string): string {
-  const plain = replaceRegExpMatches(text, /\{@link\s+(?:[^|}]+?)(?:\s*\|\s*(?<display>[^}]+?))?\}/g, (match) => getOptionalNamedGroup(match, 'display') ?? '')
+  // A bare `{@link Target}` reads as its target, as `resolveLinks` renders it; dropping it leaves a hole in the sentence.
+  const plain = replaceRegExpMatches(
+    text,
+    /\{@link\s+(?<target>[^|}]+?)(?:\s*\|\s*(?<display>[^}]+?))?\s*\}/g,
+    (match) => getOptionalNamedGroup(match, 'display') ?? getMandatoryNamedGroup(match, 'target')
+  )
     .replaceAll(/\[(?<text>[^\]]+)\]\([^)]+\)/g, '$<text>')
     .replaceAll(/[`*_~]/g, '')
     .replaceAll(/\s+/g, ' ')
