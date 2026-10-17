@@ -133,6 +133,20 @@ export interface GenerateLibraryExportsOptions {
   readonly sourceCondition?: string | undefined;
 }
 
+/**
+ * Options for {@link generateLibraryIndex}.
+ */
+export interface GenerateLibraryIndexOptions {
+  /**
+   * Source modules or folders to leave off the generated barrels, as paths from the package root
+   * (`src/demo-vault-buttons.ts`, `src/test-runners/integration`). A module that needs an optional peer, or one that
+   * runs code at load time which only works inside a test runner, goes here, so importing a barrel never loads it. It is
+   * still built and stays reachable through its own subpath export. A path that names nothing the barrels would export
+   * throws, so a rename cannot quietly put the module back.
+   */
+  readonly excludeFromIndex?: readonly string[] | undefined;
+}
+
 type ModuleFormat = 'cjs' | 'esm';
 
 const DECLARATION_REFERENCE_TYPES = new Set(['node']);
@@ -191,6 +205,12 @@ interface BuildReferencePathDirectiveParams {
 interface CollectEnvironmentDirectivesParams {
   readonly availableTypes: readonly string[];
   readonly declarationFiles: readonly string[];
+}
+
+interface GenerateIndexParams {
+  readonly excludedPaths: ReadonlySet<string>;
+  readonly folder: string;
+  readonly unmatchedPaths: Set<string>;
 }
 
 interface SetExportParams {
@@ -381,10 +401,17 @@ export async function generateLibraryExports(options: GenerateLibraryExportsOpti
  * Generates an `index.ts` barrel in every source folder that has something to export, re-exporting each module and
  * each sub-barrel under its own name.
  *
+ * @param options - The options.
  * @returns A {@link Promise} that resolves when the barrels have been written.
  */
-export async function generateLibraryIndex(): Promise<void> {
-  await generateIndex(RepoPaths.Src);
+export async function generateLibraryIndex(options: GenerateLibraryIndexOptions = {}): Promise<void> {
+  const excludedPaths = new Set((options.excludeFromIndex ?? []).map((path) => join(path.replaceAll('\\', '/')).replace(/\/$/, '')));
+  const unmatchedPaths = new Set(excludedPaths);
+  await generateIndex({ excludedPaths, folder: RepoPaths.Src, unmatchedPaths });
+
+  if (unmatchedPaths.size > 0) {
+    throw new Error(`excludeFromIndex names no module the barrels would export: ${[...unmatchedPaths].join(', ')}.`);
+  }
 }
 
 /**
@@ -564,9 +591,10 @@ function collectEnvironmentDirectives(params: CollectEnvironmentDirectivesParams
   return directivesByFile;
 }
 
-async function generateIndex(folder: string): Promise<GenerateIndexResult> {
+async function generateIndex(params: GenerateIndexParams): Promise<GenerateIndexResult> {
+  const { folder } = params;
   const dirents = await readdirPosix(folder, { withFileTypes: true });
-  const maybeLines = await asyncMap(dirents, (dirent) => handleIndexDirent(folder, dirent));
+  const maybeLines = await asyncMap(dirents, (dirent) => handleIndexDirent(params, dirent));
   const lines = maybeLines.filter((line) => line !== undefined);
 
   if (lines.length === 0) {
@@ -586,15 +614,22 @@ async function getLibFiles(): Promise<string[]> {
   );
 }
 
-async function handleIndexDirent(folder: string, dirent: Dirent): Promise<string | undefined> {
+async function handleIndexDirent(params: GenerateIndexParams, dirent: Dirent): Promise<string | undefined> {
+  const { excludedPaths, folder, unmatchedPaths } = params;
   if (isExcludedFromIndex(folder, dirent)) {
+    return;
+  }
+
+  const path = join(folder, dirent.name);
+  if (excludedPaths.has(path)) {
+    unmatchedPaths.delete(path);
     return;
   }
 
   let sourceFile: string;
   let name: string;
   if (dirent.isDirectory()) {
-    const result = await generateIndex(join(folder, dirent.name));
+    const result = await generateIndex({ ...params, folder: path });
     if (result !== GenerateIndexResult.Success) {
       return;
     }
