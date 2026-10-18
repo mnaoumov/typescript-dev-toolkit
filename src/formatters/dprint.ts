@@ -41,6 +41,11 @@ export interface FormatOptions {
 /**
  * Format the source code.
  *
+ * Explicit {@link FormatOptions.paths} get `--allow-no-files`: a list `dprint.json` excludes entirely (a pre-commit
+ * hook staging only a `demo-vault/` file) is nothing to format, not an error, while dprint would exit `14` with
+ * `No files found to format`. The whole-project run keeps the check, since finding nothing there is a broken
+ * configuration.
+ *
  * @param options - The {@link FormatOptions}.
  * @returns A {@link Promise} that resolves when the source code has been formatted.
  */
@@ -58,8 +63,13 @@ export async function format(options?: FormatOptions): Promise<void> {
   }
 
   const command = rewrite ? 'fmt' : 'check';
-  /* v8 ignore start -- The paths-provided branch is only exercised by consumer projects passing file lists. */
-  const targets = paths?.length ? paths : ['**/*'];
-  /* v8 ignore stop */
-  await execFromRoot([...resolveToolCommand({ tool: 'dprint' }), command, '--config', dprintJsonPath, { batchedArguments: targets }]);
+  const hasPaths = paths !== undefined && paths.length > 0;
+  await execFromRoot([
+    ...resolveToolCommand({ tool: 'dprint' }),
+    command,
+    '--config',
+    dprintJsonPath,
+    ...hasPaths ? ['--allow-no-files'] : [],
+    { batchedArguments: hasPaths ? paths : ['**/*'] }
+  ]);
 }
