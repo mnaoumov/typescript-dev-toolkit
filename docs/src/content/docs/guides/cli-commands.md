@@ -72,6 +72,7 @@ The pipeline every `@mnaoumov` package's `build:*` scripts call: the generated b
 
 `generateLibraryExports` rebuilds the `exports` map from the source folders and throws when it changed, so the change is reviewed and committed. A package that also ships files no source folder builds passes them as `additionalExports`, keyed by subpath, and they go into the map after the generated entries:
 
+<!-- snippet-check: context import { generateLibraryExports } from '@mnaoumov/typescript-dev-toolkit/library-build'; -->
 ```typescript
 await generateLibraryExports({
   additionalExports: {
@@ -253,6 +254,7 @@ Builds, serves or previews a package's Astro + Starlight documentation site: the
 
 Set `repoHomepage` in the site's configuration to have `buildDocsSite` keep the repository's GitHub homepage pointing at the site. The URL it expects is the site's own: Astro's `site` plus its `base`, with a trailing slash.
 
+<!-- snippet-check: context import type { DocsSiteConfig } from '@mnaoumov/typescript-dev-toolkit/docs-site/docs-site-config'; -->
 ```typescript
 export const DOCS_SITE_CONFIG: DocsSiteConfig = {
   owner: 'your-account',
@@ -268,6 +270,30 @@ export const DOCS_SITE_CONFIG: DocsSiteConfig = {
 - `'set'` also sets a mismatched homepage, through the `gh` CLI with the credentials it already has.
 
 It never fails the build. A workflow's `GITHUB_TOKEN` can read the homepage but cannot change repository settings, so in CI `'set'` reports the mismatch like `'check'`, as a `::warning::` annotation. Pass the token to the build step as `GH_TOKEN` so `gh` can read the repository; run `docs:build` once locally, or the printed command, to set it.
+
+#### Guide snippets
+
+```typescript
+import {
+  assertDocsSnippetsCompile,
+  findDocsSnippetProblems
+} from '@mnaoumov/typescript-dev-toolkit/docs-site/docs-snippets';
+```
+
+Type-checks every fenced `ts`, `typescript`, `js` and `javascript` block of the guides under `docs/src/content/docs`, the generated `api` folder excepted, each as a module of its own, with the project's `tsconfig.json`. A JavaScript block is checked with `checkJs` and is not held to implicit `any`. `assertDocsSnippetsCompile` throws listing every problem as `path:line - TS<code>: <message>`, for a `docs:check-snippets` script; `findDocsSnippetProblems` returns them, for a test.
+
+- `prelude` declares the names every guide may use without declaring them, as a module: a `declare global { ... }` block with the imports it needs.
+- `compilerOptions` is laid over the `tsconfig.json` ones. A package whose guides import it by its own name passes `paths` mapping that name onto its sources, with absolute paths.
+- `<!-- snippet-check: context <TypeScript> -->` on a line above a fence prepends declarations or imports to that one block, for a name its prose has introduced. Several such lines add up.
+- `<!-- snippet-check: skip <reason> -->` above a fence exempts a block that is deliberately not compilable. A skip without a reason is reported.
+
+#### Outdated references
+
+```typescript
+import { assertNoOutdatedReferences } from '@mnaoumov/typescript-dev-toolkit/docs-site/outdated-references';
+```
+
+Fails on a reference that sends a reader to the retired `obsidian-dev-utils` package: one of its module paths, a link into its repository, an import of it, or its legacy `__obsidianDevUtils.sharedAbortController` console recipe. The bare name is not flagged, because it is still a wire name. It scans `README.md`, the guides (not the `api` folder), and every non-test `.ts` file under `src/` and `scripts/`, skipping whichever is missing. A line that names an old address on purpose carries `outdated-reference-ok`.
 
 ### Sync upstreams
 
