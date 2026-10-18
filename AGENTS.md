@@ -110,7 +110,7 @@ export function myFunction(param: Type): ReturnType {
 
 `tsconfig.json` sets `skipLibCheck: true`. This is a deliberate exception to the usual "never weaken `@tsconfig/strictest`" stance: it lets `tsc` type-check our `.ts` files without failing on broken upstream `.d.ts` files we do not control (e.g. a given version's `obsidian.d.ts`, which has shipped `HistoryHandler`/`PromiseWithResolvers` type errors).
 
-The declarations we author (`src/@types/**`, `mnaoumov/obsidian-dataview:src/@types/**`) are still fully validated. `buildCompileTypeScript()` (run by `build:compile:typescript`) does two passes:
+The declarations we author (`src/@types/**`, `mnaoumov/obsidian-dataview:src/@types/**`) are still fully validated. `buildCompileTypeScript()` (run by `build:compile`) does two passes:
 
 1. `tsc --build --force` — the normal compile, with `skipLibCheck: true`.
 2. An in-memory re-check via `checkProjectTypes()` (`src/check-project-types.ts`) with `skipLibCheck: false`, reporting **only** diagnostics whose source file is under the project root and outside `node_modules`. It prints `Ignored N diagnostic(s) outside the validated set.` — when upstream is fixed and `N` reaches `0`, the workaround is no longer doing anything and `skipLibCheck` can go back to `false`.
@@ -120,7 +120,7 @@ The declarations we author (`src/@types/**`, `mnaoumov/obsidian-dataview:src/@ty
 ### L8. Re-export a type from an ESM-only package through its `import type`, never `export … from`
 
 - `build:validate-declarations` type-checks the emitted `dist/lib/cjs/**/*.d.cts` under CJS resolution. There, any reference to an **ESM-only** dependency (`type-fest`, and anything else without a CJS entry) fails with **TS1479** unless the module specifier carries `with { 'resolution-mode': 'import' }`.
-- TypeScript's declaration emit adds that attribute **only to import declarations**. It does NOT add it to a re-export, so `export type { PackageJson } from 'type-fest';` compiles fine in `src/` and then fails the `.d.cts` validation — a break invisible to `lint`, `test`, and `build:compile:typescript`.
+- TypeScript's declaration emit adds that attribute **only to import declarations**. It does NOT add it to a re-export, so `export type { PackageJson } from 'type-fest';` compiles fine in `src/` and then fails the `.d.cts` validation — a break invisible to `lint`, `test`, and `build:compile`.
 - Re-export the binding already imported at the top of the file instead (`import type { PackageJson } from 'type-fest';` … `export type { PackageJson };`). The resolution mode stays attached to the import, and both the `.d.cts` and `.d.mts` emit the bare `export type { … };`.
 - `unicorn/prefer-export-from` actively pushes back toward the broken form, so the re-export needs an `// eslint-disable-next-line unicorn/prefer-export-from -- …` naming this reason. See `src/npm.ts` for the reference case.
 - (cannot be forced by ESLint — the opposing rule is the one ESLint has; `build:validate-declarations` is the check that catches it)
@@ -254,7 +254,7 @@ The publish authenticates with **npm trusted publishing** (OIDC), not a token: t
 - Use `npm run commit` (Commitizen) for guided commit messages
 - Before each commit, run these commands and ensure they complete without errors:
   - `npm run spellcheck`
-  - `npm run build:compile:typescript`
+  - `npm run build:compile`
   - `npm run lint:fix`
   - `npm run format`
 - Before pushing a branch you intend to release from, run **`npm run gate`** — the four preflight-only checks it adds on top of the list above are the ones a release otherwise fails on 15 minutes in.
