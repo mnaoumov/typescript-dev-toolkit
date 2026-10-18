@@ -45,6 +45,16 @@ export default defineLibraryVitestConfig({
         setupFiles: [],
         testTimeout: BIG_TIMEOUT_IN_MILLISECONDS
       }
+    },
+    {
+      test: {
+        environment: 'node',
+        exclude: [...DEFAULT_VITEST_TEST_EXCLUDE],
+        // This package's own documentation checks; outside `src/`, so outside the coverage gate.
+        include: ['scripts/**/*.test.ts'],
+        name: 'unit-tests:scripts',
+        setupFiles: []
+      }
     }
   ]
 });
