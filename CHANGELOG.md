@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 3.7.0
+
+- feat(docs-site): type-check guide snippets and flag retired obsidian-dev-utils addresses
+
 ## 3.6.4
 
 - fix(docs-site): keep the target of a bare {@link} in plain-text descriptions
