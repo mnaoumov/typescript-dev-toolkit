@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 3.7.1
+
+- fix(formatters): allow an explicit dprint path list that dprint.json excludes entirely
+
 ## 3.7.0
 
 - feat(docs-site): type-check guide snippets and flag retired obsidian-dev-utils addresses
