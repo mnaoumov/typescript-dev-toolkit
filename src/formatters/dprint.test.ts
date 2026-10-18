@@ -11,6 +11,8 @@ import type { ResolvePathFromRootSafeParams } from '../root.ts';
 
 import { format } from './dprint.ts';
 
+const EXCLUDES = '--excludes=**/.claude/settings.local.json';
+
 const {
   mockExecFromRoot,
   mockExistsSync,
@@ -49,7 +51,7 @@ describe('format', () => {
   it('should format the whole project without allowing an empty file set', async () => {
     mockExistsSync.mockImplementation((path: string) => path === '/root/dprint.json');
     await format();
-    expect(mockExecFromRoot).toHaveBeenCalledWith(['dprint', 'fmt', '--config', '/root/dprint.json', { batchedArguments: ['**/*'] }]);
+    expect(mockExecFromRoot).toHaveBeenCalledWith(['dprint', 'fmt', '--config', '/root/dprint.json', EXCLUDES, { batchedArguments: ['**/*'] }]);
   });
 
   it('should allow explicit paths that dprint.json excludes entirely', async () => {
@@ -60,6 +62,7 @@ describe('format', () => {
       'check',
       '--config',
       '/root/dprint.json',
+      EXCLUDES,
       '--allow-no-files',
       { batchedArguments: ['demo-vault/a.ts'] }
     ]);
@@ -68,7 +71,7 @@ describe('format', () => {
   it('should treat an empty path list as the whole project', async () => {
     mockExistsSync.mockImplementation((path: string) => path === '/root/dprint.json');
     await format({ paths: [] });
-    expect(mockExecFromRoot).toHaveBeenCalledWith(['dprint', 'fmt', '--config', '/root/dprint.json', { batchedArguments: ['**/*'] }]);
+    expect(mockExecFromRoot).toHaveBeenCalledWith(['dprint', 'fmt', '--config', '/root/dprint.json', EXCLUDES, { batchedArguments: ['**/*'] }]);
   });
 
   it('should fall back to the default configuration', async () => {

@@ -16,6 +16,15 @@ import {
 } from '../root.ts';
 
 /**
+ * Patterns every run excludes on top of the project's `dprint.json` `excludes`.
+ *
+ * `.claude/settings.local.json` is Claude Code's tool-local settings file, which it writes without a trailing newline.
+ * It is usually hidden by the developer's global git ignore only, which dprint does not read, so without this entry
+ * `format:check` fails a gate on a file nobody commits.
+ */
+const DPRINT_ADDITIONAL_EXCLUDES: readonly string[] = ['**/.claude/settings.local.json'];
+
+/**
  * Parameters for the {@link format} function.
  */
 export interface FormatOptions {
@@ -46,6 +55,10 @@ export interface FormatOptions {
  * `No files found to format`. The whole-project run keeps the check, since finding nothing there is a broken
  * configuration.
  *
+ * Every run also excludes every `.claude/settings.local.json`, passed as `--excludes=<pattern>`, which dprint adds to the
+ * configuration's own `excludes`, and which applies to an explicit path too. The `=` form is load-bearing:
+ * `--excludes` takes several values, so `--excludes <pattern>` would swallow the file list that follows it.
+ *
  * @param options - The {@link FormatOptions}.
  * @returns A {@link Promise} that resolves when the source code has been formatted.
  */
@@ -69,6 +82,7 @@ export async function format(options?: FormatOptions): Promise<void> {
     command,
     '--config',
     dprintJsonPath,
+    ...DPRINT_ADDITIONAL_EXCLUDES.map((pattern) => `--excludes=${pattern}`),
     ...hasPaths ? ['--allow-no-files'] : [],
     { batchedArguments: hasPaths ? paths : ['**/*'] }
   ]);
