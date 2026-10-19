@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## 3.7.2
+
+- chore(build): drop the duplicate build:compile:typescript script
+- fix(formatters): exclude .claude/settings.local.json from every dprint run
+
 ## 3.7.1
 
 - fix(formatters): allow an explicit dprint path list that dprint.json excludes entirely
