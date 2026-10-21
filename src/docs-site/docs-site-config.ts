@@ -22,6 +22,15 @@ import { DEFAULT_PACKAGE_SITES } from './api-doc-package-sites.ts';
  */
 export interface DocsSiteConfig {
   /**
+   * The root API page's intro, as Markdown, for a package whose arrangement the generated intro cannot explain;
+   * stripped of its Markdown, it is also the page's `description`.
+   *
+   * @default a generated intro naming the package and, unless {@link importStatement} is set, where its exports are
+   * imported from
+   */
+  readonly apiIndexIntro?: string;
+
+  /**
    * The folder holding the site: its `src` (pages, `content.config.ts`), `public` and build output `dist`.
    *
    * @default 'docs'
@@ -268,6 +277,7 @@ interface PackageJsonFields {
  */
 export function resolveDocsSiteConfig(config: DocsSiteConfig): ResolvedDocsSiteConfig {
   const {
+    apiIndexIntro,
     docsDirectory = 'docs',
     excludedDirectories = [],
     externalTypeLinks = new Map<string, string>(),
@@ -300,6 +310,7 @@ export function resolveDocsSiteConfig(config: DocsSiteConfig): ResolvedDocsSiteC
   const basePath = `/${repo}`;
   return {
     apiDocSettings: {
+      apiIndexIntro,
       basePath,
       excludedDirectories,
       externalTypeLinks,

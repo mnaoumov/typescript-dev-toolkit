@@ -740,9 +740,17 @@ export function sidebarTreeToEntries(node: SidebarTreeNode, label: string): Side
 
 // Serves both as the root API page's prose and (stripped) as its `description` frontmatter.
 // Sharing one function keeps the page and its OG card from drifting apart.
+// An `importStatement` hook, not the module path or the barrel, decides where an export is imported from, so the
+// generated prose claims neither under one.
 function getApiIndexIntro(namespaces: readonly string[]): string {
-  const { packageName, publicApiEntry } = getApiDocSettings();
+  const { apiIndexIntro, importStatement, packageName, publicApiEntry } = getApiDocSettings();
+  if (apiIndexIntro !== undefined) {
+    return apiIndexIntro;
+  }
   const intro = `The complete API reference for \`${packageName}\`, generated from its TSDoc. `;
+  if (importStatement !== undefined) {
+    return `${intro}The modules below group the exports by source module; each export's page shows the statement it is imported with.`;
+  }
   if (publicApiEntry !== undefined) {
     return `${intro}Every export is imported from the package root, \`${packageName}\`; the modules below group them by source module.`;
   }

@@ -400,6 +400,7 @@ describe('generateApiDocs', () => {
     expect(page).toContain('`@mnaoumov/typescript-lib`');
     expect(page).toContain('- [alpha](/typescript-lib/api/alpha/)');
     expect(page).toContain('- [nested/beta](/typescript-lib/api/nested/beta/)');
+    expect(page).toContain('Each module below maps to an import subpath');
   });
 
   it('documents a class with its members, constructor and the shared components', () => {
@@ -511,6 +512,24 @@ describe('generateApiDocs', () => {
     expect(readPage(other, 'alpha/base/index.mdx')).not.toContain('<ImportStatement text=');
     expect(readPage(other, 'mocks/factory/index.mdx')).toContain('<ImportStatement text="import { Factory } from \'mocks\';" />');
     expect(readPage(other, 'mocks/factory/create-mock.mdx')).toContain('Creates a mock.');
+    const index = readPage(other, 'index.mdx');
+    expect(index).not.toContain('import subpath');
+    expect(index).toContain('each export\'s page shows the statement it is imported with');
+  }, 60_000);
+
+  it('uses a site\'s own API index intro as the root page\'s prose and description', async () => {
+    const other = createFixture();
+    const settings: ApiDocSettings = {
+      ...other.settings,
+      apiIndexIntro: 'The `mocks` modules are imported by name.',
+      importStatement: () => undefined,
+      publicApiEntry: undefined
+    };
+    await generateApiDocs({ rootDirectory: other.root, settings, sourceDirectory: join(other.root, 'src') });
+    const index = readPage(other, 'index.mdx');
+    expect(index).toContain('description: "The mocks modules are imported by name."');
+    expect(index).toContain('\nThe `mocks` modules are imported by name.\n');
+    expect(index).not.toContain('generated from its TSDoc');
   }, 60_000);
 
   it('documents only what a public API barrel re-exports, imported from the package root', async () => {

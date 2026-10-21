@@ -92,6 +92,7 @@ describe('resolveDocsSiteConfig', () => {
     }
 
     const resolved = resolveDocsSiteConfig({
+      apiIndexIntro: 'Intro.',
       docsDirectory: 'site',
       excludedDirectories,
       externalTypeLinks,
@@ -111,6 +112,7 @@ describe('resolveDocsSiteConfig', () => {
     });
 
     expect(resolved.docsDirectory).toBe(join(root, 'site'));
+    expect(resolved.apiDocSettings.apiIndexIntro).toBe('Intro.');
     expect(resolved.apiDocSettings.externalTypeLinks).toBe(externalTypeLinks);
     expect(resolved.apiDocSettings.excludedDirectories).toBe(excludedDirectories);
     expect(resolved.apiDocSettings.genericTypeParameters).toBe(genericTypeParameters);
