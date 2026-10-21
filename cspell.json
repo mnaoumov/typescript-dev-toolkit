@@ -177,6 +177,7 @@
     "rangeset",
     "rasterizes",
     "rawlink",
+    "reflog",
     "refreshable",
     "REGEXES",
     "regexmatch",

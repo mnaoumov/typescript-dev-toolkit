@@ -438,13 +438,29 @@ const NAMED_VERSION_UPDATE_TYPES = new Map<string, VersionUpdateType>([
 ].map((type) => [type, type]));
 
 /**
+ * Where `HEAD` stood when a release started: the branch it is on (empty for a detached `HEAD`) and its commit.
+ */
+export interface GitHeadState {
+  /**
+   * The checked-out branch, or an empty string for a detached `HEAD`.
+   */
+  readonly branch: string;
+
+  /**
+   * The commit `HEAD` points at.
+   */
+  readonly sha: string;
+}
+
+/**
  * Creates a Git tag for the new version.
  *
  * @param newVersion - The new version number to use for the tag.
+ * @param commitSha - The commit to tag. When omitted, `HEAD` is tagged.
  * @returns A {@link Promise} that resolves when the tag has been created.
  */
-export async function addGitTag(newVersion: string): Promise<void> {
-  await execFromRoot(`git tag -a ${newVersion} -m ${newVersion} --force`, { isQuiet: true });
+export async function addGitTag(newVersion: string, commitSha?: string): Promise<void> {
+  await execFromRoot(`git tag -a ${newVersion} -m ${newVersion} --force${commitSha ? ` ${commitSha}` : ''}`, { isQuiet: true });
 }
 
 /**
@@ -532,6 +548,40 @@ export async function assertGitRepoClean(): Promise<void> {
   } catch {
     throw new Error('Git repository is not clean. Please commit or stash your changes before releasing a new version.');
   }
+}
+
+/**
+ * Asserts that `HEAD` is the release commit: on the branch the release started on, a single commit on top of the
+ * commit it started from, with the `chore: release <version>` subject.
+ *
+ * A successful `git commit` proves only that a commit was made somewhere. A checkout switched underneath a
+ * release by another process takes the commit onto that other branch, and when it is switched back the tag and
+ * the GitHub release go out on the commit before the bump, with the bump left staged in the working tree and nothing
+ * reported. So the release checks where the commit landed before tagging, and again before pushing.
+ *
+ * @param newVersion - The version being released.
+ * @param startHead - Where `HEAD` stood when the release started.
+ * @param stage - The step about to run, for the error message (for example `tagging`).
+ * @returns A {@link Promise} that resolves to the release commit's SHA.
+ */
+export async function assertReleaseCommitLanded(newVersion: string, startHead: GitHeadState, stage: string): Promise<string> {
+  const expectedSubject = `chore: release ${newVersion}`;
+  const branch = await execFromRoot(['git', 'branch', '--show-current'], { isQuiet: true });
+  const headLogFieldCount = 3;
+  const headLog = await execFromRoot(['git', 'log', '-1', '--format=%H%n%P%n%s'], { isQuiet: true });
+  const [sha = '', parents = '', subject = ''] = headLog.split('\n', headLogFieldCount);
+
+  if (branch === startHead.branch && parents === startHead.sha && subject === expectedSubject) {
+    return sha;
+  }
+
+  throw new Error(
+    `Refusing to continue before ${stage}: the release commit for ${newVersion} is not where it should be. `
+      + `The release started on ${describeBranch(startHead.branch)} at ${startHead.sha} and expects a '${expectedSubject}' commit on top of it, `
+      + `but HEAD is ${sha} ('${subject}', parent ${parents || 'none'}) on ${describeBranch(branch)}. `
+      + 'Something else moved HEAD in this working tree while the release ran (a concurrent checkout, reset or commit). '
+      + 'Check `git reflog` to find the release commit, put it on the release branch, and tag and push it by hand.'
+  );
 }
 
 /**
@@ -631,6 +681,17 @@ export function getVersionUpdateType(versionUpdateType: string): VersionUpdateTy
  */
 export async function gitPush(): Promise<void> {
   await execFromRoot('git push --follow-tags --force', { isQuiet: true });
+}
+
+/**
+ * Reads where `HEAD` stands now.
+ *
+ * @returns A {@link Promise} that resolves to the current {@link GitHeadState}.
+ */
+export async function readGitHeadState(): Promise<GitHeadState> {
+  const branch = await execFromRoot(['git', 'branch', '--show-current'], { isQuiet: true });
+  const sha = await execFromRoot(['git', 'rev-parse', 'HEAD'], { isQuiet: true });
+  return { branch, sha };
 }
 
 /**
@@ -851,6 +912,9 @@ export async function updateVersion(versionUpdateType?: string, options: UpdateV
     await assertGitRepoClean();
   }
 
+  // Read before the gate, so a checkout switched at any point of the release is caught after the commit.
+  const startHead = await readGitHeadState();
+
   // The rest of the preflight IS `npm run gate`, not a copy of it: a check added to the gate is reachable
   // from the branch and from the release by construction, instead of by two lists happening to agree.
   // The clean-repo assertion above stays here, because the gate is run on a dirty tree on purpose.
@@ -876,13 +940,16 @@ export async function updateVersion(versionUpdateType?: string, options: UpdateV
 
   await writeChangelog(newChangeLog);
   await addUpdatedFilesToGit(newVersion, { shouldVerifyCommit });
-  await addGitTag(newVersion);
+  // The tag names the verified commit rather than whatever `HEAD` is by the time `git tag` runs.
+  const releaseCommitSha = await assertReleaseCommitLanded(newVersion, startHead, 'tagging');
+  await addGitTag(newVersion, releaseCommitSha);
 
   if (!shouldRelease) {
     getLibDebugger('Version')('Skipping git push and GitHub release (--no-release). The version bump, changelog, commit, and tag have been created locally.');
     return;
   }
 
+  await assertReleaseCommitLanded(newVersion, startHead, 'pushing');
   await gitPush();
   await prepareGitHubRelease?.(newVersion);
   await publishGitHubRelease(newVersion, { getReleaseAssetPaths, shouldCloseReleasedIssues });
@@ -1074,6 +1141,10 @@ async function assertVersionUpdateTypeMeetsBumpFloor(versionUpdateType: string):
     takenLevel,
     versionUpdateType
   });
+}
+
+function describeBranch(branch: string): string {
+  return branch ? `branch '${branch}'` : 'a detached HEAD';
 }
 
 /**
