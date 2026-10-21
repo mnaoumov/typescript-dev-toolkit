@@ -90,7 +90,7 @@ export async function generateApiDocs(options: GenerateApiDocsParams): Promise<v
   configureApiDocs(settings);
   loadExternalTypeMaps(rootDirectory);
 
-  const entryFiles = findEntryFiles(sourceDirectory);
+  const entryFiles = findEntryFiles(sourceDirectory, settings.excludedDirectories);
   console.warn(`Found ${String(entryFiles.length)} entry source files`);
 
   const cacheFile = join(settings.outputDirectory, CACHE_FILE_NAME);

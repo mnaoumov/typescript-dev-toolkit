@@ -64,6 +64,44 @@ describe('api-doc text utilities', () => {
     expect(getImportStatement(createTypeInfo({ kind: 'function', name: 'bravo', namespace: 'bravo' }))).toBe('import { bravo } from \'@mnaoumov/typescript-lib/bravo\';');
   });
 
+  it('builds import statements with the site\'s hook, which may show none', () => {
+    configureTestApiDocs({
+      importStatement: ({ defaultImportStatement, isTypeOnly, kind, name, namespace }) => {
+        if (namespace.startsWith('globals/')) {
+          return;
+        }
+        if (namespace.startsWith('obsidian/')) {
+          return `${isTypeOnly ? 'import type' : 'import'} { ${name} } from 'obsidian-test-mocks/obsidian'; // ${kind}`;
+        }
+        return defaultImportStatement;
+      }
+    });
+    expect(getImportStatement(createTypeInfo({ kind: 'class', name: 'App', namespace: 'obsidian/App' }))).toBe('import { App } from \'obsidian-test-mocks/obsidian\'; // class');
+    expect(getImportStatement(createTypeInfo({ kind: 'interface', name: 'Alpha', namespace: 'obsidian/Alpha' }))).toBe('import type { Alpha } from \'obsidian-test-mocks/obsidian\'; // interface');
+    expect(getImportStatement(createTypeInfo({ kind: 'function', name: 'setup', namespace: 'globals/setup' }))).toBeUndefined();
+    expect(getImportStatement(createTypeInfo({ kind: 'function', name: 'bravo', namespace: 'bravo' }))).toBe('import { bravo } from \'@mnaoumov/typescript-lib/bravo\';');
+  });
+
+  it('keeps trailing underscores, so members differing only by them get a page each', () => {
+    expect(memberRouteSegment('create__')).toBe('create__');
+    expect(memberRouteSegment('create')).toBe('create');
+    expect(memberSlug('Create_')).toBe('create_');
+    expect(memberRouteSegment('\'quoted_\'')).toBe('quoted_');
+    expect(overloadRouteSegment('create__')).toBe('create__');
+    expect(overloadSlug('Create__')).toBe('create__');
+    expect(memberRouteSegment('__')).toBe('unnamed');
+    expect(overloadRouteSegment('on(\'changed\')')).toBe('on-changed');
+  });
+
+  it('builds member routes with the site\'s hook where it returns a segment', () => {
+    configureTestApiDocs({ memberRouteSegment: (name) => (name.endsWith('__') ? `${name.slice(0, -'__'.length)}-mock` : undefined) });
+    expect(memberRouteSegment('create__')).toBe('create-mock');
+    expect(memberSlug('Create__')).toBe('create-mock');
+    expect(overloadRouteSegment('create__')).toBe('create-mock');
+    expect(memberRouteSegment('create')).toBe('create');
+    expect(memberRouteSegment('index')).toBe('index-member');
+  });
+
   it('normalizes type and description text for generated pages', () => {
     expect(simplifyType('import("pkg").App | import(\'node:fs\').Stats')).toBe('App | Stats');
     const REPEATED_WORD_COUNT = 40;

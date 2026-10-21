@@ -19,10 +19,11 @@ const EXCLUDED_FILE_NAMES = new Set(['__merged.ts', 'index.ts', 'setup.ts']);
  * Checks whether a directory's subtree is documented.
  *
  * @param name - The directory's name.
- * @returns `false` for a `@types`, `styles` or `test-helpers` directory.
+ * @param excludedDirectories - Directory names excluded in addition to the defaults.
+ * @returns `false` for a `@types`, `styles` or `test-helpers` directory, or one of `excludedDirectories`.
  */
-export function isDocumentedDirectoryName(name: string): boolean {
-  return !EXCLUDED_DIR_SEGMENTS.has(name);
+export function isDocumentedDirectoryName(name: string, excludedDirectories: readonly string[] = []): boolean {
+  return !EXCLUDED_DIR_SEGMENTS.has(name) && !excludedDirectories.includes(name);
 }
 
 /**

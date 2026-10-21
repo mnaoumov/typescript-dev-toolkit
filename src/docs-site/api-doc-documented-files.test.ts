@@ -18,6 +18,13 @@ describe('api-doc documented files', () => {
     expect(isDocumentedDirectoryName('linters')).toBe(true);
   });
 
+  it('excludes the extra directories a site names, on top of the defaults', () => {
+    expect(isDocumentedDirectoryName('internal', ['internal', 'jest'])).toBe(false);
+    expect(isDocumentedDirectoryName('jest', ['internal', 'jest'])).toBe(false);
+    expect(isDocumentedDirectoryName('styles', ['internal'])).toBe(false);
+    expect(isDocumentedDirectoryName('linters', ['internal'])).toBe(true);
+  });
+
   it('documents ordinary TypeScript modules only', () => {
     expect(isDocumentedFileName('eslint.ts')).toBe(true);
     for (const name of ['readme.md', 'types.d.ts', 'index.ts', '__merged.ts', 'setup.ts', 'vitest-setup.ts', 'a.test.ts', 'a.integration.test.ts']) {

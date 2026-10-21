@@ -16,6 +16,13 @@ export interface ApiDocSettings {
   readonly basePath: string;
 
   /**
+   * Folder names whose subtree is not documented, in addition to `@types`, `styles` and `test-helpers`. Applies
+   * to this site's source walk only: a link into another package's site assumes that site's generator skipped the
+   * default folders alone.
+   */
+  readonly excludedDirectories?: readonly string[] | undefined;
+
+  /**
    * Type names mapped to the URL their references link to, for types neither this package nor a {@link packageSites}
    * package declares, e.g. an ecosystem's own API reference. Consulted before the generic TypeScript, JavaScript and
    * Web API links, so an entry here wins over them.
@@ -23,12 +30,33 @@ export interface ApiDocSettings {
   readonly externalTypeLinks: ReadonlyMap<string, string>;
 
   /**
+   * Names that are never linked as types, in addition to the built-in generic parameter names and every type
+   * parameter a documented type declares: type parameters the scan does not find.
+   */
+  readonly genericTypeParameters?: readonly string[] | undefined;
+
+  /**
+   * Builds each export's import statement, for a package whose exports are not imported from
+   * `<packageName>/<namespace>`, e.g. one publishing barrel entry points. Returning `undefined` shows no statement.
+   * Unset, every statement is the {@link ImportStatementContext.defaultImportStatement}.
+   */
+  readonly importStatement?: ImportStatementProvider | undefined;
+
+  /**
+   * Builds the case-preserved route segment of a member's page, overriding the generator's slug where it returns a
+   * string. The file is written under the segment lowercased. The generator's own slug already keeps a name's
+   * trailing underscores, so `create__` and `create` never share a page.
+   */
+  readonly memberRouteSegment?: MemberRouteSegmentProvider | undefined;
+
+  /**
    * The folder the generated API pages are written to, normally `<docs>/src/content/docs/api`.
    */
   readonly outputDirectory: string;
 
   /**
-   * The documented package's name, e.g. `@mnaoumov/typescript-lib`. Import statements are built from it.
+   * The documented package's name, e.g. `@mnaoumov/typescript-lib`. Import statements are built from it, unless
+   * {@link importStatement} builds them.
    */
   readonly packageName: string;
 
@@ -43,6 +71,54 @@ export interface ApiDocSettings {
    */
   readonly sidebarFile: string;
 }
+
+/**
+ * What {@link ApiDocSettings.importStatement} is told about the export whose import statement it builds.
+ */
+export interface ImportStatementContext {
+  /**
+   * The statement the generator writes when no hook is set, e.g.
+   * `import type { Alpha } from '@mnaoumov/typescript-lib/alpha';`.
+   */
+  readonly defaultImportStatement: string;
+
+  /**
+   * Whether the export is a type only (an interface, a type alias or an enum), imported with `import type`.
+   */
+  readonly isTypeOnly: boolean;
+
+  /**
+   * The export's kind, e.g. `class`, `function`, `interface`.
+   */
+  readonly kind: string;
+
+  /**
+   * The export's name.
+   */
+  readonly name: string;
+
+  /**
+   * The export's namespace: its source path relative to the source folder, without its extension.
+   */
+  readonly namespace: string;
+}
+
+/**
+ * Builds the import statement of a documented export.
+ *
+ * @param context - The export.
+ * @returns The statement, or `undefined` to show none.
+ */
+export type ImportStatementProvider = (context: ImportStatementContext) => string | undefined;
+
+/**
+ * Builds the case-preserved route segment of a member's page.
+ *
+ * @param name - A property's name, or a method's overload key: its name, or `on('changed')` for an event method
+ * keyed by its first argument.
+ * @returns The segment, or `undefined` for the generator's own.
+ */
+export type MemberRouteSegmentProvider = (name: string) => string | undefined;
 
 interface ModuleState {
   settings: ApiDocSettings | undefined;

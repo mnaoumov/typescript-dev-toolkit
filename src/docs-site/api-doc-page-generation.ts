@@ -377,7 +377,10 @@ export async function generateOverviewPage(name: string, info: TypeInfo, allType
   }
 
   // Import statement
-  lines.push(`<ImportStatement text="${escapeJsxAttribute(getImportStatement(info))}" />`, '');
+  const importStatement = getImportStatement(info);
+  if (importStatement !== undefined) {
+    lines.push(`<ImportStatement text="${escapeJsxAttribute(importStatement)}" />`, '');
+  }
 
   // Examples
   for (const example of info.examples) {

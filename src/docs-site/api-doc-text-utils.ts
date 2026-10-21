@@ -185,15 +185,17 @@ export function getDisplayName(name: string, info: TypeInfo): string {
  * `@mnaoumov/typescript-lib` is `@mnaoumov/typescript-lib/string`.
  *
  * Interfaces / type aliases / enums are imported with `import type`; classes / functions /
- * variables with a value `import`.
+ * variables with a value `import`. A site's `importStatement` setting replaces that statement.
  *
  * @param info - The documented type.
- * @returns The import statement.
+ * @returns The import statement, or `undefined` when the site's `importStatement` shows none.
  */
-export function getImportStatement(info: TypeInfo): string {
+export function getImportStatement(info: TypeInfo): string | undefined {
   const isTypeOnly = ['enum', 'interface', 'type'].includes(info.kind);
   const importKeyword = isTypeOnly ? 'import type' : 'import';
-  return `${importKeyword} { ${info.name} } from '${getApiDocSettings().packageName}/${info.namespace}';`;
+  const settings = getApiDocSettings();
+  const defaultImportStatement = `${importKeyword} { ${info.name} } from '${settings.packageName}/${info.namespace}';`;
+  return settings.importStatement === undefined ? defaultImportStatement : settings.importStatement({ defaultImportStatement, isTypeOnly, kind: info.kind, name: info.name, namespace: info.namespace });
 }
 
 /**
@@ -348,15 +350,36 @@ export function truncateSignature(signature: string): string {
   return collapsed.length <= SIGNATURE_MAX_LENGTH ? collapsed : `${collapsed.slice(0, SIGNATURE_MAX_LENGTH - 1).trimEnd()}…`;
 }
 
+function avoidIndexSlug(slug: string): string {
+  // A member literally named `index` would write `index.mdx`, colliding with the type-overview
+  // `index.mdx` in the same directory (one silently overwrites the other, 404-ing the loser).
+  return slug === 'index' ? 'index-member' : slug;
+}
+
+function getCustomMemberRouteSegment(nameOrOverloadKey: string): string | undefined {
+  return getApiDocSettings().memberRouteSegment?.(nameOrOverloadKey);
+}
+
+/**
+ * Keeps a name's trailing underscores on its slug, so `create__` and `create` get a page each instead of one
+ * silently overwriting the other. A slug with nothing else in it keeps none: a file named `_*.mdx` is skipped by
+ * Astro's content loader.
+ *
+ * @param slug - The slug, without the underscores.
+ * @param name - The name it was built from.
+ * @returns The slug with the name's trailing underscores.
+ */
+function keepTrailingUnderscores(slug: string, name: string): string {
+  return slug ? `${slug}${name.slice(name.replace(/_+$/, '').length)}` : slug;
+}
+
 function slugifyMemberName(name: string): string {
-  const cleaned = name
-    .replaceAll(/^["']|["']$/g, '')
+  const unquoted = name.replaceAll(/^["']|["']$/g, '');
+  const cleaned = unquoted
     .replaceAll(/[^a-zA-Z0-9]/g, '-')
     .replaceAll(/-+/g, '-')
     .replaceAll(/^-|-$/g, '');
-  // A member literally named `index` would write `index.mdx`, colliding with the type-overview
-  // `index.mdx` in the same directory (one silently overwrites the other, 404-ing the loser).
-  return cleaned === 'index' ? 'index-member' : (cleaned || 'unnamed');
+  return avoidIndexSlug(getCustomMemberRouteSegment(name) ?? (keepTrailingUnderscores(cleaned, unquoted) || 'unnamed'));
 }
 
 function slugifyOverloadKey(overloadKey: string): string {
@@ -366,7 +389,7 @@ function slugifyOverloadKey(overloadKey: string): string {
     .trim()
     .replaceAll(/\s+/g, '-');
   // A method named `index` would write `index.mdx` over the type-overview page, exactly as a property would.
-  return slug === 'index' ? 'index-member' : slug;
+  return avoidIndexSlug(getCustomMemberRouteSegment(overloadKey) ?? keepTrailingUnderscores(slug, overloadKey));
 }
 
 const OG_DESCRIPTION_MAX_LENGTH = 160;

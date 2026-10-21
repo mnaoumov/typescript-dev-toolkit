@@ -8,7 +8,11 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import type { ApiDocSettings } from './api-doc-settings.ts';
+import type {
+  ApiDocSettings,
+  ImportStatementProvider,
+  MemberRouteSegmentProvider
+} from './api-doc-settings.ts';
 import type { RepoHomepageMode } from './repo-homepage.ts';
 
 import { DEFAULT_PACKAGE_SITES } from './api-doc-package-sites.ts';
@@ -25,10 +29,26 @@ export interface DocsSiteConfig {
   readonly docsDirectory?: string;
 
   /**
+   * Folder names under {@link sourceDirectory} whose subtree the API reference skips, in addition to `@types`,
+   * `styles` and `test-helpers`.
+   *
+   * @default []
+   */
+  readonly excludedDirectories?: readonly string[];
+
+  /**
    * Type names mapped to the URL their references link to, for types no documented package declares. The layer
    * documenting an ecosystem's packages fills it with that ecosystem's references.
    */
   readonly externalTypeLinks?: ReadonlyMap<string, string>;
+
+  /**
+   * Names the API reference never links as types, in addition to the built-in generic parameter names and every
+   * type parameter a documented type declares.
+   *
+   * @default []
+   */
+  readonly genericTypeParameters?: readonly string[];
 
   /**
    * The folder under `<docs>/src/content/docs` the guides sidebar group is generated from.
@@ -36,6 +56,22 @@ export interface DocsSiteConfig {
    * @default 'guides'
    */
   readonly guidesDirectory?: string;
+
+  /**
+   * Builds each export's import statement, for a package whose exports are not imported from
+   * `<package>/<module path>`, e.g. one publishing barrel entry points. Returning `undefined` shows no statement.
+   *
+   * @default the statement importing the export from `<package>/<module path>`
+   */
+  readonly importStatement?: ImportStatementProvider;
+
+  /**
+   * Builds the case-preserved route segment of a member's page from a property's name or a method's overload key,
+   * overriding the generator's own slug where it returns a string.
+   *
+   * @default the name as a URL segment, its trailing underscores kept
+   */
+  readonly memberRouteSegment?: MemberRouteSegmentProvider;
 
   /**
    * The GitHub account the repository belongs to.
@@ -223,8 +259,12 @@ interface PackageJsonFields {
 export function resolveDocsSiteConfig(config: DocsSiteConfig): ResolvedDocsSiteConfig {
   const {
     docsDirectory = 'docs',
+    excludedDirectories = [],
     externalTypeLinks = new Map<string, string>(),
+    genericTypeParameters = [],
     guidesDirectory = 'guides',
+    importStatement,
+    memberRouteSegment,
     owner = 'mnaoumov',
     packageSites = DEFAULT_PACKAGE_SITES,
     repo,
@@ -250,7 +290,11 @@ export function resolveDocsSiteConfig(config: DocsSiteConfig): ResolvedDocsSiteC
   return {
     apiDocSettings: {
       basePath,
+      excludedDirectories,
       externalTypeLinks,
+      genericTypeParameters,
+      importStatement,
+      memberRouteSegment,
       outputDirectory: join(contentDocsDirectory, 'api'),
       packageName: packageJson.name,
       packageSites,
