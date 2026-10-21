@@ -12,6 +12,8 @@ import {
   it
 } from 'vitest';
 
+import type { ImportStatementContext } from './api-doc-settings.ts';
+
 import { DEFAULT_PACKAGE_SITES } from './api-doc-package-sites.ts';
 import { resolveDocsSiteConfig } from './docs-site-config.ts';
 
@@ -44,7 +46,9 @@ describe('resolveDocsSiteConfig', () => {
     expect(resolved).toEqual({
       apiDocSettings: {
         basePath: '/typescript-lib',
+        excludedDirectories: [],
         externalTypeLinks: new Map(),
+        genericTypeParameters: [],
         outputDirectory: join(root, 'docs', 'src', 'content', 'docs', 'api'),
         packageName: '@mnaoumov/typescript-lib',
         packageSites: DEFAULT_PACKAGE_SITES,
@@ -78,11 +82,23 @@ describe('resolveDocsSiteConfig', () => {
     const root = createRoot({ name: 'pkg', version: '0.0.1' });
     const externalTypeLinks = new Map([['App', 'https://example.com/app']]);
     const packageSites = new Map([['other', 'https://example.com/other/']]);
+    const excludedDirectories = ['internal'];
+    const genericTypeParameters = ['TMock'];
+    function importStatement({ name }: ImportStatementContext): string {
+      return name;
+    }
+    function memberRouteSegment(name: string): string {
+      return name;
+    }
 
     const resolved = resolveDocsSiteConfig({
       docsDirectory: 'site',
+      excludedDirectories,
       externalTypeLinks,
+      genericTypeParameters,
       guidesDirectory: 'manual',
+      importStatement,
+      memberRouteSegment,
       owner: 'someone',
       packageSites,
       repo: 'pkg',
@@ -95,6 +111,10 @@ describe('resolveDocsSiteConfig', () => {
 
     expect(resolved.docsDirectory).toBe(join(root, 'site'));
     expect(resolved.apiDocSettings.externalTypeLinks).toBe(externalTypeLinks);
+    expect(resolved.apiDocSettings.excludedDirectories).toBe(excludedDirectories);
+    expect(resolved.apiDocSettings.genericTypeParameters).toBe(genericTypeParameters);
+    expect(resolved.apiDocSettings.importStatement).toBe(importStatement);
+    expect(resolved.apiDocSettings.memberRouteSegment).toBe(memberRouteSegment);
     expect(resolved.guidesDirectory).toBe('manual');
     expect(resolved.githubUrl).toBe('https://github.com/someone/pkg');
     expect(resolved.owner).toBe('someone');

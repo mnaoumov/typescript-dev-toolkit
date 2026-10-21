@@ -181,11 +181,13 @@ export function computeCacheHash(entryFiles: string[], generatorDirectory: strin
     hash.update(readFileSync(join(generatorDirectory, generatorFile), 'utf-8'));
   }
 
-  // The settings, which every link and path depends on
+  // The settings, which every link and path depends on. A hook is hashed by its source, which `JSON.stringify` drops.
   const settings = getApiDocSettings();
   hash.update(JSON.stringify({
     ...settings,
     externalTypeLinks: [...settings.externalTypeLinks],
+    importStatement: settings.importStatement && String(settings.importStatement),
+    memberRouteSegment: settings.memberRouteSegment && String(settings.memberRouteSegment),
     packageSites: [...settings.packageSites]
   }));
 
@@ -214,20 +216,21 @@ export function computeNamespace(srcDirectory: string, filePath: string): string
  *
  * Excludes: `*.test.ts` (incl. `*.browser.test.ts` / `*.integration.test.ts`), `*.d.ts`,
  * `index.ts`, `__merged.ts`, `setup.ts`, `*-setup.ts`, and any subtree under a `@types`,
- * `styles`, or `test-helpers` directory.
+ * `styles`, or `test-helpers` directory, or one of `excludedDirectories`.
  *
  * @param directory - The folder to search.
+ * @param excludedDirectories - Directory names excluded in addition to the defaults.
  * @returns The entry files' paths.
  */
-export function findEntryFiles(directory: string): string[] {
+export function findEntryFiles(directory: string, excludedDirectories: readonly string[] = []): string[] {
   const results: string[] = [];
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
     const fullPath = join(directory, entry.name);
     if (entry.isDirectory()) {
-      if (!isDocumentedDirectoryName(entry.name)) {
+      if (!isDocumentedDirectoryName(entry.name, excludedDirectories)) {
         continue;
       }
-      results.push(...findEntryFiles(fullPath));
+      results.push(...findEntryFiles(fullPath, excludedDirectories));
     } else if (isDocumentedFileName(entry.name)) {
       results.push(fullPath);
     }
@@ -290,11 +293,15 @@ export function processSourceFile(src: SourceFile, types: Map<string, TypeInfo>,
 
 /**
  * Register all type parameter names so renderTypeWithLinks won't hyperlink them.
- * Skip names that are also known types — those should still be linkable.
+ * Skip names that are also known types — those should still be linkable. The site's `genericTypeParameters`
+ * are registered as given.
  *
  * @param types - The documented types, keyed by qualified id.
  */
 export function registerGenericTypeParams(types: Map<string, TypeInfo>): void {
+  for (const name of getApiDocSettings().genericTypeParameters ?? []) {
+    GENERIC_TYPE_PARAMS.add(name);
+  }
   const knownNames = new Set<string>();
   for (const [, info] of types) {
     knownNames.add(info.name);

@@ -300,6 +300,15 @@ const FIXTURE_FILES: Readonly<Partial<Record<string, string>>> = {
     '}'
   ].join('\n'),
   'src/index.ts': 'export * from \'./alpha.ts\';',
+  'src/mocks.ts': [
+    '/** A factory. */',
+    'export class Factory {',
+    '  /** Creates. */',
+    '  public create(): void {}',
+    '  /** Creates a mock. */',
+    '  public create__(): void {}',
+    '}'
+  ].join('\n'),
   'src/nested/beta.test.ts': 'export const ignored = 1;',
   'src/nested/beta.ts': [
     '/** Another {@link Base}. */',
@@ -415,6 +424,12 @@ describe('generateApiDocs', () => {
     expect(existsSync(join(fixture.settings.outputDirectory, 'alpha/base/index-member.mdx'))).toBe(true);
   });
 
+  it('gives members differing only by trailing underscores a page each', () => {
+    expect(readPage(fixture, 'mocks/factory/create.mdx')).toContain('Creates.');
+    expect(readPage(fixture, 'mocks/factory/create__.mdx')).toContain('Creates a mock.');
+    expect(readPage(fixture, 'mocks/factory/create__.mdx')).toContain('slug: "api/mocks/Factory/create__"');
+  });
+
   it('inherits members and links them to the declaring type', () => {
     const page = readPage(fixture, 'alpha/derived/index.mdx');
     expect(page).toContain('**Extends:**');
@@ -481,5 +496,20 @@ describe('generateApiDocs', () => {
     rmSync(join(other.root, 'node_modules/typedoc-plugin-mdn-links'), { force: true, recursive: true });
     await generateApiDocs({ rootDirectory: other.root, settings: other.settings, sourceDirectory: join(other.root, 'src') });
     expect(readPage(other, 'alpha/nothing/index.mdx')).not.toContain('Web/API/AbortSignal');
+  }, 60_000);
+
+  it('applies a site\'s excluded directories and its import statement and member route hooks', async () => {
+    const other = createFixture();
+    const settings: ApiDocSettings = {
+      ...other.settings,
+      excludedDirectories: ['nested'],
+      importStatement: ({ name, namespace }) => (namespace === 'mocks' ? `import { ${name} } from 'mocks';` : undefined),
+      memberRouteSegment: (name) => (name.endsWith('__') ? `${name.slice(0, -'__'.length)}-mock` : undefined)
+    };
+    await generateApiDocs({ rootDirectory: other.root, settings, sourceDirectory: join(other.root, 'src') });
+    expect(existsSync(join(settings.outputDirectory, 'nested'))).toBe(false);
+    expect(readPage(other, 'alpha/base/index.mdx')).not.toContain('<ImportStatement text=');
+    expect(readPage(other, 'mocks/factory/index.mdx')).toContain('<ImportStatement text="import { Factory } from \'mocks\';" />');
+    expect(readPage(other, 'mocks/factory/create-mock.mdx')).toContain('Creates a mock.');
   }, 60_000);
 });
