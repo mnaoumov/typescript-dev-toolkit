@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## 3.7.4
+
+- fix(upstream-sync): quote command output without color codes and lead with the failure
+- fix(version): refuse to tag or push a release commit that did not land on the release branch
+
 ## 3.7.3
 
 - fix(deps): bump markdownlint-cli2 to ^0.24.0 so consumers stop resolving smol-toml 1.8.0
