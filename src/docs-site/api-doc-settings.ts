@@ -10,6 +10,12 @@
  */
 export interface ApiDocSettings {
   /**
+   * The root API page's intro, as Markdown, in place of the generated one; stripped of its Markdown, it is also the
+   * page's `description`. For a package whose arrangement the generated intro cannot explain.
+   */
+  readonly apiIndexIntro?: string | undefined;
+
+  /**
    * The site's base path, with a leading slash and no trailing one, e.g. `/typescript-lib`. Every in-content link
    * the generator emits starts with it.
    */
