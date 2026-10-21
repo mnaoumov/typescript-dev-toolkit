@@ -25,6 +25,7 @@ import type {
 
 import {
   buildPrBody,
+  cleanCommandOutput,
   compareWithUpstream,
   parseUpstreamsConfig,
   planSync,
@@ -286,6 +287,52 @@ describe('syncUpstreams', () => {
 
     expect(results).toEqual([{ name: 'docs', outcome: 'unchanged' }]);
     expect(world.calls.some((call) => call.startsWith('git push'))).toBe(false);
+    expect(world.calls.some((call) => call.startsWith('gh pr edit'))).toBe(false);
+  });
+
+  it('still rewrites the open PR\'s body when the update branch already holds the same result', async () => {
+    const world = createFakeWorld({ openPr: String(OPEN_PR_NUMBER), remoteBranchSame: true });
+    const results = await syncUpstreams({ baseBranch: 'main', configPath, dryRun: false, only: ['docs'] }, world.dependencies);
+
+    expect(results).toEqual([{ name: 'docs', outcome: 'unchanged' }]);
+    expect(world.calls.some((call) => call.startsWith('git push'))).toBe(false);
+    expect(world.calls.some((call) => call.startsWith(`gh pr edit ${String(OPEN_PR_NUMBER)} --body Upstream`))).toBe(true);
+    expect(world.logs).toContain(`docs: upstream/docs already holds this result; nothing pushed, PR #${String(OPEN_PR_NUMBER)}'s body rewritten.`);
+  });
+
+  it('runs the handler and verify without color', async () => {
+    const world = createFakeWorld();
+    const environments: (Readonly<Record<string, string>> | undefined)[] = [];
+    const shell = world.dependencies.shell.bind(world.dependencies);
+    world.dependencies.shell = (command, env): CommandResult => {
+      environments.push(env);
+      return shell(command, env);
+    };
+    await syncUpstreams({ baseBranch: 'main', configPath, dryRun: false, only: ['docs'] }, world.dependencies);
+
+    expect(environments).toHaveLength(2);
+    for (const env of environments) {
+      expect(env).toMatchObject({ FORCE_COLOR: '0', NO_COLOR: '1', UPSTREAM_NAME: 'docs', UPSTREAM_TARGET: HEAD });
+    }
+  });
+
+  it('opens a failed step\'s section with the lines reporting the failure, cleaned of color codes', async () => {
+    const world = createFakeWorld();
+    const shell = world.dependencies.shell.bind(world.dependencies);
+    const green = Array.from({ length: 80 }, (_, index) => ` ^[[32m✓^[[39m src/t${String(index)}.test.ts`);
+    world.dependencies.shell = (command, env): CommandResult =>
+      command === 'npm test'
+        ? { exitCode: 1, output: ['[install] step-failed', '/bin/sh: 1: bun: not found', ...green, ''].join('\n') }
+        : shell(command, env);
+    await syncUpstreams({ baseBranch: 'main', configPath, dryRun: false, only: ['docs'] }, world.dependencies);
+
+    const create = world.calls.find((call) => call.startsWith('gh pr create')) ?? '';
+    const verify = create.slice(create.indexOf('### Verify'));
+    expect(verify).toContain('Lines reporting the failure:\n\n```text\n[install] step-failed\n/bin/sh: 1: bun: not found\n```');
+    expect(verify.indexOf('Lines reporting the failure')).toBeLessThan(verify.indexOf('<details open>'));
+    expect(verify).not.toContain('^[');
+    expect(verify).toContain(' ✓ src/t79.test.ts');
+    expect(create.slice(0, create.indexOf('### Verify'))).not.toContain('Lines reporting the failure');
   });
 
   it('refuses to commit over a dirty working tree, and goes on to the next entry', async () => {
@@ -381,6 +428,32 @@ describe('syncUpstreams', () => {
 
   it('refuses an --only name that is not in the file', async () => {
     await expect(syncUpstreams({ baseBranch: 'main', configPath, dryRun: true, only: ['nope'] }, createFakeWorld().dependencies)).rejects.toThrow('"nope"');
+  });
+});
+
+describe('cleanCommandOutput', () => {
+  const ESC = '\u{1B}';
+
+  it('removes color codes sent as ESC bytes', () => {
+    expect(cleanCommandOutput(`${ESC}[32m✓${ESC}[39m a ${ESC}[2m(${ESC}[22m1 test${ESC}[2m)${ESC}[22m`)).toBe('✓ a (1 test)');
+  });
+
+  it('removes color codes rendered as caret text', () => {
+    expect(cleanCommandOutput(' ^[[32m✓^[[39m a ^[[2m(^[[22m^[[2m16 tests^[[22m^[[2m)^[[22m^[[32m 40^[[2mms^[[22m^[[39m')).toBe(' ✓ a (16 tests) 40ms');
+  });
+
+  it('removes cursor moves, OSC hyperlinks ended by BEL or ST, and two-character escapes', () => {
+    expect(cleanCommandOutput(`${ESC}[2K${ESC}[1Ga${ESC}]8;;https://x.test${ESC}\\link${ESC}]8;;\u{7}${ESC}Mb`)).toBe('alinkb');
+    expect(cleanCommandOutput(String.raw`^[]0;title^Gx^[]8;;u^[\y`)).toBe('xy');
+  });
+
+  it('keeps caret text that is not a control sequence', () => {
+    expect(cleanCommandOutput('match ^[A-Z] and ^G')).toBe('match ^[A-Z] and ^G');
+  });
+
+  it('keeps the last state of a line a progress display rewrote, and turns CRLF into LF', () => {
+    expect(cleanCommandOutput('10%\r50%\r100%\ndone\r\nnext\r')).toBe('100%\ndone\nnext');
+    expect(cleanCommandOutput('\r\r')).toBe('');
   });
 });
 
