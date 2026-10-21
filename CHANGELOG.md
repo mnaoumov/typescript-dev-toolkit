@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 3.10.0
+
+- feat(docs-site): an apiIndexIntro override, and no subpath claim under an importStatement hook
+
 ## 3.9.0
 
 - feat(docs-site): a public API barrel mode, and npmjs package links probed on the registry
