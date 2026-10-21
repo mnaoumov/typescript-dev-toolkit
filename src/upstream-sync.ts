@@ -239,7 +239,34 @@ const SHORT_SHA_LENGTH = 12;
  */
 const OUTPUT_TAIL_LINES = 60;
 
+/**
+ * The most lines that report a failure a failed step's section opens with, ahead of its output tail.
+ */
+const FAILURE_LINE_LIMIT = 20;
+
 const JSON_INDENT_SPACES = 2;
+
+/**
+ * The ESC that opens a terminal control sequence, either as the byte or as the caret text `^[` a log viewer or an
+ * earlier copy turned it into. Both reached a PR body: create-obsidian-plugin#2 carried the caret form.
+ */
+const ESC = String.raw`(?:\u001B|\^\[)`;
+
+/**
+ * Control Sequence Introducer sequences (colors, cursor moves), Operating System Command sequences (hyperlinks,
+ * titles, ended by BEL or ST, also as `^G`), and the two-character escapes. A two-character escape is matched only as
+ * the byte, because its caret text also spells an ordinary regular expression, such as `^[A-Z]`.
+ */
+const TERMINAL_CONTROL_REG_EXP = new RegExp(
+  String.raw`${ESC}\[[0-?]*[ -/]*[@-~]|${ESC}\][^\u0007\u001B^]*(?:\u0007|\^G|${ESC}\\)|\u001B[@-Z\\-_]`,
+  'g'
+);
+
+/**
+ * A line that reports a failure, which a failed step's section quotes first, because the tail may be a green test run
+ * that finished after it.
+ */
+const FAILURE_LINE_REG_EXP = /step-failed|\bfail(?:s|ed|ure|ing)?\b|\berror\b|\bnot found\b|\bERR!|[✗×]/i;
 
 /**
  * Writes the PR body.
@@ -277,11 +304,28 @@ export function buildPrBody(plan: SyncPlan, steps: null | StepResults, diffStat:
   }
 
   if (diffStat !== null) {
-    lines.push('### Generated changes', '', '```text', diffStat.trimEnd(), '```', '');
+    lines.push('### Generated changes', '', '```text', cleanCommandOutput(diffStat).trimEnd(), '```', '');
   }
 
   lines.push('This PR was opened by the upstream-sync job and is never merged automatically.');
   return `${lines.join('\n')}\n`;
+}
+
+/**
+ * Turns a command's captured output into plain text a PR body can quote: terminal control sequences are removed,
+ * whether they arrived as ESC bytes or as their caret-rendered `^[[...m` text, and a line a progress display rewrote
+ * with `\r` keeps only its last state.
+ *
+ * @param output - The captured output.
+ * @returns The plain text.
+ */
+export function cleanCommandOutput(output: string): string {
+  return output
+    .replaceAll(TERMINAL_CONTROL_REG_EXP, '')
+    .replaceAll('\r\n', '\n')
+    .split('\n')
+    .map((line) => toLastLineState(line))
+    .join('\n');
 }
 
 /**
@@ -437,7 +481,9 @@ export function writePin(configPath: string, status: UpstreamStatus): void {
 
 function applyPlan(plan: SyncPlan, config: UpstreamsConfig, options: SyncUpstreamsOptions, dependencies: SyncDependencies): SyncResult {
   const { entry } = plan.status;
-  const env = { UPSTREAM_NAME: entry.name, UPSTREAM_TARGET: plan.status.head };
+  // No color: the output is quoted in a PR body, where a color code is only noise. `CI` is left alone, because it
+  // changes what some tools do, not just how they print.
+  const env = { FORCE_COLOR: '0', NO_COLOR: '1', UPSTREAM_NAME: entry.name, UPSTREAM_TARGET: plan.status.head };
   const handler: StepResult = { command: entry.handler, result: dependencies.shell(entry.handler, env) };
   writePin(options.configPath, plan.status);
   const verifyCommand = entry.verify ?? config.verify;
@@ -448,19 +494,24 @@ function applyPlan(plan: SyncPlan, config: UpstreamsConfig, options: SyncUpstrea
   execOrThrow(dependencies, 'git', ['commit', '--no-verify', '--message', plan.title]);
   const diffStat = execOrThrow(dependencies, 'git', ['diff', '--stat', 'HEAD~1', 'HEAD']);
 
+  const body = buildPrBody(plan, { handler, verify }, diffStat);
   const isRemoteBranch = dependencies.exec('git', ['ls-remote', '--exit-code', '--heads', 'origin', plan.branch]).exitCode === 0;
   if (isRemoteBranch) {
     execOrThrow(dependencies, 'git', ['fetch', 'origin', plan.branch]);
     if (dependencies.exec('git', ['diff', '--quiet', 'FETCH_HEAD', 'HEAD']).exitCode === 0) {
-      dependencies.log(`${entry.name}: ${plan.branch} already holds this result; nothing pushed.`);
+      // The body is still rewritten, so a change to how it is written reaches a PR whose branch has not moved.
+      const open = findOpenPr(dependencies, plan.branch);
+      if (open !== null) {
+        execOrThrow(dependencies, 'gh', ['pr', 'edit', open, '--body', body]);
+      }
+      dependencies.log(`${entry.name}: ${plan.branch} already holds this result; nothing pushed${open === null ? '' : `, PR #${open}'s body rewritten`}.`);
       return { name: entry.name, outcome: 'unchanged' };
     }
   }
   execOrThrow(dependencies, 'git', ['push', '--force', 'origin', `HEAD:refs/heads/${plan.branch}`]);
 
-  const body = buildPrBody(plan, { handler, verify }, diffStat);
-  const existing = execOrThrow(dependencies, 'gh', ['pr', 'list', '--head', plan.branch, '--state', 'open', '--json', 'number', '--jq', '.[0].number']).trim();
-  if (existing !== '' && existing !== 'null') {
+  const existing = findOpenPr(dependencies, plan.branch);
+  if (existing !== null) {
     const prNumber = Number(existing);
     execOrThrow(dependencies, 'gh', ['pr', 'edit', existing, '--title', plan.title, '--body', body]);
     execOrThrow(dependencies, 'gh', isFailed ? ['pr', 'ready', existing, '--undo'] : ['pr', 'ready', existing]);
@@ -488,12 +539,15 @@ function applyPlan(plan: SyncPlan, config: UpstreamsConfig, options: SyncUpstrea
 
 function describeStep(heading: string, step: StepResult): string[] {
   const isPassed = step.result.exitCode === 0;
-  const tail = step.result.output.trimEnd().split(/\r?\n/).slice(-OUTPUT_TAIL_LINES).join('\n');
+  const outputLines = cleanCommandOutput(step.result.output).trimEnd().split('\n');
+  const tail = outputLines.slice(-OUTPUT_TAIL_LINES).join('\n');
+  const failureLines = isPassed ? [] : outputLines.filter((line) => FAILURE_LINE_REG_EXP.test(line)).slice(0, FAILURE_LINE_LIMIT);
   return [
     `### ${heading}`,
     '',
     `\`${step.command}\`: ${isPassed ? 'passed' : `**FAILED** (exit ${String(step.result.exitCode)})`}.`,
     '',
+    ...(failureLines.length === 0 ? [] : ['Lines reporting the failure:', '', '```text', ...failureLines, '```', '']),
     isPassed ? '<details><summary>Output</summary>' : '<details open><summary>Output</summary>',
     '',
     '```text',
@@ -511,6 +565,11 @@ function execOrThrow(dependencies: SyncDependencies, file: string, arguments_: r
     throw new Error(`${file} ${arguments_.join(' ')} failed (exit ${String(result.exitCode)}): ${result.output.trim()}`);
   }
   return result.output;
+}
+
+function findOpenPr(dependencies: SyncDependencies, branch: string): null | string {
+  const number = execOrThrow(dependencies, 'gh', ['pr', 'list', '--head', branch, '--state', 'open', '--json', 'number', '--jq', '.[0].number']).trim();
+  return number === '' || number === 'null' ? null : number;
 }
 
 function isGitUpstream(entry: UpstreamEntry): entry is GitUpstreamEntry {
@@ -553,4 +612,9 @@ async function syncEntry(entry: UpstreamEntry, config: UpstreamsConfig, options:
     dependencies.exec('git', ['checkout', '--force', options.baseBranch]);
     dependencies.exec('git', ['branch', '--delete', '--force', plan.branch]);
   }
+}
+
+function toLastLineState(line: string): string {
+  const states = line.replace(/\r+$/, '');
+  return states.slice(states.lastIndexOf('\r') + 1);
 }
