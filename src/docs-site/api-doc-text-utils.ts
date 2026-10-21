@@ -182,7 +182,8 @@ export function getDisplayName(name: string, info: TypeInfo): string {
  * Emit the import statement for a documented export.
  *
  * The subpath equals the type's namespace (its source path relative to `src`), so `src/string.ts` of
- * `@mnaoumov/typescript-lib` is `@mnaoumov/typescript-lib/string`.
+ * `@mnaoumov/typescript-lib` is `@mnaoumov/typescript-lib/string`. A package publishing its API from one barrel
+ * (`publicApiEntry`) is imported from its root instead.
  *
  * Interfaces / type aliases / enums are imported with `import type`; classes / functions /
  * variables with a value `import`. A site's `importStatement` setting replaces that statement.
@@ -194,7 +195,8 @@ export function getImportStatement(info: TypeInfo): string | undefined {
   const isTypeOnly = ['enum', 'interface', 'type'].includes(info.kind);
   const importKeyword = isTypeOnly ? 'import type' : 'import';
   const settings = getApiDocSettings();
-  const defaultImportStatement = `${importKeyword} { ${info.name} } from '${settings.packageName}/${info.namespace}';`;
+  const moduleSpecifier = settings.publicApiEntry === undefined ? `${settings.packageName}/${info.namespace}` : settings.packageName;
+  const defaultImportStatement = `${importKeyword} { ${info.name} } from '${moduleSpecifier}';`;
   return settings.importStatement === undefined ? defaultImportStatement : settings.importStatement({ defaultImportStatement, isTypeOnly, kind: info.kind, name: info.name, namespace: info.namespace });
 }
 

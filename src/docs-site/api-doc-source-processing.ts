@@ -9,14 +9,24 @@ import type { SourceFile } from 'ts-morph';
 
 import { createHash } from 'node:crypto';
 import {
+  existsSync,
   readdirSync,
   readFileSync
 } from 'node:fs';
 import {
+  dirname,
   join,
-  relative
+  relative,
+  resolve
 } from 'node:path';
 import { Node } from 'ts-morph';
+import {
+  createSourceFile,
+  isExportDeclaration,
+  isNamespaceExport,
+  isStringLiteral,
+  ScriptTarget
+} from 'typescript';
 
 import type { TypeInfo } from './api-doc-types.ts';
 
@@ -40,6 +50,26 @@ import {
 import { registerPackageDeclaration } from './api-doc-package-sites.ts';
 import { getApiDocSettings } from './api-doc-settings.ts';
 import { simplifyType } from './api-doc-text-utils.ts';
+
+/**
+ * A package's public API barrel, read by {@link readPublicApiBarrel}.
+ */
+export interface PublicApiBarrel {
+  /**
+   * The modules the barrel re-exports from, in barrel order: the entry files of the API reference.
+   */
+  readonly files: readonly string[];
+
+  /**
+   * The qualified ids (`<namespace>#<name>`) of the exports the barrel forwards by name.
+   */
+  readonly publicKeys: ReadonlySet<string>;
+
+  /**
+   * The namespaces of the modules the barrel re-exports whole (`export * from`).
+   */
+  readonly wholeNamespaces: ReadonlySet<string>;
+}
 
 /**
  * Collect top-level exported functions.
@@ -239,6 +269,21 @@ export function findEntryFiles(directory: string, excludedDirectories: readonly 
 }
 
 /**
+ * Drops every documented type the public API barrel does not re-export. Run it after `resolveInheritedMembers`, so
+ * a public class still inherits the members of an internal base class.
+ *
+ * @param types - The documented types, keyed by qualified id.
+ * @param barrel - The barrel, read by {@link readPublicApiBarrel}.
+ */
+export function keepPublicApi(types: Map<string, TypeInfo>, barrel: PublicApiBarrel): void {
+  for (const [key, info] of types) {
+    if (!barrel.wholeNamespaces.has(info.namespace) && !barrel.publicKeys.has(key)) {
+      types.delete(key);
+    }
+  }
+}
+
+/**
  * Collects a source file's exported type aliases, enums, interfaces and classes.
  *
  * @param src - The source file.
@@ -289,6 +334,58 @@ export function processSourceFile(src: SourceFile, types: Map<string, TypeInfo>,
       types.set(key, extractClassInfo(cls, namespace));
     }
   }
+}
+
+/**
+ * Reads a package's public API barrel: the modules it re-exports from and the names it forwards.
+ *
+ * It is parsed on its own rather than through the ts-morph project, because the cache check needs the entry files
+ * before that project exists, and a cache hit must not pay for loading it.
+ *
+ * @param entryFile - The barrel, e.g. `<root>/src/index.ts`.
+ * @param sourceDirectory - The folder namespaces are relative to.
+ * @returns The barrel.
+ * @throws If the barrel re-exports a module that does not exist or belongs to another package, renames an export,
+ * or re-exports a module as a namespace: none of these can be documented under the name a consumer imports.
+ */
+export function readPublicApiBarrel(entryFile: string, sourceDirectory: string): PublicApiBarrel {
+  const sourceFile = createSourceFile(entryFile, readFileSync(entryFile, 'utf-8'), ScriptTarget.Latest);
+  const files = new Set<string>();
+  const publicKeys = new Set<string>();
+  const wholeNamespaces = new Set<string>();
+
+  for (const statement of sourceFile.statements) {
+    if (!isExportDeclaration(statement) || statement.moduleSpecifier === undefined || !isStringLiteral(statement.moduleSpecifier)) {
+      continue;
+    }
+    const moduleSpecifier = statement.moduleSpecifier.text;
+    if (!moduleSpecifier.startsWith('.')) {
+      throw new Error(`${entryFile} re-exports '${moduleSpecifier}', which is not a module of this package.`);
+    }
+    const filePath = resolve(dirname(entryFile), moduleSpecifier);
+    if (!existsSync(filePath)) {
+      throw new Error(`${entryFile} re-exports '${moduleSpecifier}', which does not exist.`);
+    }
+    files.add(filePath);
+    const namespace = computeNamespace(sourceDirectory, filePath);
+
+    const { exportClause } = statement;
+    if (exportClause === undefined) {
+      wholeNamespaces.add(namespace);
+      continue;
+    }
+    if (isNamespaceExport(exportClause)) {
+      throw new Error(`${entryFile} re-exports '${moduleSpecifier}' as a namespace, which the API reference cannot document.`);
+    }
+    for (const element of exportClause.elements) {
+      if (element.propertyName !== undefined) {
+        throw new Error(`${entryFile} renames '${element.propertyName.text}' to '${element.name.text}', which the API reference cannot document.`);
+      }
+      publicKeys.add(qualifiedKey(namespace, element.name.text));
+    }
+  }
+
+  return { files: [...files], publicKeys, wholeNamespaces };
 }
 
 /**
