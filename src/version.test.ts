@@ -18,6 +18,7 @@ import {
   assertGitHubCliInstalled,
   assertGitInstalled,
   assertGitRepoClean,
+  assertReleaseCommitLanded,
   autolinkBareUrls,
   getNewVersion,
   getReleaseNotes,
@@ -26,6 +27,7 @@ import {
   isPreRelease,
   parseVersionArguments,
   publishGitHubRelease,
+  readGitHeadState,
   toUpdateVersionOptions,
   updateChangelog,
   updateVersion,
@@ -180,6 +182,12 @@ beforeEach(() => {
   mockReadForbiddenPatterns.mockResolvedValue([]);
 });
 
+const START_SHA = 'a'.repeat(40);
+const RELEASE_SHA = 'b'.repeat(40);
+const SIDE_BRANCH_SHA = 'c'.repeat(40);
+
+type ExecImplementation = (command: string | string[]) => Promise<unknown>;
+
 function setIsTty(value: boolean | undefined): void {
   Object.defineProperty(process.stdin, 'isTTY', {
     configurable: true,
@@ -219,6 +227,32 @@ function stubReviewReturning(...reviewedContents: string[]): void {
     roundIndex++;
     return Promise.resolve(reviewedContent);
   });
+}
+
+/**
+ * Plays a repository whose release commit lands where the release started: `main` at {@link START_SHA} until
+ * `git commit` succeeds, then the release commit {@link RELEASE_SHA} on top of it. Every other command goes to
+ * `fallback`.
+ */
+function withReleaseCommitLanding(fallback: ExecImplementation): ExecImplementation {
+  let releaseSubject = '';
+  return async (command) => {
+    const commandString = Array.isArray(command) ? command.join(' ') : command;
+    if (commandString === 'git branch --show-current') {
+      return 'main';
+    }
+    if (commandString === 'git rev-parse HEAD') {
+      return START_SHA;
+    }
+    if (commandString === 'git log -1 --format=%H%n%P%n%s') {
+      return releaseSubject ? `${RELEASE_SHA}\n${START_SHA}\n${releaseSubject}` : `${START_SHA}\n${SIDE_BRANCH_SHA}\nfeat: the last change`;
+    }
+    const result = await fallback(command);
+    if (Array.isArray(command) && commandString.startsWith('git commit -m')) {
+      releaseSubject = command[3] ?? '';
+    }
+    return result;
+  };
 }
 
 describe('VersionUpdateType', () => {
@@ -436,6 +470,64 @@ describe('addGitTag', () => {
   it('should execute git tag command with version', async () => {
     await addGitTag('1.0.0');
     expect(mockExecFromRoot).toHaveBeenCalledWith('git tag -a 1.0.0 -m 1.0.0 --force', { isQuiet: true });
+  });
+
+  it('should tag the given commit rather than HEAD', async () => {
+    await addGitTag('1.0.0', RELEASE_SHA);
+    expect(mockExecFromRoot).toHaveBeenCalledWith(`git tag -a 1.0.0 -m 1.0.0 --force ${RELEASE_SHA}`, { isQuiet: true });
+  });
+});
+
+describe('readGitHeadState', () => {
+  it('should read the branch and the commit HEAD points at', async () => {
+    mockExecFromRoot.mockImplementation(withReleaseCommitLanding(() => Promise.resolve('')));
+    await expect(readGitHeadState()).resolves.toEqual({ branch: 'main', sha: START_SHA });
+  });
+});
+
+describe('assertReleaseCommitLanded', () => {
+  const START_HEAD = { branch: 'main', sha: START_SHA };
+
+  function stubHead(branch: string, log: string): void {
+    mockExecFromRoot.mockImplementation((command: string | string[]) => {
+      const commandString = Array.isArray(command) ? command.join(' ') : command;
+      if (commandString === 'git branch --show-current') {
+        return Promise.resolve(branch);
+      }
+      return Promise.resolve(commandString === 'git log -1 --format=%H%n%P%n%s' ? log : '');
+    });
+  }
+
+  it('should return the release commit when it sits on the start commit, on the start branch', async () => {
+    stubHead('main', `${RELEASE_SHA}\n${START_SHA}\nchore: release 1.0.1`);
+    await expect(assertReleaseCommitLanded('1.0.1', START_HEAD, 'tagging')).resolves.toBe(RELEASE_SHA);
+  });
+
+  it('should refuse a release commit that landed on a branch another process switched to', async () => {
+    // The shape that shipped an untagged bump: the commit succeeded, on the branch somebody else had checked out.
+    stubHead('feature/other-work', `${RELEASE_SHA}\n${SIDE_BRANCH_SHA}\nchore: release 1.0.1`);
+    await expect(assertReleaseCommitLanded('1.0.1', START_HEAD, 'tagging')).rejects.toThrow(
+      `Refusing to continue before tagging: the release commit for 1.0.1 is not where it should be. The release started on branch 'main' at ${START_SHA}`
+    );
+  });
+
+  it('should refuse when the checkout was switched back and HEAD is the commit before the bump', async () => {
+    stubHead('main', `${START_SHA}\n${SIDE_BRANCH_SHA}\nfeat: the last change`);
+    await expect(assertReleaseCommitLanded('1.0.1', START_HEAD, 'pushing')).rejects.toThrow(
+      `but HEAD is ${START_SHA} ('feat: the last change', parent ${SIDE_BRANCH_SHA}) on branch 'main'`
+    );
+  });
+
+  it('should refuse a release commit with another subject', async () => {
+    stubHead('main', `${RELEASE_SHA}\n${START_SHA}\nchore: release 1.0.2`);
+    await expect(assertReleaseCommitLanded('1.0.1', START_HEAD, 'tagging')).rejects.toThrow('is not where it should be');
+  });
+
+  it('should name a detached HEAD and a root commit', async () => {
+    stubHead('', RELEASE_SHA);
+    await expect(assertReleaseCommitLanded('1.0.1', START_HEAD, 'tagging')).rejects.toThrow(
+      `but HEAD is ${RELEASE_SHA} ('', parent none) on a detached HEAD`
+    );
   });
 });
 
@@ -1449,7 +1541,7 @@ describe('updateVersion', () => {
     mockCreateInterface.mockReturnValue({
       question: vi.fn().mockResolvedValue(undefined)
     });
-    mockExecFromRoot.mockImplementation((command: string | string[]) => {
+    mockExecFromRoot.mockImplementation(withReleaseCommitLanding((command: string | string[]) => {
       const commandString = Array.isArray(command) ? command.join(' ') : command;
       if (commandString.startsWith('git tag')) {
         return Promise.resolve('1.0.1');
@@ -1458,7 +1550,7 @@ describe('updateVersion', () => {
         return Promise.resolve('https://github.com/user/repo');
       }
       return commandString.includes('npm pack') ? Promise.resolve(JSON.stringify([{ filename: 'pkg-1.0.1.tgz' }], null, 2)) : Promise.resolve('');
-    });
+    }));
   }
 
   it('should throw when no version update type provided and no env vars', async () => {
@@ -1530,6 +1622,51 @@ describe('updateVersion', () => {
     expect(mockExecFromRoot).toHaveBeenCalledWith(expect.stringContaining('git tag'), expect.any(Object));
     expect(mockExecFromRoot).not.toHaveBeenCalledWith('git push --follow-tags --force', expect.any(Object));
     expect(prepareRelease).not.toHaveBeenCalled();
+  });
+
+  it('should tag the verified release commit', async () => {
+    setupFullMocks();
+    await updateVersion('patch');
+    expect(mockExecFromRoot).toHaveBeenCalledWith(`git tag -a 1.0.1 -m 1.0.1 --force ${RELEASE_SHA}`, { isQuiet: true });
+  });
+
+  it('should refuse to tag, push or publish when the release commit did not land on the release branch', async () => {
+    setupFullMocks();
+    const fullImplementation = mockExecFromRoot.getMockImplementation() as ExecImplementation;
+    let isSwitched = false;
+    mockExecFromRoot.mockImplementation((command: string | string[]) => {
+      const commandString = Array.isArray(command) ? command.join(' ') : command;
+      // Another process checks out its own branch after the release read where it started.
+      if (commandString === 'git branch --show-current' && isSwitched) {
+        return Promise.resolve('feature/other-work');
+      }
+      if (commandString === 'git rev-parse HEAD') {
+        isSwitched = true;
+      }
+      return fullImplementation(command);
+    });
+
+    await expect(updateVersion('patch')).rejects.toThrow('Refusing to continue before tagging');
+    const commands = mockExecFromRoot.mock.calls.map(([command]: unknown[]) => Array.isArray(command) ? command.join(' ') : String(command));
+    expect(commands.some((command) => command.startsWith('git tag -a'))).toBe(false);
+    expect(commands.some((command) => command.startsWith('git push'))).toBe(false);
+    expect(commands.some((command) => command.startsWith('gh release'))).toBe(false);
+  });
+
+  it('should refuse to push when HEAD moves after the tag', async () => {
+    setupFullMocks();
+    const fullImplementation = mockExecFromRoot.getMockImplementation() as ExecImplementation;
+    let isTagged = false;
+    mockExecFromRoot.mockImplementation((command: string | string[]) => {
+      const commandString = Array.isArray(command) ? command.join(' ') : command;
+      if (commandString.startsWith('git tag -a')) {
+        isTagged = true;
+      }
+      return commandString === 'git log -1 --format=%H%n%P%n%s' && isTagged ? Promise.resolve(`${START_SHA}\n${SIDE_BRANCH_SHA}\nfeat: the last change`) : fullImplementation(command);
+    });
+
+    await expect(updateVersion('patch')).rejects.toThrow('Refusing to continue before pushing');
+    expect(mockExecFromRoot).not.toHaveBeenCalledWith('git push --follow-tags --force', expect.any(Object));
   });
 
   it('should add --no-verify to the release commit when shouldVerifyCommit is false', async () => {
@@ -1622,7 +1759,7 @@ describe('updateVersion', () => {
   it('should settle the changelog before any file is written, and write it only after the version bump', async () => {
     setupFullMocks();
     const steps: string[] = [];
-    mockExecFromRoot.mockImplementation((command: string | string[]) => {
+    mockExecFromRoot.mockImplementation(withReleaseCommitLanding((command: string | string[]) => {
       const commandString = Array.isArray(command) ? command.join(' ') : command;
       if (commandString.startsWith('code -w')) {
         steps.push('review');
@@ -1642,7 +1779,7 @@ describe('updateVersion', () => {
         return Promise.resolve('https://github.com/user/repo');
       }
       return commandString.includes('npm pack') ? Promise.resolve(JSON.stringify([{ filename: 'pkg-1.0.1.tgz' }], null, 2)) : Promise.resolve('');
-    });
+    }));
     mockEditPackageJson.mockImplementation(() => {
       steps.push('bump');
       return noopAsync();
@@ -1677,7 +1814,7 @@ describe('updateVersion', () => {
       // real command produces and the one the parser has to survive.
       const log = `${commits.map((message, index) => `${String(index + 1).repeat(40)}\n${message}\n`).join('\0')}\0`;
 
-      mockExecFromRoot.mockImplementation((command: string | string[]) => {
+      mockExecFromRoot.mockImplementation(withReleaseCommitLanding((command: string | string[]) => {
         const commandString = Array.isArray(command) ? command.join(' ') : command;
         if (commandString.startsWith('git rev-parse')) {
           return Promise.resolve(`refs/tags/${LAST_TAG}`);
@@ -1692,7 +1829,7 @@ describe('updateVersion', () => {
           return Promise.resolve('https://github.com/user/repo');
         }
         return commandString.includes('npm pack') ? Promise.resolve(JSON.stringify([{ filename: 'pkg.tgz' }], null, 2)) : Promise.resolve('');
-      });
+      }));
     }
 
     it('should refuse a patch when the range carries a feat', async () => {
@@ -1786,7 +1923,7 @@ describe('updateVersion', () => {
 
     it('should not derive a floor when no previous release tag resolves', async () => {
       setupBumpFloorMocks(['feat!: a breaking capability']);
-      mockExecFromRoot.mockImplementation((command: string | string[]) => {
+      mockExecFromRoot.mockImplementation(withReleaseCommitLanding((command: string | string[]) => {
         const commandString = Array.isArray(command) ? command.join(' ') : command;
         if (commandString.startsWith('git tag')) {
           return Promise.resolve(LAST_TAG);
@@ -1796,7 +1933,7 @@ describe('updateVersion', () => {
         }
         // `git rev-parse --verify --quiet` answers with nothing for a heading that is not a tag.
         return commandString.includes('npm pack') ? Promise.resolve(JSON.stringify([{ filename: 'pkg.tgz' }], null, 2)) : Promise.resolve('');
-      });
+      }));
       await updateVersion('patch');
       expect(mockEditPackageJson).toHaveBeenCalled();
     });
