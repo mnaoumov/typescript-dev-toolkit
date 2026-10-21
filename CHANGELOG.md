@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 3.8.0
+
+- feat(docs-site): options for import statements, member routes, excluded folders, type params
+
 ## 3.7.4
 
 - fix(upstream-sync): quote command output without color codes and lead with the failure
