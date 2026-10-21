@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 3.7.3
+
+- fix(deps): bump markdownlint-cli2 to ^0.24.0 so consumers stop resolving smol-toml 1.8.0
+
 ## 3.7.2
 
 - chore(build): drop the duplicate build:compile:typescript script
