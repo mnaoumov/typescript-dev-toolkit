@@ -3,7 +3,8 @@
  *
  * The API documentation generator: walks a package's `src`, extracts every documentable exported declaration via
  * ts-morph, and writes Starlight-compatible MDX pages plus a sidebar JSON. The output tree mirrors the package's
- * module structure: a type's namespace is its source path relative to `src`, which is also its import subpath.
+ * module structure: a type's namespace is its source path relative to `src`, which is also its import subpath, unless
+ * the package publishes its API from one barrel (`publicApiEntry`), whose re-exports are then all that is documented.
  */
 
 import {
@@ -51,7 +52,9 @@ import {
   computeCacheHash,
   computeNamespace,
   findEntryFiles,
+  keepPublicApi,
   processSourceFile,
+  readPublicApiBarrel,
   registerGenericTypeParams
 } from './api-doc-source-processing.ts';
 import { resolveInheritedMembers } from './api-doc-type-merging.ts';
@@ -90,11 +93,15 @@ export async function generateApiDocs(options: GenerateApiDocsParams): Promise<v
   configureApiDocs(settings);
   loadExternalTypeMaps(rootDirectory);
 
-  const entryFiles = findEntryFiles(sourceDirectory, settings.excludedDirectories);
+  const { publicApiEntry } = settings;
+  const barrel = publicApiEntry === undefined ? undefined : readPublicApiBarrel(publicApiEntry, sourceDirectory);
+  const entryFiles = barrel === undefined ? findEntryFiles(sourceDirectory, settings.excludedDirectories) : [...barrel.files];
   console.warn(`Found ${String(entryFiles.length)} entry source files`);
 
   const cacheFile = join(settings.outputDirectory, CACHE_FILE_NAME);
-  const currentHash = computeCacheHash(entryFiles, dirname(fileURLToPath(import.meta.url)));
+  // The barrel decides which names are documented, so a re-export added there changes the output by itself.
+  const hashedFiles = publicApiEntry === undefined ? entryFiles : [...entryFiles, publicApiEntry];
+  const currentHash = computeCacheHash(hashedFiles, dirname(fileURLToPath(import.meta.url)));
   if (existsSync(cacheFile) && existsSync(settings.sidebarFile) && readFileSync(cacheFile, 'utf-8').trim() === currentHash) {
     console.warn('Source files and generator unchanged — skipping generation.');
     return;
@@ -124,6 +131,10 @@ export async function generateApiDocs(options: GenerateApiDocsParams): Promise<v
   }
 
   resolveInheritedMembers(types);
+  // Only after the inheritance is resolved, so a public class keeps the members of an internal base class.
+  if (barrel !== undefined) {
+    keepPublicApi(types, barrel);
+  }
 
   for (const info of types.values()) {
     info.properties.sort((a, b) => a.name.localeCompare(b.name));

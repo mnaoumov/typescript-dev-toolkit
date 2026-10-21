@@ -101,6 +101,14 @@ describe('assertDocsLinksResolve', () => {
     await expect(assertDocsLinksResolve({ outputDirectory: root, siteBaseUrl: SITE_BASE_URL })).rejects.toThrow(/Detected \d+ broken documentation link\(s\)/);
   });
 
+  it('probes an npmjs package page on the registry, which answers an unattended request', async () => {
+    const fetchMock = stubFetch(new Map([['https://www.npmjs.com/package/@scope/name', HTTP_NOT_FOUND]]));
+    const root = createSite({ 'index.html': '<a href="https://www.npmjs.com/package/@scope/name">p</a>' });
+
+    await expect(assertDocsLinksResolve({ outputDirectory: root, siteBaseUrl: SITE_BASE_URL })).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledWith('https://registry.npmjs.org/@scope/name', expect.anything());
+  });
+
   it('fails first on a GitHub alert rendered as a plain blockquote', async () => {
     const fetchMock = stubFetch(new Map());
     const root = createSite({ 'index.html': '<blockquote><p>[!NOTE] text</p></blockquote>' });

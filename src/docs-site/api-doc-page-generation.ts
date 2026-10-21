@@ -741,10 +741,13 @@ export function sidebarTreeToEntries(node: SidebarTreeNode, label: string): Side
 // Serves both as the root API page's prose and (stripped) as its `description` frontmatter.
 // Sharing one function keeps the page and its OG card from drifting apart.
 function getApiIndexIntro(namespaces: readonly string[]): string {
-  const { packageName } = getApiDocSettings();
+  const { packageName, publicApiEntry } = getApiDocSettings();
+  const intro = `The complete API reference for \`${packageName}\`, generated from its TSDoc. `;
+  if (publicApiEntry !== undefined) {
+    return `${intro}Every export is imported from the package root, \`${packageName}\`; the modules below group them by source module.`;
+  }
   const [exampleNamespace = 'module'] = namespaces;
-  return `The complete API reference for \`${packageName}\`, generated from its TSDoc. `
-    + `Each module below maps to an import subpath (e.g. the \`${exampleNamespace}\` module is \`${packageName}/${exampleNamespace}\`).`;
+  return `${intro}Each module below maps to an import subpath (e.g. the \`${exampleNamespace}\` module is \`${packageName}/${exampleNamespace}\`).`;
 }
 
 function getComponentImports(componentNames: readonly string[]): string[] {

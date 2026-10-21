@@ -55,6 +55,8 @@ export interface AssertDocsLinksResolveParams {
 const EXTERNAL_LINK_TIMEOUT_IN_MILLISECONDS = 10_000;
 const EXTERNAL_LINK_CONCURRENCY = 20;
 const HTML_FILE_EXTENSION = '.html';
+const NPM_PACKAGE_URL_PREFIX = 'https://www.npmjs.com/package/';
+const NPM_REGISTRY_URL_PREFIX = 'https://registry.npmjs.org/';
 
 // The host serves this page as the fallback for any missing path (with a 404 status), so it is not a
 // real navigable route: Starlight gives it a self-`rel="canonical"` of `/404/` that inherently cannot
@@ -132,7 +134,7 @@ async function fetchUrlStatus(url: string): Promise<ExternalLinkProbeResult> {
   }, EXTERNAL_LINK_TIMEOUT_IN_MILLISECONDS);
 
   try {
-    const response = await fetch(url, { signal: controller.signal });
+    const response = await fetch(toCheckableUrl(url), { signal: controller.signal });
     // Cancel the unread body so undici releases the connection immediately.
     // Without this the per-host connection pool stalls and same-host requests
     // serialize, turning a ~3s run into minutes.
@@ -175,4 +177,10 @@ async function readPages(outputRootPath: string, allFiles: Set<string>): Promise
   }
 
   return pages;
+}
+
+// The npmjs site answers an unattended `fetch` of a package page with 403, so the package is probed on the registry
+// instead, the rewrite the markdown link check gives linkinator.
+function toCheckableUrl(url: string): string {
+  return url.startsWith(NPM_PACKAGE_URL_PREFIX) ? NPM_REGISTRY_URL_PREFIX + url.slice(NPM_PACKAGE_URL_PREFIX.length) : url;
 }

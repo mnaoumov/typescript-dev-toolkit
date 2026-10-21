@@ -512,4 +512,52 @@ describe('generateApiDocs', () => {
     expect(readPage(other, 'mocks/factory/index.mdx')).toContain('<ImportStatement text="import { Factory } from \'mocks\';" />');
     expect(readPage(other, 'mocks/factory/create-mock.mdx')).toContain('Creates a mock.');
   }, 60_000);
+
+  it('documents only what a public API barrel re-exports, imported from the package root', async () => {
+    const other = createFixture();
+    const barrelPath = join(other.root, 'src/public.ts');
+    writeFileSync(
+      barrelPath,
+      [
+        'import { add } from \'./alpha.ts\';',
+        'void add;',
+        'export { Derived } from \'./alpha.ts\';',
+        'export type { Shape } from \'./alpha.ts\';',
+        'export * from \'./nested/beta.ts\';'
+      ].join('\n')
+    );
+    const settings: ApiDocSettings = { ...other.settings, publicApiEntry: barrelPath };
+    await generateApiDocs({ rootDirectory: other.root, settings, sourceDirectory: join(other.root, 'src') });
+
+    const derived = readPage(other, 'alpha/derived/index.mdx');
+    expect(derived).toContain('<ImportStatement text="import { Derived } from \'@mnaoumov/typescript-lib\';" />');
+    expect(derived).toContain('inheritedFrom: ');
+    expect(readPage(other, 'alpha/shape/index.mdx')).toContain('import type { Shape } from \'@mnaoumov/typescript-lib\';');
+    expect(existsSync(join(settings.outputDirectory, 'alpha/base'))).toBe(false);
+    expect(existsSync(join(settings.outputDirectory, 'alpha/add'))).toBe(false);
+    expect(existsSync(join(settings.outputDirectory, 'nested/beta/base/index.mdx'))).toBe(true);
+    expect(existsSync(join(settings.outputDirectory, 'gamma'))).toBe(false);
+    expect(readPage(other, 'index.mdx')).toContain('Every export is imported from the package root');
+
+    // A re-export added to the barrel alone invalidates the cache.
+    writeFileSync(barrelPath, `${readFileSync(barrelPath, 'utf-8')}\nexport { add } from './alpha.ts';`);
+    await generateApiDocs({ rootDirectory: other.root, settings, sourceDirectory: join(other.root, 'src') });
+    expect(existsSync(join(settings.outputDirectory, 'alpha/add/index.mdx'))).toBe(true);
+  }, 60_000);
+
+  it.each([
+    ['export { x } from \'pkg\';', 'which is not a module of this package'],
+    ['export { x } from \'./absent.ts\';', 'which does not exist'],
+    ['export * as alpha from \'./alpha.ts\';', 'as a namespace'],
+    ['export { add as plus } from \'./alpha.ts\';', 'renames \'add\' to \'plus\'']
+  ])('refuses a barrel that cannot be documented: %s', async (barrel, message) => {
+    const other = createFixture();
+    const barrelPath = join(other.root, 'src/public.ts');
+    writeFileSync(barrelPath, barrel);
+    await expect(generateApiDocs({
+      rootDirectory: other.root,
+      settings: { ...other.settings, publicApiEntry: barrelPath },
+      sourceDirectory: join(other.root, 'src')
+    })).rejects.toThrow(message);
+  });
 });

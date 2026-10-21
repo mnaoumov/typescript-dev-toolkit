@@ -101,6 +101,7 @@ describe('resolveDocsSiteConfig', () => {
       memberRouteSegment,
       owner: 'someone',
       packageSites,
+      publicApiEntry: 'lib/index.ts',
       repo: 'pkg',
       repoHomepage: 'set',
       rootDirectory: root,
@@ -120,6 +121,7 @@ describe('resolveDocsSiteConfig', () => {
     expect(resolved.owner).toBe('someone');
     expect(resolved.repoHomepage).toBe('set');
     expect(resolved.apiDocSettings.packageSites).toBe(packageSites);
+    expect(resolved.apiDocSettings.publicApiEntry).toBe(join(root, 'lib', 'index.ts'));
     expect(resolved.siteBaseUrl).toBe('https://example.com/pkg/');
     expect(resolved.sourceDirectory).toBe(join(root, 'lib'));
   });

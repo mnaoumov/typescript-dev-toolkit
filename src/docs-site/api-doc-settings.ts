@@ -67,6 +67,14 @@ export interface ApiDocSettings {
   readonly packageSites: ReadonlyMap<string, string>;
 
   /**
+   * The absolute path of the package's one public entry point, for a package that publishes its API from a barrel
+   * rather than one import subpath per module. Set, the reference documents only the exports that barrel re-exports,
+   * found by following its `export ... from` statements rather than by walking the source folder, and every import
+   * statement imports from the package root. A namespace still groups the reference by source module.
+   */
+  readonly publicApiEntry?: string | undefined;
+
+  /**
    * The JSON file the generated Starlight sidebar is written to.
    */
   readonly sidebarFile: string;

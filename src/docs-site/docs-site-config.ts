@@ -89,6 +89,16 @@ export interface DocsSiteConfig {
   readonly packageSites?: ReadonlyMap<string, string>;
 
   /**
+   * The package's one public entry point, e.g. `src/index.ts`, for a package that publishes its API from a barrel
+   * rather than one import subpath per module. Set, the API reference documents only the exports that barrel
+   * re-exports (`export ... from`), {@link excludedDirectories} does not apply, and every import statement imports
+   * from the package root.
+   *
+   * @default undefined: every module under {@link sourceDirectory} is documented as its own import subpath
+   */
+  readonly publicApiEntry?: string;
+
+  /**
    * The repository's name. The site is served under it: `<siteOrigin>/<repo>/`.
    */
   readonly repo: string;
@@ -267,6 +277,7 @@ export function resolveDocsSiteConfig(config: DocsSiteConfig): ResolvedDocsSiteC
     memberRouteSegment,
     owner = 'mnaoumov',
     packageSites = DEFAULT_PACKAGE_SITES,
+    publicApiEntry,
     repo,
     repoHomepage = 'off',
     rootDirectory = process.cwd(),
@@ -298,6 +309,7 @@ export function resolveDocsSiteConfig(config: DocsSiteConfig): ResolvedDocsSiteC
       outputDirectory: join(contentDocsDirectory, 'api'),
       packageName: packageJson.name,
       packageSites,
+      publicApiEntry: publicApiEntry === undefined ? undefined : join(rootDirectory, publicApiEntry),
       sidebarFile: join(docsSourceDirectory, 'generated-sidebar.json')
     },
     basePath,
