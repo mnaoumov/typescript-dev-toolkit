@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 3.9.0
+
+- feat(docs-site): a public API barrel mode, and npmjs package links probed on the registry
+
 ## 3.8.0
 
 - feat(docs-site): options for import statements, member routes, excluded folders, type params
