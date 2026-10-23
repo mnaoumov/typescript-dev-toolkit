@@ -907,6 +907,9 @@ export async function updateVersion(versionUpdateType?: string, options: UpdateV
   // skipping the VERIFICATION of the code, and this is a correctness gate on the release itself — the bump
   // a `--no-checks` release ships is as public, and as unfixable afterwards, as any other.
   await assertVersionUpdateTypeMeetsBumpFloor(versionUpdateType);
+  // Same placement, same reason: a changelog section nobody will review is fully known before the gate, and a subject it
+  // fails on is already pushed, so learning that after the preflight only costs the preflight.
+  await assertNonInteractiveChangelogIsPublishable(versionUpdateType, changelogFilePath, shouldEditChangelog);
 
   if (shouldRunChecks) {
     await assertGitRepoClean();
@@ -1085,6 +1088,41 @@ function assertChangelogStepIsNonBlocking(changelogFilePath: string | undefined,
 }
 
 /**
+ * Runs the checks {@link prepareChangelog} runs on a changelog nobody will review, before the gate rather than
+ * after it.
+ *
+ * Without an interactive review (`--no-changelog-editing`, or `--changelog-file`), the new section is fully decided
+ * by what is already committed, so every check `prepareChangelog` would throw on can be answered in seconds. A
+ * release once passed its whole 25-minute preflight and was then refused by `lint:md` over a pushed commit subject
+ * it could have named at the start. With a review due, nothing is checked here, because the author can still fix
+ * a finding in the editor.
+ *
+ * @param versionUpdateType - The requested version update type.
+ * @param changelogFilePath - The prepared notes, when the release was given them.
+ * @param shouldEditChangelog - Whether the interactive review was asked for.
+ * @returns A {@link Promise} that resolves when the section would pass, and rejects naming what it fails on.
+ */
+async function assertNonInteractiveChangelogIsPublishable(
+  versionUpdateType: string,
+  changelogFilePath: string | undefined,
+  shouldEditChangelog: boolean
+): Promise<void> {
+  if (isChangelogReviewDue(changelogFilePath, shouldEditChangelog)) {
+    return;
+  }
+
+  const newVersion = await getNewVersion(versionUpdateType);
+  const changelog = await composeChangelog(newVersion, changelogFilePath);
+  const findings = await getChangelogSectionFindings(changelog, newVersion);
+  if (findings.length > 0) {
+    throw toChangelogFindingsError(findings, newVersion);
+  }
+
+  assertChangelogHasNoMergeSubjects(changelog, newVersion);
+  await assertChangelogHasNoForbiddenPatterns(changelog, newVersion);
+}
+
+/**
  * Refuses a release whose bump is LOWER than the commits it is about to publish force it to be.
  *
  * The rule this enforces is old and was written down after `96.5.1` shipped six unreleased `feat:` commits as
@@ -1141,6 +1179,43 @@ async function assertVersionUpdateTypeMeetsBumpFloor(versionUpdateType: string):
     takenLevel,
     versionUpdateType
   });
+}
+
+/**
+ * Composes the new `CHANGELOG.md` content — the new section from the commits since the last tag, or from the
+ * prepared notes, above the previous sections — without reviewing, checking or writing it.
+ *
+ * @param newVersion - The new version number the changelog section is written for.
+ * @param changelogFilePath - The prepared notes, when the release was given them.
+ * @returns A {@link Promise} that resolves to the composed content.
+ */
+async function composeChangelog(newVersion: string, changelogFilePath: string | undefined): Promise<string> {
+  const previousChangelogLines = await readPreviousChangelogLines();
+
+  let newChangeLog = `# CHANGELOG\n\n## ${newVersion}\n\n`;
+
+  if (changelogFilePath === undefined) {
+    const lastTag = await resolveLastReleasedTag(previousChangelogLines);
+    const commitRange = lastTag ? `${lastTag}..HEAD` : 'HEAD';
+    const commitMessagesString = await execFromRoot(`git log ${commitRange} --format=%B --first-parent -z`, { isQuiet: true });
+    const commitMessages = commitMessagesString.split('\0').filter(Boolean).map((commitMessage) => toChangelogEntry(commitMessage));
+
+    for (const message of commitMessages) {
+      newChangeLog += `- ${autolinkBareUrls(message)}\n`;
+    }
+  } else {
+    const preparedNotes = await readFile(changelogFilePath, 'utf-8');
+    newChangeLog += `${replaceAll({ $string: preparedNotes, replacer: '\n', searchValue: '\r\n' }).trim()}\n`;
+  }
+
+  if (previousChangelogLines.length > 0) {
+    newChangeLog += '\n';
+    for (const line of previousChangelogLines) {
+      newChangeLog += `${line}\n`;
+    }
+  }
+
+  return newChangeLog;
 }
 
 function describeBranch(branch: string): string {
@@ -1210,7 +1285,6 @@ async function getBumpFloor(commitRange: string): Promise<BumpFloor> {
     level: toHighestBumpLevel(forcingCommits)
   };
 }
-
 /**
  * Runs `lint:md`'s and `spellcheck`'s checks over the NEW section of a composed changelog, before any of it
  * reaches the repository.
@@ -1265,6 +1339,7 @@ async function getChangelogSectionFindings(changelogContent: string, version: st
     }))
   ];
 }
+
 /**
  * The default release assets: the project's `npm pack` tarball, written into `dist/`, and `dist/styles.css`.
  *
@@ -1296,6 +1371,18 @@ function isBumpLevelAtLeast(level: BumpLevel, floorLevel: VersionUpdateType.Majo
   return floorLevel === VersionUpdateType.Major
     ? level === VersionUpdateType.Major
     : level !== VersionUpdateType.Patch;
+}
+
+/**
+ * Whether the release opens the interactive changelog review. Prepared notes are already the reviewed text, so
+ * they never open an editor, whatever `shouldEditChangelog` says.
+ *
+ * @param changelogFilePath - The prepared notes, when the release was given them.
+ * @param shouldEditChangelog - Whether the interactive review was asked for.
+ * @returns Whether the review is due.
+ */
+function isChangelogReviewDue(changelogFilePath: string | undefined, shouldEditChangelog: boolean): boolean {
+  return changelogFilePath === undefined && shouldEditChangelog;
 }
 
 /**
@@ -1362,33 +1449,9 @@ async function prepareChangelog(newVersion: string, options: UpdateChangelogOpti
     changelogFilePath,
     shouldEditChangelog = true
   } = options;
-  const previousChangelogLines = await readPreviousChangelogLines();
+  const newChangeLog = await composeChangelog(newVersion, changelogFilePath);
 
-  let newChangeLog = `# CHANGELOG\n\n## ${newVersion}\n\n`;
-
-  if (changelogFilePath === undefined) {
-    const lastTag = await resolveLastReleasedTag(previousChangelogLines);
-    const commitRange = lastTag ? `${lastTag}..HEAD` : 'HEAD';
-    const commitMessagesString = await execFromRoot(`git log ${commitRange} --format=%B --first-parent -z`, { isQuiet: true });
-    const commitMessages = commitMessagesString.split('\0').filter(Boolean).map((commitMessage) => toChangelogEntry(commitMessage));
-
-    for (const message of commitMessages) {
-      newChangeLog += `- ${autolinkBareUrls(message)}\n`;
-    }
-  } else {
-    const preparedNotes = await readFile(changelogFilePath, 'utf-8');
-    newChangeLog += `${replaceAll({ $string: preparedNotes, replacer: '\n', searchValue: '\r\n' }).trim()}\n`;
-  }
-
-  if (previousChangelogLines.length > 0) {
-    newChangeLog += '\n';
-    for (const line of previousChangelogLines) {
-      newChangeLog += `${line}\n`;
-    }
-  }
-
-  // Prepared notes are already the reviewed text, so they never open an editor, whatever `shouldEditChangelog` says.
-  const isReviewDue = changelogFilePath === undefined && shouldEditChangelog;
+  const isReviewDue = isChangelogReviewDue(changelogFilePath, shouldEditChangelog);
   let settledChangeLog = newChangeLog;
   let findings: ChangelogFinding[] = [];
 
