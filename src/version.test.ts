@@ -1756,6 +1756,31 @@ describe('updateVersion', () => {
     expect(mockEditPackageJson).toHaveBeenCalled();
   });
 
+  // Nobody reviews this section, so it is decided by what is already committed: a subject it fails on is learned in
+  // seconds, not after the whole gate.
+  it.each(
+    [
+      ['the changelog review is disabled', { shouldEditChangelog: false }],
+      ['prepared notes are supplied', { changelogFilePath: '/notes.md' }]
+    ] as const
+  )('should refuse a section nobody reviews the checks report on before the gate when %s', async (_label, options) => {
+    setupFullMocks();
+    mockReadPackageJson.mockResolvedValue({ name: 'my-package', scripts: CHANGELOG_CHECK_SCRIPTS, version: '1.0.0' });
+    mockLintMarkdownContent.mockResolvedValue(MARKDOWNLINT_FINDINGS);
+    await expect(updateVersion('patch', options)).rejects.toThrow('does not pass lint:md');
+    expect(mockNpmRun).not.toHaveBeenCalled();
+    expect(mockNpmRunOptional).not.toHaveBeenCalled();
+    expect(mockEditPackageJson).not.toHaveBeenCalled();
+  });
+
+  // The author can still fix a finding in the editor, so an interactive release is not refused up front.
+  it('should not lint the section before the gate when the review is due', async () => {
+    setupFullMocks();
+    mockReadPackageJson.mockResolvedValue({ name: 'my-package', scripts: CHANGELOG_CHECK_SCRIPTS, version: '1.0.0' });
+    await updateVersion('patch');
+    expect(mockLintMarkdownContent).toHaveBeenCalledOnce();
+  });
+
   it('should settle the changelog before any file is written, and write it only after the version bump', async () => {
     setupFullMocks();
     const steps: string[] = [];

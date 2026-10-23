@@ -19,6 +19,10 @@ import {
   NO_FORBIDDEN_PATTERNS_RULE_NAME
 } from './commitlint-forbidden-patterns.ts';
 import {
+  LINT_MD_HEADER_RULE_NAME,
+  lintMdHeaderPlugin
+} from './commitlint-lint-md-header.ts';
+import {
   SPELLCHECK_HEADER_RULE_NAME,
   spellcheckHeaderPlugin
 } from './commitlint-spellcheck-header.ts';
@@ -39,8 +43,8 @@ const CONFIG_CONVENTIONAL_PATH = createRequire(import.meta.url).resolve('@commit
 /**
  * Commitlint configuration extending `@commitlint/config-conventional`, plus a rule refusing a message whose
  * header, body or footer matches the unpublished forbidden-patterns list (a no-op when none is configured), and
- * a rule spellchecking the header the way the release spellchecks the changelog bullet it becomes (a no-op in a
- * project with no `spellcheck` script).
+ * two rules checking the header the way the release checks the changelog bullet it becomes: a spellcheck (a no-op
+ * in a project with no `spellcheck` script) and a markdownlint (a no-op in a project with no `lint:md` script).
  */
 export const commitlintConfig: UserConfig = {
   extends: [CONFIG_CONVENTIONAL_PATH],
@@ -50,11 +54,13 @@ export const commitlintConfig: UserConfig = {
     {
       rules: {
         ...forbiddenPatternsPlugin.rules,
+        ...lintMdHeaderPlugin.rules,
         ...spellcheckHeaderPlugin.rules
       }
     }
   ],
   rules: {
+    [LINT_MD_HEADER_RULE_NAME]: [ERROR_SEVERITY, 'always'],
     [NO_FORBIDDEN_PATTERNS_RULE_NAME]: [ERROR_SEVERITY, 'always'],
     [SPELLCHECK_HEADER_RULE_NAME]: [ERROR_SEVERITY, 'always']
   }
