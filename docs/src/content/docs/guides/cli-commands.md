@@ -208,6 +208,46 @@ Every jest option you pass replaces its default, except `moduleNameMapper`, whos
 
 Jest's ESM loader needs Node's `--experimental-vm-modules` flag. The jest runner adds it to `NODE_OPTIONS`, keeping what that variable already holds, by the same `"type": "module"` rule; pass `{ esm: false }` or `{ esm: true }` to override it. `testWatch` runs `jest --watch`, which needs a git or Mercurial repository to find the changed files.
 
+### Mutation testing
+
+```typescript
+import { testMutation } from '@mnaoumov/typescript-dev-toolkit/test-runners/stryker';
+```
+
+Runs [Stryker](https://stryker-mutator.io/) on demand over Vitest. It is slow, so it never belongs in a commit hook or the branch gate: a full run over a few hundred modules takes about an hour. Pass `{ modulePaths: ['src/foo.ts'] }` to mutate those modules and run only their sibling `*.test.ts` files; with no paths it mutates everything, incrementally. Stryker and its Vitest runner are optional peers, and the runner must be 10.1.1 or later, the first release that matches test names the way Vitest 5 does:
+
+```bash
+npm install --save-dev @stryker-mutator/core @stryker-mutator/vitest-runner
+```
+
+`stryker.config.mjs`:
+
+```javascript
+import { defineStrykerConfig } from '@mnaoumov/typescript-dev-toolkit/test-runners/stryker-config';
+
+export default defineStrykerConfig();
+```
+
+`vitest.stryker.config.ts`, a single flattened project Stryker runs its mutants against:
+
+```typescript
+import type { ViteUserConfig } from 'vitest/config';
+
+import { getStrykerTestInclude } from '@mnaoumov/typescript-dev-toolkit/test-runners/stryker-config';
+
+const config: ViteUserConfig = {
+  test: {
+    environment: 'node',
+    exclude: ['node_modules', 'dist', 'src/**/*.integration.test.ts'],
+    include: getStrykerTestInclude(['src/**/*.test.ts'])
+  }
+};
+
+export default config;
+```
+
+Add `/.stryker-tmp`, `/reports` and `/stryker-setup-*.js` to `.gitignore`. `defineStrykerConfig` runs Stryker in place, because its sandbox copy breaks module resolution through `node_modules`. In place, Stryker puts the whole tree back as it was when the run started, so `testMutation` refuses a tree with uncommitted changes, and nothing may be edited during a run. It also sets `vitest.related: false`, since the scoped run names its tests itself, and keeps Stryker out of `docs/`, `dist/` and `coverage/`. Each key you pass replaces its default. Lines under `/* v8 ignore */` still show up as `NoCoverage`, because Stryker does not read those comments.
+
 ### Branch gate
 
 ```typescript
