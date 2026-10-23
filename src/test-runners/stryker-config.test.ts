@@ -19,11 +19,30 @@ afterEach(() => {
 
 describe('defineStrykerConfig', () => {
   it('should run in place against the mutation vitest configuration', () => {
-    const config = defineStrykerConfig();
-    expect(config['inPlace']).toBe(true);
-    expect(config['testRunner']).toBe('vitest');
-    expect(config['vitest']).toEqual({ configFile: STRYKER_VITEST_CONFIG_FILE_NAME, related: false });
-    expect(config['ignorePatterns']).toContain('/docs');
+    expect(defineStrykerConfig()).toEqual({
+      checkers: [],
+      concurrency: 4,
+      coverageAnalysis: 'perTest',
+      htmlReporter: { fileName: 'reports/mutation/mutation.html' },
+      ignorePatterns: ['/.astro', '/.claude', '/.codex', '/coverage', '/dist', '/docs', '/reports'],
+      inPlace: true,
+      jsonReporter: { fileName: 'reports/mutation/mutation.json' },
+      mutate: [
+        'src/**/*.ts',
+        '!src/**/*.test.ts',
+        '!src/**/*.d.ts',
+        '!src/**/index.ts',
+        '!src/__merged.ts',
+        '!src/test-helpers/**',
+        '!src/**/@types/**'
+      ],
+      reporters: ['clear-text', 'progress-append-only', 'json', 'html'],
+      // eslint-disable-next-line unicorn/name-replacements -- `tempDirName` is a Stryker option.
+      tempDirName: '.stryker-tmp',
+      testRunner: 'vitest',
+      timeoutMS: 10_000,
+      vitest: { configFile: STRYKER_VITEST_CONFIG_FILE_NAME, related: false }
+    });
   });
 
   it('should let an override replace a default', () => {
