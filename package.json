@@ -279,6 +279,7 @@
     "test": "jiti scripts/test.ts",
     "test:coverage": "jiti scripts/test-coverage.ts",
     "test:integration": "jiti scripts/test-integration.ts integration-tests",
+    "test:mutation": "jiti scripts/test-mutation.ts",
     "test:watch": "jiti scripts/test-watch.ts",
     "version": "jiti scripts/version.ts"
   },
@@ -324,6 +325,8 @@
     "@commitlint/cli": "^21.2.2",
     "@mnaoumov/typescript-test-toolkit": "^1.0.0",
     "@resvg/resvg-js": "^2.6.2",
+    "@stryker-mutator/core": "^10.1.1",
+    "@stryker-mutator/vitest-runner": "^10.1.1",
     "@total-typescript/ts-reset": "^0.6.1",
     "@types/mdast": "^4.0.4",
     "@vitest/coverage-v8": "^5.0.1",
@@ -351,6 +354,8 @@
     "@astrojs/starlight": "^0.42.6",
     "@biomejs/biome": "^2.0.0",
     "@resvg/resvg-js": "^2.6.2",
+    "@stryker-mutator/core": "^10.1.1",
+    "@stryker-mutator/vitest-runner": "^10.1.1",
     "astro": "^7.4.0",
     "jest": "^30.0.0",
     "prettier": "^3.0.0",
@@ -373,6 +378,12 @@
       "optional": true
     },
     "@resvg/resvg-js": {
+      "optional": true
+    },
+    "@stryker-mutator/core": {
+      "optional": true
+    },
+    "@stryker-mutator/vitest-runner": {
       "optional": true
     },
     "astro": {
