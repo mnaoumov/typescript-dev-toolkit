@@ -33,6 +33,11 @@ package.json
 
 *.orig
 
+# Stryker mutation runs (`npm run test:mutation`); in place, it leaves these at the root
+/.stryker-tmp
+/reports
+/stryker-setup-*.js
+
 # Astro documentation site
 .astro
 docs/dist
