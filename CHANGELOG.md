@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 3.12.0
+
+- feat(version): fix a generated changelog section nobody reviews before refusing it
+
 ## 3.11.0
 
 - feat: refuse a changelog-breaking commit subject at commit time and in the release preflight
