@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## 3.11.0
+
+- feat: refuse a changelog-breaking commit subject at commit time and in the release preflight
+- feat(test-runners): an on-demand test:mutation run with Stryker
+
 ## 3.10.0
 
 - feat(docs-site): an apiIndexIntro override, and no subpath claim under an importStatement hook
