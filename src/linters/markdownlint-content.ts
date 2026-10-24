@@ -16,8 +16,11 @@
  * five configuration file formats, which is a copy of `markdownlint-cli2` that can only ever drift from it.
  */
 
+import type { LintError } from 'markdownlint';
+
 import { getLibDebugger } from '@mnaoumov/typescript-lib/debug';
 import { toPosixPath } from '@mnaoumov/typescript-lib/path';
+import { applyFixes } from 'markdownlint';
 import { main as markdownlintCli2 } from 'markdownlint-cli2';
 
 import { getRootFolder } from '../root.ts';
@@ -27,6 +30,26 @@ import { obsidianDevUtilsConfig } from './markdownlint-cli2-config.ts';
  * The exit code `markdownlint-cli2` returns when it reported nothing that counts as a failure.
  */
 const SUCCESS_EXIT_CODE = 0;
+
+/**
+ * Parameters for {@link fixMarkdownContent}, the same as {@link lintMarkdownContent}'s.
+ */
+export type FixMarkdownContentParams = LintMarkdownContentParams;
+
+/**
+ * The result of {@link fixMarkdownContent}.
+ */
+export interface FixMarkdownContentResult {
+  /**
+   * The content with every fixable finding fixed.
+   */
+  readonly content: string;
+
+  /**
+   * How many findings were fixed.
+   */
+  readonly fixCount: number;
+}
 
 /**
  * Parameters for {@link lintMarkdownContent}.
@@ -50,6 +73,44 @@ export interface LintMarkdownContentParams {
    * reported finding is named after.
    */
   readonly filePath: string;
+}
+
+/**
+ * Applies the fixes `lint:md:fix` would apply to markdown that is not on disk, with the configuration `lint:md`
+ * would have used for it.
+ *
+ * `markdownlint-cli2`'s own `fix` reads and writes files only, and skips `nonFileContents`. So the content is linted
+ * as {@link lintMarkdownContent} lints it, an output formatter collects the findings with their `fixInfo`, and
+ * markdownlint's own `applyFixes` applies them. That is one pass, as `lint:md:fix` makes one: a finding left over is
+ * for the caller's next lint to report.
+ *
+ * @param params - The {@link FixMarkdownContentParams}.
+ * @returns A {@link Promise} that resolves to the {@link FixMarkdownContentResult}.
+ */
+export async function fixMarkdownContent(params: FixMarkdownContentParams): Promise<FixMarkdownContentResult> {
+  const { content, cwd, filePath } = params;
+  const contentDebugger = getLibDebugger('markdownlint:fixMarkdownContent');
+  const fixableErrors: LintError[] = [];
+
+  await markdownlintCli2({
+    directory: getRootFolder(cwd) ?? cwd ?? process.cwd(),
+    logMessage: (message: string): void => {
+      contentDebugger(message);
+    },
+    noGlobs: true,
+    nonFileContents: { [toPosixPath(filePath)]: content },
+    optionsDefault: obsidianDevUtilsConfig,
+    optionsOverride: {
+      outputFormatters: [[({ results }): void => {
+        fixableErrors.push(...results.filter((result) => result.fixInfo !== null));
+      }]]
+    }
+  });
+
+  return {
+    content: fixableErrors.length === 0 ? content : applyFixes(content, fixableErrors),
+    fixCount: fixableErrors.length
+  };
 }
 
 /**

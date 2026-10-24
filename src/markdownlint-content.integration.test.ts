@@ -5,7 +5,10 @@ import {
   it
 } from 'vitest';
 
-import { lintMarkdownContent } from './linters/markdownlint-content.ts';
+import {
+  fixMarkdownContent,
+  lintMarkdownContent
+} from './linters/markdownlint-content.ts';
 
 // The real `markdownlint-cli2` runs here rather than a mock of it, because the only thing worth proving is the
 // thing a mock replaces: that the content is linted with the configuration `lint:md` would have used for it.
@@ -59,5 +62,32 @@ describe('lintMarkdownContent', () => {
       filePath: join(REPOSITORY_ROOT, 'no-such-file.md')
     });
     expect(findings).toEqual([]);
+  });
+});
+
+describe('fixMarkdownContent', () => {
+  it('should fix what the repository\'s configuration can fix, in memory', async () => {
+    const result = await fixMarkdownContent({
+      content: '# CHANGELOG\n\n## 1.0.0\n\n- feat: add a shiny new feature   \n',
+      cwd: REPOSITORY_ROOT,
+      filePath: CHANGELOG_PATH
+    });
+    expect(result).toEqual({
+      content: '# CHANGELOG\n\n## 1.0.0\n\n- feat: add a shiny new feature\n',
+      fixCount: 1
+    });
+  });
+
+  it('should leave content with nothing to fix as it is', async () => {
+    const content = '# CHANGELOG\n\n## 1.0.0\n\n- feat: add a shiny new feature\n';
+    const result = await fixMarkdownContent({
+      content,
+      cwd: REPOSITORY_ROOT,
+      filePath: CHANGELOG_PATH
+    });
+    expect(result).toEqual({
+      content,
+      fixCount: 0
+    });
   });
 });

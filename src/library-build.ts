@@ -168,8 +168,9 @@ const REFERENCE_LIB_REG_EXP = /\/\/\/ <reference lib="(?<Lib>[^"]+)" \/>/gm;
 // A bare-specifier (non-relative) type-only import, e.g. `import type { Promisable } from 'type-fest';`.
 const BARE_TYPE_IMPORT_REG_EXP = /^import type (?<Clause>.+?) from '(?<Specifier>[^.'][^']*)';$/gm;
 
-// A bare-specifier (non-relative) inline import type node, e.g. `import("type-fest").Promisable`.
-const BARE_INLINE_IMPORT_TYPE_REG_EXP = /import\("(?<Specifier>[^."][^"]*)"\)/g;
+// A bare-specifier (non-relative) inline import type node, e.g. `import("type-fest").Promisable`. Either quote: the
+// emit writes double quotes, while a hand-written declaration copied as is keeps the single quotes dprint writes.
+const BARE_INLINE_IMPORT_TYPE_REG_EXP = /import\((?<Quote>["'])(?<Specifier>[^."'][^"']*)\k<Quote>\)/g;
 
 const STATIC_IMPORT_REG_EXP = /from '(?<ImportPath>.+?)\.ts';/gm;
 
@@ -770,7 +771,7 @@ function toCtsContent(content: string): string {
   });
   return replaceAll({
     $string: ctsContent,
-    replacer: 'import("$<Specifier>", { with: { \'resolution-mode\': \'import\' } })',
+    replacer: 'import($<Quote>$<Specifier>$<Quote>, { with: { \'resolution-mode\': \'import\' } })',
     searchValue: BARE_INLINE_IMPORT_TYPE_REG_EXP
   });
 }

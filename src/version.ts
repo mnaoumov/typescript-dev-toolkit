@@ -40,7 +40,10 @@ import {
 } from './forbidden-patterns.ts';
 import { gate } from './gate.ts';
 import { spellcheckContent } from './linters/cspell-content.ts';
-import { lintMarkdownContent } from './linters/markdownlint-content.ts';
+import {
+  fixMarkdownContent,
+  lintMarkdownContent
+} from './linters/markdownlint-content.ts';
 import {
   editNpmShrinkWrapJson,
   editPackageJson,
@@ -1112,7 +1115,7 @@ async function assertNonInteractiveChangelogIsPublishable(
   }
 
   const newVersion = await getNewVersion(versionUpdateType);
-  const changelog = await composeChangelog(newVersion, changelogFilePath);
+  const changelog = await composeChangelogNobodyReviews(newVersion, changelogFilePath);
   const findings = await getChangelogSectionFindings(changelog, newVersion);
   if (findings.length > 0) {
     throw toChangelogFindingsError(findings, newVersion);
@@ -1216,6 +1219,46 @@ async function composeChangelog(newVersion: string, changelogFilePath: string | 
   }
 
   return newChangeLog;
+}
+
+/**
+ * Composes the new `CHANGELOG.md` content for a release nobody reviews, applying `lint:md:fix`'s fixes to a section
+ * generated from commit subjects.
+ *
+ * A subject can fail `lint:md` without anyone having had the chance to fix it: a `--no-ff` merge is made with
+ * `HUSKY=0`, so commitlint never sees it, and an issue-closing merge takes the issue title verbatim. An Obsidian
+ * plugin's subject naming the plugin without backticks stopped a release that way three times, after the whole
+ * preflight. Whatever the repository's configuration can fix is fixed here, and what it cannot is still refused by
+ * the findings check that follows. Prepared notes are the author's reviewed text, so they are never rewritten, and
+ * only the new section is touched, never a published one.
+ *
+ * @param newVersion - The new version number the changelog section is written for.
+ * @param changelogFilePath - The prepared notes, when the release was given them.
+ * @returns A {@link Promise} that resolves to the composed content.
+ */
+async function composeChangelogNobodyReviews(newVersion: string, changelogFilePath: string | undefined): Promise<string> {
+  const changelog = await composeChangelog(newVersion, changelogFilePath);
+  if (changelogFilePath !== undefined) {
+    return changelog;
+  }
+
+  const packageJson = await readPackageJson();
+  if (!Object.keys(packageJson.scripts ?? {}).includes(LINT_MD_SCRIPT_NAME)) {
+    return changelog;
+  }
+
+  const section = extractChangelogSection(changelog, newVersion);
+  const { content, fixCount } = await fixMarkdownContent({
+    content: toChangelogSectionDocument(changelog, newVersion),
+    filePath: resolvePathFromRootSafe({ path: RepoPaths.ChangelogMd })
+  });
+  if (fixCount === 0) {
+    return changelog;
+  }
+
+  console.warn(`Fixed ${String(fixCount)} markdownlint finding(s) in the generated ${newVersion} changelog section, so it differs from the commit subjects.`);
+  const heading = `## ${newVersion}\n\n`;
+  return changelog.replace(`${heading}${section}`, () => `${heading}${extractChangelogSection(content, newVersion)}`);
 }
 
 function describeBranch(branch: string): string {
@@ -1449,9 +1492,10 @@ async function prepareChangelog(newVersion: string, options: UpdateChangelogOpti
     changelogFilePath,
     shouldEditChangelog = true
   } = options;
-  const newChangeLog = await composeChangelog(newVersion, changelogFilePath);
-
   const isReviewDue = isChangelogReviewDue(changelogFilePath, shouldEditChangelog);
+  const newChangeLog = isReviewDue
+    ? await composeChangelog(newVersion, changelogFilePath)
+    : await composeChangelogNobodyReviews(newVersion, changelogFilePath);
   let settledChangeLog = newChangeLog;
   let findings: ChangelogFinding[] = [];
 
