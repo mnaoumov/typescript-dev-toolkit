@@ -6,7 +6,24 @@ import {
   vi
 } from 'vitest';
 
-import { lintMarkdownContent } from './linters/markdownlint-content.ts';
+import {
+  fixMarkdownContent,
+  lintMarkdownContent
+} from './linters/markdownlint-content.ts';
+
+/**
+ * What the mock hands the output formatter this module passes.
+ */
+interface MarkdownlintCli2TestFormatterOptions {
+  readonly results: unknown[];
+}
+
+/**
+ * The options override this module passes, as the mock sees it.
+ */
+interface MarkdownlintCli2TestOptionsOverride {
+  outputFormatters: [(options: MarkdownlintCli2TestFormatterOptions) => void][];
+}
 
 /**
  * The subset of `markdownlint-cli2`'s parameters this module passes, as the mock sees them.
@@ -18,6 +35,7 @@ interface MarkdownlintCli2TestParameters {
   noGlobs: boolean;
   nonFileContents: Record<string, string>;
   optionsDefault: unknown;
+  optionsOverride?: MarkdownlintCli2TestOptionsOverride;
 }
 
 // Hoisted with the mocks that reference it: `vi.mock`'s factory runs before any module-scope `const` of this
@@ -140,6 +158,75 @@ describe('lintMarkdownContent', () => {
   it('should fall back to the folder it is given when no project root is found above it', async () => {
     mockGetRootFolder.mockReturnValue(null);
     await lintMarkdownContent({
+      content: '# CHANGELOG\n',
+      cwd: '/loose',
+      filePath: '/loose/CHANGELOG.md'
+    });
+    expect(mockMarkdownlintCli2.mock.calls[0]?.[0].directory).toBe('/loose');
+  });
+});
+
+describe('fixMarkdownContent', () => {
+  it('should apply the fixable findings and count them, leaving the rest', async () => {
+    mockMarkdownlintCli2.mockImplementation((parameters) => {
+      parameters.logMessage('Summary: 2 issues in 1 file');
+      const formatter = parameters.optionsOverride?.outputFormatters[0]?.[0];
+      formatter?.({
+        results: [
+          {
+            fileName: 'CHANGELOG.md',
+            fixInfo: { deleteCount: 3, editColumn: 26 },
+            lineNumber: 5
+          },
+          {
+            fileName: 'CHANGELOG.md',
+            fixInfo: null,
+            lineNumber: 5
+          }
+        ]
+      });
+      return Promise.resolve(1);
+    });
+
+    const result = await fixMarkdownContent({
+      content: '# CHANGELOG\n\n## 1.0.0\n\n- feat: add a new feature   \n',
+      filePath: String.raw`F:\root\CHANGELOG.md`
+    });
+
+    expect(result).toEqual({
+      content: '# CHANGELOG\n\n## 1.0.0\n\n- feat: add a new feature\n',
+      fixCount: 1
+    });
+    const parameters = mockMarkdownlintCli2.mock.calls[0]?.[0];
+    expect(parameters?.nonFileContents).toEqual({ 'F:/root/CHANGELOG.md': '# CHANGELOG\n\n## 1.0.0\n\n- feat: add a new feature   \n' });
+    expect(parameters?.noGlobs).toBe(true);
+    expect(parameters?.optionsDefault).toBe(SHARED_CONFIG);
+  });
+
+  it('should hand the content back unchanged when nothing is fixable', async () => {
+    const result = await fixMarkdownContent({
+      content: '# CHANGELOG\n',
+      cwd: '/loose',
+      filePath: '/loose/CHANGELOG.md'
+    });
+    expect(result).toEqual({
+      content: '# CHANGELOG\n',
+      fixCount: 0
+    });
+  });
+
+  it('should fall back to the working directory when the root folder cannot be found', async () => {
+    mockGetRootFolder.mockReturnValue(null);
+    await fixMarkdownContent({
+      content: '# CHANGELOG\n',
+      filePath: '/root/CHANGELOG.md'
+    });
+    expect(mockMarkdownlintCli2.mock.calls[0]?.[0].directory).toBe(process.cwd());
+  });
+
+  it('should fall back to the folder it is given when no project root is found above it', async () => {
+    mockGetRootFolder.mockReturnValue(null);
+    await fixMarkdownContent({
       content: '# CHANGELOG\n',
       cwd: '/loose',
       filePath: '/loose/CHANGELOG.md'

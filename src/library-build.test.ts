@@ -293,6 +293,7 @@ describe('buildLibraryTypes', () => {
         'import type { Promisable } from \'type-fest\';',
         'import { a } from \'../a.ts\';',
         'export declare const b: typeof import("./c.ts") | import("type-fest").Primitive | Promisable<typeof a>;',
+        'export declare const d: import(\'type-fest\').Primitive;',
         ''
       ].join('\n'),
       'src/test-helpers/helper.d.ts': ''
@@ -321,6 +322,8 @@ describe('buildLibraryTypes', () => {
     expect(subCts).toContain('from \'../a.cjs\';');
     expect(subCts).toContain('import("./c.cjs")');
     expect(subCts).toContain('import("type-fest", { with: { \'resolution-mode\': \'import\' } }).Primitive');
+    // A hand-written declaration is copied as is, so it keeps the single quotes dprint writes.
+    expect(subCts).toContain('import(\'type-fest\', { with: { \'resolution-mode\': \'import\' } }).Primitive');
 
     const subMts = readText('dist/lib/esm/sub/b.d.mts');
     expect(subMts).toContain('import type { Promisable } from \'type-fest\';');

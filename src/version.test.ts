@@ -1,6 +1,9 @@
 import type { GenericObject } from '@mnaoumov/typescript-lib/type-guards';
 
-import { noopAsync } from '@mnaoumov/typescript-lib/function';
+import {
+  noop,
+  noopAsync
+} from '@mnaoumov/typescript-lib/function';
 import {
   afterEach,
   beforeEach,
@@ -10,6 +13,10 @@ import {
   vi
 } from 'vitest';
 
+import type {
+  FixMarkdownContentParams,
+  FixMarkdownContentResult
+} from './linters/markdownlint-content.ts';
 import type { ResolvePathFromRootSafeParams } from './root.ts';
 
 import {
@@ -45,6 +52,7 @@ const {
   mockEditPackageLockJson,
   mockExecFromRoot,
   mockExistsSync,
+  mockFixMarkdownContent,
   mockLintMarkdownContent,
   mockMkdtemp,
   mockNpmRun,
@@ -64,6 +72,7 @@ const {
   mockEditPackageLockJson: vi.fn(),
   mockExecFromRoot: vi.fn(),
   mockExistsSync: vi.fn<(path: string) => boolean>(),
+  mockFixMarkdownContent: vi.fn<(params: FixMarkdownContentParams) => Promise<FixMarkdownContentResult>>(),
   mockLintMarkdownContent: vi.fn<() => Promise<string[]>>(),
   mockMkdtemp: vi.fn(),
   mockNpmRun: vi.fn(),
@@ -126,6 +135,7 @@ vi.mock('./linters/cspell-content.ts', () => ({
 }));
 
 vi.mock('./linters/markdownlint-content.ts', () => ({
+  fixMarkdownContent: mockFixMarkdownContent,
   lintMarkdownContent: mockLintMarkdownContent
 }));
 
@@ -178,6 +188,7 @@ beforeEach(() => {
   mockExistsSync.mockReturnValue(false);
   mockReadPackageJson.mockResolvedValue({ scripts: CHANGELOG_CHECK_SCRIPTS });
   mockLintMarkdownContent.mockResolvedValue([]);
+  mockFixMarkdownContent.mockImplementation((params) => Promise.resolve({ content: params.content, fixCount: 0 }));
   mockSpellcheckContent.mockResolvedValue([]);
   mockReadForbiddenPatterns.mockResolvedValue([]);
 });
@@ -1274,6 +1285,72 @@ describe('updateChangelog', () => {
     mockLintMarkdownContent.mockResolvedValue(MARKDOWNLINT_FINDINGS);
     await expect(updateChangelog('1.0.0', { shouldEditChangelog: false })).rejects.toThrow(MARKDOWNLINT_FINDINGS[0] ?? '');
     expect(mockWriteFile).not.toHaveBeenCalled();
+  });
+
+  // A `--no-ff` merge is made with `HUSKY=0`, so no commit hook ever saw the subject that becomes this entry.
+  it('should apply the fixable findings to a generated section nobody reviews, and only to that section', async () => {
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(noop);
+    mockExistsSync.mockReturnValue(true);
+    mockReadFile.mockResolvedValue('# CHANGELOG\n\n## 0.9.0\n\n- fix: keep one Old Plugin minVersion\n');
+    mockExecFromRoot
+      .mockResolvedValueOnce('0123456789abcdef')
+      .mockResolvedValueOnce('fix: keep one My Plugin minVersion\0');
+    mockFixMarkdownContent.mockResolvedValue({
+      content: '# CHANGELOG\n\n## 1.0.0\n\n- fix: keep one `My Plugin` minVersion\n',
+      fixCount: 1
+    });
+
+    await updateChangelog('1.0.0', { shouldEditChangelog: false });
+
+    expect(mockFixMarkdownContent).toHaveBeenCalledWith({
+      content: '# CHANGELOG\n\n## 1.0.0\n\n- fix: keep one My Plugin minVersion\n',
+      filePath: '/root/CHANGELOG.md'
+    });
+    expect(mockLintMarkdownContent).toHaveBeenCalledWith({
+      content: '# CHANGELOG\n\n## 1.0.0\n\n- fix: keep one `My Plugin` minVersion\n',
+      filePath: '/root/CHANGELOG.md'
+    });
+    expect(mockWriteFile).toHaveBeenCalledWith(
+      '/root/CHANGELOG.md',
+      '# CHANGELOG\n\n## 1.0.0\n\n- fix: keep one `My Plugin` minVersion\n\n## 0.9.0\n\n- fix: keep one Old Plugin minVersion\n',
+      'utf-8'
+    );
+    expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('Fixed 1 markdownlint finding(s)'));
+  });
+
+  it('should still refuse a generated section whose findings are left after the fixes', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(noop);
+    mockExecFromRoot.mockResolvedValueOnce('feat: a note\0');
+    mockFixMarkdownContent.mockResolvedValue({
+      content: '# CHANGELOG\n\n## 1.0.0\n\n- feat: a fixed note\n',
+      fixCount: 1
+    });
+    mockLintMarkdownContent.mockResolvedValue(MARKDOWNLINT_FINDINGS);
+    await expect(updateChangelog('1.0.0', { shouldEditChangelog: false })).rejects.toThrow('does not pass lint:md');
+    expect(mockWriteFile).not.toHaveBeenCalled();
+  });
+
+  it('should never rewrite prepared release notes', async () => {
+    mockReadFile.mockResolvedValue('- A prepared note\n');
+    await updateChangelog('1.0.0', { changelogFilePath: '/notes.md' });
+    expect(mockFixMarkdownContent).not.toHaveBeenCalled();
+  });
+
+  it('should not rewrite a generated section the author is about to review', async () => {
+    stubPassThroughReview('');
+    mockExecFromRoot.mockResolvedValueOnce('feat: a note\0');
+    mockCreateInterface.mockReturnValue({
+      question: vi.fn().mockResolvedValue(undefined)
+    });
+    await updateChangelog('1.0.0');
+    expect(mockFixMarkdownContent).not.toHaveBeenCalled();
+  });
+
+  it('should not fix a generated section in a project without a lint:md script', async () => {
+    mockReadPackageJson.mockResolvedValue({ scripts: {} });
+    mockExecFromRoot.mockResolvedValueOnce('feat: a note\0');
+    await updateChangelog('1.0.0', { shouldEditChangelog: false });
+    expect(mockFixMarkdownContent).not.toHaveBeenCalled();
   });
 
   // The author is still sitting at the editor, so the findings go back to them rather than ending the release.
