@@ -1179,6 +1179,43 @@ describe('updateChangelog', () => {
     expect(mockWriteFile).toHaveBeenCalledWith('/root/CHANGELOG.md', '# CHANGELOG\n\n## 1.0.0\n\n- \n', 'utf-8');
   });
 
+  // A fix made in a library for an issue in another repository: its subject cannot carry that number, so the merge
+  // body's `Refs` line is the only thing that can link the release to the issue.
+  it.each([
+    {
+      expected: '- fix: tidy the parser (<https://github.com/owner/consumer/issues/1>)',
+      message: 'fix: tidy the parser\n\nRefs owner/consumer#1\0',
+      name: 'an owner/repo#n reference as its URL'
+    },
+    {
+      expected: '- fix: tidy the parser (<https://github.com/owner/consumer/issues/2>, #3)',
+      message: 'fix: tidy the parser\n\nFixes: https://github.com/owner/consumer/pull/2, #3 and #3\0',
+      name: 'every reference of a line once, a bare number as written'
+    },
+    {
+      expected: '- fix: re #4 (#40)',
+      message: 'fix: re #4\n\nRefs #4\nCloses #40\0',
+      name: 'only the references the subject does not already show'
+    },
+    {
+      expected: '- feat: add the thing (<https://github.com/owner/consumer/issues/5>)',
+      message: 'Merge branch \'T1\'\n\nRefs owner/consumer#5\nfeat: add the thing\0',
+      name: 'the merge body line that is not a reference line, for a default merge subject'
+    },
+    {
+      expected: '- fix: tidy the parser\n',
+      message: 'fix: tidy the parser\n\nFixes the crash seen in #6 on start\nSee owner/consumer#7\0',
+      name: 'nothing from a prose line, even one opening with a keyword'
+    }
+  ])('should append $name', async ({ expected, message }) => {
+    mockExistsSync.mockReturnValue(false);
+    mockExecFromRoot
+      .mockResolvedValueOnce(message)
+      .mockResolvedValueOnce('');
+    await updateChangelog('1.0.0', { shouldEditChangelog: false });
+    expect(mockWriteFile).toHaveBeenCalledWith('/root/CHANGELOG.md', expect.stringContaining(expected), 'utf-8');
+  });
+
   it('should handle existing changelog without trailing newline', async () => {
     mockExistsSync.mockReturnValue(true);
     // No trailing \n — last element after split won't be ''
