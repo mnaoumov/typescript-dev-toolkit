@@ -13,6 +13,10 @@ import type { ReleaseType } from 'semver';
 import { getLibDebugger } from '@mnaoumov/typescript-lib/debug';
 import { errorToString } from '@mnaoumov/typescript-lib/error';
 import { join } from '@mnaoumov/typescript-lib/path';
+import {
+  escapeRegExp,
+  getOptionalNamedGroup
+} from '@mnaoumov/typescript-lib/reg-exp';
 import { replaceAll } from '@mnaoumov/typescript-lib/string';
 import { assertNonNullable } from '@mnaoumov/typescript-lib/type-guards';
 import { existsSync } from 'node:fs';
@@ -379,6 +383,22 @@ const DEFAULT_PREID = 'beta';
 const FEAT_TYPE = 'feat';
 
 /**
+ * One issue reference inside an {@link ISSUE_REFERENCE_LINE_REG_EXP} line: an issue or pull request URL, an
+ * `owner/repo#n`, or a bare `#n`.
+ */
+const ISSUE_REFERENCE_REG_EXP = /https:\/\/github\.com\/(?<urlSlug>[\w.-]+\/[\w.-]+)\/(?:issues|pull)\/(?<urlNumber>\d+)|(?<![\w./-])(?<slug>[\w.-]+\/[\w.-]+)#(?<slugNumber>\d+)\b|(?<![\w/&#.-])#(?<bareNumber>\d+)\b/g;
+
+/**
+ * A commit body line that names the issues the commit works on: `Refs owner/repo#12`, `Fixes #3`,
+ * `Closes https://github.com/owner/repo/issues/4, #5`. The keyword is followed by references and nothing else
+ * (see {@link parseIssueReferenceLine}), so a prose line that merely opens with `Fixes` names nothing.
+ *
+ * A fix made in one repository for an issue in another closes nothing here, and its commit subject cannot carry
+ * the other repository's number, so this line is the only place the release can learn which issue it fixes.
+ */
+const ISSUE_REFERENCE_LINE_REG_EXP = /^(?:refs?|re|fix(?:e[sd])?|close[sd]?|resolve[sd]?|implements?):?\s+(?<references>.+)$/i;
+
+/**
  * The npm scripts whose checks the settled changelog is held to, named in the messages so a reader knows which
  * gate they are looking at — and knows that fixing it here is the same fix as fixing it on the branch.
  */
@@ -718,6 +738,20 @@ export const VERSION_ARGUMENT_OPTIONS = {
 export type VersionArgumentValues = ReturnType<typeof parseArgs<VersionArgumentParseConfig>>['values'];
 
 /**
+ * One issue reference a commit body names, as {@link parseIssueReferenceLine} reads it.
+ */
+interface IssueReference {
+  /**
+   * How the changelog line shows it: `#n` for a bare number, the issue URL in angle brackets otherwise.
+   */
+  readonly rendered: string;
+  /**
+   * Every way a line that already shows it may spell it: `#n`, or `owner/repo#n` and the issue URL.
+   */
+  readonly spellings: readonly string[];
+}
+
+/**
  * The `parseArgs` configuration {@link VersionArgumentValues} is derived from.
  */
 interface VersionArgumentParseConfig {
@@ -768,7 +802,6 @@ export function parseVersionArguments($arguments: string[]): ParsedVersionArgume
     versionUpdateType: positionals[0]
   };
 }
-
 /**
  * Publishes a GitHub release for the new version.
  *
@@ -813,6 +846,7 @@ export async function publishGitHubRelease(newVersion: string, options: PublishG
     console.warn(`The ${newVersion} release is published, but closing the issues it carries failed: ${errorToString(error)}`);
   }
 }
+
 /**
  * Maps the values `parseArgs` reports for {@link VERSION_ARGUMENT_OPTIONS} onto {@link UpdateVersionOptions}.
  *
@@ -830,7 +864,6 @@ export function toUpdateVersionOptions(values: VersionArgumentValues): UpdateVer
     shouldVerifyCommit: !(values['no-commit-verification'] ?? false)
   };
 }
-
 /**
  * Updates the changelog file with new version information and commit messages.
  *
@@ -848,6 +881,7 @@ export function toUpdateVersionOptions(values: VersionArgumentValues): UpdateVer
 export async function updateChangelog(newVersion: string, options: UpdateChangelogOptions = {}): Promise<void> {
   await writeChangelog(await prepareChangelog(newVersion, options));
 }
+
 /**
  * Updates the version of the project based on the specified update type.
  *
@@ -1291,7 +1325,6 @@ function extractChangelogSection(changelogContent: string, version: string): str
   const bodyEndIndex = nextHeadingOffset === -1 ? lines.length : bodyStartIndex + nextHeadingOffset;
   return lines.slice(bodyStartIndex, bodyEndIndex).join('\n').trim();
 }
-
 /**
  * Derives the lowest bump a commit range may be published under, from the Conventional-Commits markers the
  * commits in it carry.
@@ -1328,6 +1361,7 @@ async function getBumpFloor(commitRange: string): Promise<BumpFloor> {
     level: toHighestBumpLevel(forcingCommits)
   };
 }
+
 /**
  * Runs `lint:md`'s and `spellcheck`'s checks over the NEW section of a composed changelog, before any of it
  * reaches the repository.
@@ -1426,6 +1460,35 @@ function isBumpLevelAtLeast(level: BumpLevel, floorLevel: VersionUpdateType.Majo
  */
 function isChangelogReviewDue(changelogFilePath: string | undefined, shouldEditChangelog: boolean): boolean {
   return changelogFilePath === undefined && shouldEditChangelog;
+}
+
+/**
+ * Reads the issue references off one {@link ISSUE_REFERENCE_LINE_REG_EXP} line.
+ *
+ * A cross-repository reference is rendered as its URL rather than as `owner/repo#n`: GitHub shows the URL as the
+ * same short link, and the spellchecker the changelog section is held to skips a URL but not a repository name.
+ *
+ * @param line - One line of a commit body.
+ * @returns The references, or `null` when the line is not a reference line or holds anything but references.
+ */
+function parseIssueReferenceLine(line: string): IssueReference[] | null {
+  const referencesText = ISSUE_REFERENCE_LINE_REG_EXP.exec(line.trim())?.groups?.['references'];
+  if (referencesText?.replaceAll(ISSUE_REFERENCE_REG_EXP, '').replaceAll(/\band\b|[\s,]/g, '') !== '') {
+    return null;
+  }
+
+  return Array.from(referencesText.matchAll(ISSUE_REFERENCE_REG_EXP), (match): IssueReference => {
+    const bareNumber = getOptionalNamedGroup(match, 'bareNumber');
+    if (bareNumber !== null) {
+      return { rendered: `#${bareNumber}`, spellings: [`#${bareNumber}`] };
+    }
+    const repoSlug = getOptionalNamedGroup(match, 'urlSlug') ?? getOptionalNamedGroup(match, 'slug');
+    const issueNumber = getOptionalNamedGroup(match, 'urlNumber') ?? getOptionalNamedGroup(match, 'slugNumber');
+    assertNonNullable(repoSlug);
+    assertNonNullable(issueNumber);
+    const url = `https://github.com/${repoSlug}/issues/${issueNumber}`;
+    return { rendered: `<${url}>`, spellings: [`${repoSlug}#${issueNumber}`, url, `https://github.com/${repoSlug}/pull/${issueNumber}`] };
+  });
 }
 
 /**
@@ -1681,13 +1744,25 @@ function toBumpFloorError(bumpFloor: BumpFloor, context: BumpFloorRefusalContext
  * human makes by hand at the review step. A merge with no body has nothing to lift and keeps its subject;
  * {@link assertChangelogHasNoMergeSubjects} is what stops that one from being published.
  *
+ * The issues the body names on {@link ISSUE_REFERENCE_LINE_REG_EXP} lines are appended to the line, so the
+ * release links them. Only the first-parent commit's body is read, so for a merge it is the merge message that
+ * has to carry them. A reference the line already shows is not repeated.
+ *
  * @param commitMessage - The full commit message.
  * @returns The changelog line for that commit.
  */
 function toChangelogEntry(commitMessage: string): string {
   const lines = commitMessage.split(/\r?\n/).filter(Boolean);
   const subject = lines[0] ?? '';
-  return MERGE_SUBJECT_REG_EXP.test(subject) ? lines[1] ?? subject : subject;
+  const bodyLines = lines.slice(1);
+  const entry = MERGE_SUBJECT_REG_EXP.test(subject) ? bodyLines.find((line) => !parseIssueReferenceLine(line)) ?? subject : subject;
+  const references = new Set<string>();
+  for (const reference of bodyLines.flatMap((line) => parseIssueReferenceLine(line) ?? [])) {
+    if (reference.spellings.every((spelling) => !new RegExp(String.raw`(?<![\w/])${escapeRegExp(spelling)}(?!\d)`).test(entry))) {
+      references.add(reference.rendered);
+    }
+  }
+  return references.size === 0 ? entry : `${entry} (${[...references].join(', ')})`;
 }
 
 /**
