@@ -87,7 +87,8 @@ vi.mock('./check-project-types.ts', async (importOriginal) => {
 });
 
 /*
- * Each case bundles real files with esbuild, which is quick alone and slow under the full suite's load.
+ * Each case bundles real files with esbuild or emits real declarations with TypeScript, which is quick alone and slow
+ * under the full suite's load: a `buildLibraryTypes` case once took 5268 ms against vitest's default 5 s.
  */
 const BUILD_TEST_TIMEOUT_IN_MILLISECONDS = 30_000;
 
@@ -281,7 +282,7 @@ describe('generateLibraryIndex', () => {
   });
 });
 
-describe('buildLibraryTypes', () => {
+describe('buildLibraryTypes', { timeout: BUILD_TEST_TIMEOUT_IN_MILLISECONDS }, () => {
   it('writes a .d.cts and a .d.mts per declaration, with the index carrying the lib and types references', async () => {
     mockParseTsConfig.mockReturnValue(makeParsedTsConfig({ lib: ['lib.es2022.d.ts', 'lib.dom.iterable.d.ts'], types: ['vitest', 'node'] }));
     await writeFiles({
@@ -360,7 +361,7 @@ describe('buildLibraryTypes', () => {
     expect(readText('dist/lib/esm/library-references.d.mts')).toBe(expected);
   });
 
-  it('gives each declaration the environment references only it needs', { timeout: BUILD_TEST_TIMEOUT_IN_MILLISECONDS }, async () => {
+  it('gives each declaration the environment references only it needs', async () => {
     mockParseTsConfig.mockReturnValue(makeParsedTsConfig({
       lib: ['lib.es2022.d.ts', 'lib.dom.d.ts', 'lib.dom.iterable.d.ts'],
       typeRoots: [join(originalCwd, 'node_modules/@types')],
@@ -415,7 +416,7 @@ describe('buildLibraryTypes', () => {
     expect(typeCheck({ lib: ['lib.es2022.d.ts'], rootName: 'dist/lib/cjs/pure.d.cts' })).toEqual([]);
   });
 
-  it('names a lib a package replaced by the lib, not by its file', { timeout: BUILD_TEST_TIMEOUT_IN_MILLISECONDS }, async () => {
+  it('names a lib a package replaced by the lib, not by its file', async () => {
     mockParseTsConfig.mockReturnValue(makeParsedTsConfig({
       // A parsed `tsconfig.json` names itself, and a replacement is looked up beside it.
       configFilePath: join(packageFolder, 'tsconfig.json'),
@@ -447,7 +448,7 @@ describe('buildLibraryTypes', () => {
     expect(mockExecFromRoot).not.toHaveBeenCalled();
   });
 
-  it('lets a consumer type-check one subpath with skipLibCheck off while a sibling needs an absent optional peer', { timeout: BUILD_TEST_TIMEOUT_IN_MILLISECONDS }, async () => {
+  it('lets a consumer type-check one subpath with skipLibCheck off while a sibling needs an absent optional peer', async () => {
     mockParseTsConfig.mockReturnValue(makeParsedTsConfig({}));
     await writeFiles({
       'src/heavy.d.ts': 'import type { Peer } from \'absent-optional-peer\';\nexport declare const peer: Peer;\n',
