@@ -111,6 +111,9 @@ export async function lint(options?: LintOptions): Promise<void> {
   if (linkCheckFiles.length === 0) {
     return;
   }
+  // A host that rate-limits the runner (forum.obsidian.md answers a CI burst with 429) is retried with a jitter of up to
+  // 5 s, which `linkinator` reads as MILLISECONDS, so the retries do not all land in the same instant. A link still
+  // answering 429 once they are spent is a warning, not a failure: a rate limit says nothing about whether the link exists.
   await execFromRoot([
     ...resolveToolCommand({ tool: 'linkinator' }),
     '--retry',
@@ -118,7 +121,9 @@ export async function lint(options?: LintOptions): Promise<void> {
     '--retry-errors-count',
     '3',
     '--retry-errors-jitter',
-    '5',
+    '5000',
+    '--status-code',
+    '429:warn',
     '--url-rewrite-search',
     String.raw`https://www\.npmjs\.com/package/`,
     '--url-rewrite-replace',
