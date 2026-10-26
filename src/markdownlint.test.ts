@@ -94,6 +94,15 @@ describe('lint', () => {
     );
   });
 
+  // A rate-limited host (forum.obsidian.md answering CI with 429) failed the check over links that exist.
+  it('should retry linkinator errors with a seconds-wide jitter and only warn on a lasting 429', async () => {
+    mockExistsSync.mockReturnValue(true);
+    await lint();
+    expect(mockExecFromRoot).toHaveBeenCalledWith(
+      expect.arrayContaining(['linkinator', '--retry-errors-jitter', '5000', '--status-code', '429:warn'])
+    );
+  });
+
   it('should pass --fix when shouldFix is true', async () => {
     mockExistsSync.mockReturnValue(true);
     await lint({ shouldFix: true });
