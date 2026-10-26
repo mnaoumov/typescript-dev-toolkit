@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## 3.13.0
+
+- fix(markdownlint): let a link still rate-limited after the retries pass with a warning
+- feat(version): link the issues a commit body names from the release notes
+
 ## 3.12.0
 
 - feat(version): fix a generated changelog section nobody reviews before refusing it
