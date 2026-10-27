@@ -19,6 +19,7 @@ import { parse as parseYaml } from 'yaml';
 
 import type { OgCardContent } from './og-image.ts';
 
+import { getBulkConcurrency } from '../bulk-concurrency.ts';
 import { getOgImagePageSlug } from './og-image-page.ts';
 import {
   computeOgHash,
@@ -167,7 +168,7 @@ async function generateImagesWithPool(options: GenerateImagesWithPoolOptions): P
     }
   }
 
-  await Promise.all(Array.from({ length: CONCURRENCY }, async () => {
+  await Promise.all(Array.from({ length: getBulkConcurrency(CONCURRENCY) }, async () => {
     await processNext();
   }));
 }

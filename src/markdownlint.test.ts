@@ -1,5 +1,6 @@
 import { noopAsync } from '@mnaoumov/typescript-lib/function';
 import {
+  afterEach,
   beforeEach,
   describe,
   expect,
@@ -68,6 +69,7 @@ vi.mock('@mnaoumov/typescript-lib/debug', () => ({
 }));
 
 beforeEach(() => {
+  vi.stubEnv('BULK_CORES', undefined);
   vi.resetAllMocks();
   mockExecFromRoot.mockResolvedValue('');
   mockCp.mockResolvedValue(undefined);
@@ -79,6 +81,10 @@ beforeEach(() => {
     await noopAsync();
     yield 'README.md';
   })());
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });
 
 describe('lint', () => {
@@ -99,8 +105,22 @@ describe('lint', () => {
     mockExistsSync.mockReturnValue(true);
     await lint();
     expect(mockExecFromRoot).toHaveBeenCalledWith(
-      expect.arrayContaining(['linkinator', '--retry-errors-jitter', '5000', '--status-code', '429:warn'])
+      expect.arrayContaining(['linkinator', '--retry-errors', '--retry-errors-count', '3', '--retry-errors-jitter', '5000', '--status-code', '429:warn', '--timeout', '30000'])
     );
+    expect(mockExecFromRoot.mock.calls[1]?.[0]).not.toContain('--retry');
+  });
+
+  it.each([[undefined, '100'], ['2', '2'], ['bad', '100'], ['200', '100']])('caps linkinator concurrency for budget %s', async (budget, expected) => {
+    vi.stubEnv('BULK_CORES', budget);
+    mockExistsSync.mockReturnValue(true);
+    await lint();
+    expect(mockExecFromRoot.mock.calls[1]?.[0]).toEqual(expect.arrayContaining(['--concurrency', expected]));
+  });
+
+  it('propagates a failed linkinator run, including exhausted request timeouts', async () => {
+    mockExistsSync.mockReturnValue(true);
+    mockExecFromRoot.mockResolvedValueOnce('').mockRejectedValueOnce(new Error('linkinator timeout'));
+    await expect(lint()).rejects.toThrow('linkinator timeout');
   });
 
   it('should pass --fix when shouldFix is true', async () => {

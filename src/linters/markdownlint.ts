@@ -17,6 +17,7 @@ import {
   relative
 } from 'node:path';
 
+import { getBulkConcurrency } from '../bulk-concurrency.ts';
 import { getNonIgnoredFiles } from '../git.ts';
 import { resolveToolCommand } from '../package-manager.ts';
 import { RepoPaths } from '../repo-paths.ts';
@@ -111,12 +112,14 @@ export async function lint(options?: LintOptions): Promise<void> {
   if (linkCheckFiles.length === 0) {
     return;
   }
-  // A host that rate-limits the runner (forum.obsidian.md answers a CI burst with 429) is retried with a jitter of up to
-  // 5 s, which `linkinator` reads as MILLISECONDS, so the retries do not all land in the same instant. A link still
-  // answering 429 once they are spent is a warning, not a failure: a rate limit says nothing about whether the link exists.
+  // Error retries use millisecond jitter. Omit --retry: its separate Retry-After mode can sleep for thousands
+  // of seconds on a 429 we already accept as a warning. Request timeouts remain errors and keep their retries.
   await execFromRoot([
     ...resolveToolCommand({ tool: 'linkinator' }),
-    '--retry',
+    '--concurrency',
+    String(getBulkConcurrency(LINK_CHECK_CONCURRENCY)),
+    '--timeout',
+    String(LINK_CHECK_TIMEOUT_IN_MILLISECONDS),
     '--retry-errors',
     '--retry-errors-count',
     '3',
@@ -136,6 +139,8 @@ export async function lint(options?: LintOptions): Promise<void> {
  * The git pathspec matching every markdown file in the repository, at any depth.
  */
 const MARKDOWN_PATHSPEC = '*.md';
+const LINK_CHECK_CONCURRENCY = 100;
+const LINK_CHECK_TIMEOUT_IN_MILLISECONDS = 30_000;
 
 /**
  * Lists the markdown files to hand to `linkinator`.
