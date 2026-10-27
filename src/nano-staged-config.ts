@@ -141,6 +141,10 @@ const NANO_STAGED_ENV_VARIABLE = 'NANO_STAGED';
  * which case its files fall to the spellcheck-only key. The `additionalWriterTasks` are the caller's own and
  * are kept as given.
  *
+ * A positive integer `BULK_CORES` budget serializes the generated commands into one group. nano-staged
+ * has no concurrency option, so this keeps its processes within even a one-core budget. Without a valid
+ * budget the usual parallel groups are retained.
+ *
  * `NANO_STAGED` is not an npm script, so it carries its own switch rather than the script-name-derived one
  * every npm script gets — but both share the same notion of an off value, via {@link isEnvVariableOff}.
  *
@@ -165,7 +169,7 @@ export function getNanoStagedConfig(options?: GetNanoStagedConfigOptions): NanoS
     .every((scriptName) => scriptNames.has(scriptName));
   const additionalWriterTasks = options?.additionalWriterTasks ?? {};
   if (hasAllSharedScripts && Object.keys(additionalWriterTasks).length === 0) {
-    return obsidianDevUtilsConfig;
+    return applyBulkBudget(obsidianDevUtilsConfig);
   }
 
   const writerTasks = toWriterTasks((scriptName) => scriptNames.has(scriptName));
@@ -174,7 +178,43 @@ export function getNanoStagedConfig(options?: GetNanoStagedConfigOptions): NanoS
     throw new Error(`nano-staged writer pattern '${duplicatePattern}' is already a shared writer pattern.`);
   }
 
-  return partitionSpellcheck({ ...writerTasks, ...additionalWriterTasks }, scriptNames.has(SPELLCHECK_SCRIPT_NAME));
+  return applyBulkBudget(partitionSpellcheck({ ...writerTasks, ...additionalWriterTasks }, scriptNames.has(SPELLCHECK_SCRIPT_NAME)));
+}
+
+/**
+ * Collects commands using nano-staged's own pattern matching, then runs them in one serial group.
+ *
+ * nano-staged's `generateCmdTasks` visits configuration entries in insertion order before executing any
+ * commands. The original pattern callbacks collect their commands and return none; the final catch-all
+ * drains them. This preserves its glob dialect, custom writers, batching and per-file writer order without
+ * depending on its private compiler. The installed runner's generation order is pinned by the tests.
+ *
+ * @param config - The configuration whose execution should respect the bulk budget.
+ * @returns The serial configuration when a budget is present, otherwise the original configuration.
+ */
+function applyBulkBudget(config: NanoStagedConfig): NanoStagedConfig {
+  const budget = process.env['BULK_CORES']?.trim() ?? '';
+  if (!/^[1-9]\d*$/.test(budget)) {
+    return config;
+  }
+
+  const commands: string[] = [];
+  const serialConfig: NanoStagedConfig = {};
+  for (const [pattern, task] of Object.entries(config)) {
+    serialConfig[pattern] = (context): string[] => {
+      commands.push(...task(context));
+      return [];
+    };
+  }
+
+  // A spellcheck-only configuration can already own `*`; move its collector into the final callback.
+  const collectAll = serialConfig['*'];
+  delete serialConfig['*'];
+  serialConfig['*'] = (context): string[] => {
+    collectAll?.(context);
+    return commands.splice(0);
+  };
+  return serialConfig;
 }
 
 /**

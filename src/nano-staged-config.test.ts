@@ -1,5 +1,6 @@
 import type { PackageJson } from 'type-fest';
 
+import { noopAsync } from '@mnaoumov/typescript-lib/function';
 import {
   dirname,
   join,
@@ -28,6 +29,14 @@ import {
   getNanoStagedConfig,
   obsidianDevUtilsConfig
 } from './nano-staged-config.ts';
+
+beforeEach(() => {
+  vi.stubEnv('BULK_CORES', undefined);
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 const ALL_SCRIPTS = ['format', 'lint:fix', 'lint:md:fix', 'spellcheck'];
 
@@ -123,6 +132,113 @@ describe('getNanoStagedConfig', () => {
 });
 
 const COMPLEMENT_KEY = '!(*.{ts,tsx,mts}!(?)|*.md!(?))*';
+
+interface CommandRunner {
+  // eslint-disable-next-line unicorn/name-replacements -- This is nano-staged's actual method name.
+  readonly generateCmdTasks: () => Promise<CommandTaskGroup[]>;
+  readonly run: (parentTask: CommandTaskParent) => Promise<void>;
+}
+
+interface CommandRunnerModule {
+  // eslint-disable-next-line unicorn/name-replacements -- This is nano-staged's actual export name.
+  readonly createCmdRunner: (options: CommandRunnerOptions) => CommandRunner;
+}
+
+interface CommandRunnerOptions {
+  readonly config: NanoStagedConfig;
+  readonly files: string[];
+  readonly rootPath: string;
+}
+
+interface CommandTask {
+  readonly run: () => Promise<void>;
+  readonly title: string;
+}
+
+interface CommandTaskGroup {
+  readonly tasks: CommandTask[];
+}
+
+interface CommandTaskParent {
+  readonly tasks: CommandTaskGroup[];
+}
+
+describe('getNanoStagedConfig with BULK_CORES', () => {
+  beforeEach(() => {
+    mockExistsSync.mockReturnValue(false);
+    mockScripts(ALL_SCRIPTS);
+    vi.stubEnv('NANO_STAGED', undefined);
+  });
+
+  it.each(['', '0', '-1', '2.5', 'invalid'])('should preserve parallel groups for invalid budget %s', (budget) => {
+    vi.stubEnv('BULK_CORES', budget);
+    expect(getNanoStagedConfig()).toBe(obsidianDevUtilsConfig);
+  });
+
+  it('should execute one command at a time and propagate a failure through the real runner', async () => {
+    vi.stubEnv('BULK_CORES', '2');
+    const { createCmdRunner } = await importNanoStagedModule<CommandRunnerModule>('cmd-runner.js');
+    const runner = createCmdRunner({
+      config: getNanoStagedConfig(),
+      files: ['src/main.ts', 'README.md', 'package.json'],
+      rootPath: process.cwd()
+    });
+    const groups = await runner.generateCmdTasks();
+    const commands = groups.flatMap((group) => group.tasks);
+    let active = 0;
+    let peak = 0;
+    const executed: string[] = [];
+    const runs = commands.map((task) =>
+      vi.spyOn(task, 'run').mockImplementation(async () => {
+        active++;
+        peak = Math.max(peak, active);
+        await noopAsync();
+        executed.push(task.title);
+        active--;
+      })
+    );
+    await runner.run({ tasks: groups });
+    expect(peak).toBe(1);
+    expect(executed).toEqual(commands.map((task) => task.title));
+
+    for (const run of runs) {
+      run.mockClear();
+    }
+    runs[0]?.mockRejectedValue('fixture failure');
+    await expect(runner.run({ tasks: groups })).rejects.toThrow('fixture failure');
+    expect(runs.slice(1).every((run) => run.mock.calls.length === 0)).toBe(true);
+  });
+
+  it.each(['1', '2', ' 2 ', '8'])('should serialize real nano-staged command groups for budget %s', async (budget) => {
+    const { createCmdRunner } = await importNanoStagedModule<CommandRunnerModule>('cmd-runner.js');
+    const files = ['src/main.ts', 'README.md', 'package.json', 'src/view.astro'];
+    const options = { additionalWriterTasks: { '*.astro': ['npm run astro:fix --'] } };
+    const parallel = getNanoStagedConfig(options);
+    const originalGroups = await createCmdRunner({ config: parallel, files, rootPath: process.cwd() }).generateCmdTasks();
+    const expected = originalGroups.flatMap((group) => group.tasks.map((task) => task.title));
+    expect(originalGroups.filter((group) => group.tasks.length > 0)).toHaveLength(4);
+
+    vi.stubEnv('BULK_CORES', budget);
+    const runner = createCmdRunner({ config: getNanoStagedConfig(options), files, rootPath: process.cwd() });
+    for (let round = 0; round < 2; round++) {
+      const groups = await runner.generateCmdTasks();
+      expect(groups.filter((group) => group.tasks.length > 0)).toHaveLength(1);
+      expect(groups.flatMap((group) => group.tasks.map((task) => task.title))).toEqual(expected);
+    }
+  });
+
+  it.each([ALL_SCRIPTS, ['spellcheck'], ['lint:fix'], []].map((scripts) => ({ scripts })))('should preserve commands for scripts $scripts', async ({ scripts }) => {
+    mockScripts(scripts);
+    const { createCmdRunner } = await importNanoStagedModule<CommandRunnerModule>('cmd-runner.js');
+    const files = ['src/main.ts', 'README.md', 'package.json'];
+    const originalGroups = await createCmdRunner({ config: getNanoStagedConfig(), files, rootPath: process.cwd() }).generateCmdTasks();
+    vi.stubEnv('BULK_CORES', '2');
+    const groups = await createCmdRunner({ config: getNanoStagedConfig(), files, rootPath: process.cwd() }).generateCmdTasks();
+    expect(groups.filter((group) => group.tasks.length > 0).length).toBeLessThanOrEqual(1);
+    expect(groups.flatMap((group) => group.tasks.map((task) => task.title)))
+      .toEqual(originalGroups.flatMap((group) => group.tasks.map((task) => task.title)));
+  });
+});
 
 interface GlobToRegexModule {
   readonly globToRegex: (glob: string, options: GlobToRegexOptions) => GlobToRegexResult;
