@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 3.13.1
+
+- test: give expensive suites a budget for machine load
+- build(deps): accept @mnaoumov/typescript-lib 2
+- test(library-build): give every buildLibraryTypes case the 30 s build timeout
+
 ## 3.13.0
 
 - fix(markdownlint): let a link still rate-limited after the retries pass with a warning
