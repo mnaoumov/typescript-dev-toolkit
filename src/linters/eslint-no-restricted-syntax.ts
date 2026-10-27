@@ -28,6 +28,10 @@ export interface NoRestrictedSyntaxRuleEntry {
  */
 export const noRestrictedSyntaxRuleEntries: readonly NoRestrictedSyntaxRuleEntry[] = [
   {
+    message: 'Destructure originalArguments (or originalArgs) into named parameters from the patched signature instead of indexing positionally.',
+    selector: 'Property[key.name="patchHandler"] MemberExpression[computed=true]:matches([property.value=/^[0-9]+$/], [property.raw=/^[0-9]/]):matches([object.type="Identifier"][object.name=/^original(Arguments|Args)$/], [object.type="MemberExpression"][object.property.name=/^original(Arguments|Args)$/], [object.type="MemberExpression"][object.property.value=/^original(Arguments|Args)$/])'
+  },
+  {
     message: 'Do not use definite assignment assertions (!). Initialize the field or make it optional.',
     selector: 'PropertyDefinition[definite=true]'
   },

@@ -70,6 +70,31 @@ function lint(code: string): LinterType.LintMessage[] {
 }
 
 describe('noRestrictedSyntaxRuleEntries', () => {
+  describe('named patch arguments', () => {
+    const MESSAGE = 'Destructure originalArguments';
+
+    it.each(['originalArguments', 'originalArgs'])('flags positional access to %s', (name) => {
+      expectFires(`registerMethodPatch({ patchHandler: ({ ${name} }) => ${name}[0] });`, MESSAGE);
+      expectFires(`registerFunctionPatch({ patchHandler: function ({ ${name} }) { return ${name}[1] ?? false; } });`, MESSAGE);
+      expectFires(`registerMethodPatch({ patchHandler: ({ ${name} }) => ${name}?.['1'] });`, MESSAGE);
+      expectFires(`registerMethodPatch({ patchHandler: (params) => params.${name}[0] });`, MESSAGE);
+      expectFires(`registerMethodPatch({ patchHandler: (params) => params['${name}'][0] });`, MESSAGE);
+    });
+
+    it('allows named bindings, holes, fallback forwarding and whole-tuple forwarding', () => {
+      expectDoesNotFire('registerMethodPatch({ patchHandler: ({ fallback, originalArguments: [id, isUserEnabled] }) => { record(id, isUserEnabled ?? false); return fallback(); } });', MESSAGE);
+      expectDoesNotFire('registerFunctionPatch({ patchHandler: ({ originalArgs: [, newPath] }) => newPath });', MESSAGE);
+      expectDoesNotFire('registerMethodPatch({ patchHandler: ({ originalArguments }) => forward(...originalArguments) });', MESSAGE);
+    });
+
+    it('allows ordinary arrays, non-positional properties and unrelated handlers', () => {
+      expectDoesNotFire('const originalArguments = [1]; originalArguments[0];', MESSAGE);
+      expectDoesNotFire('const options = { handler: ({ originalArguments }) => originalArguments[0] };', MESSAGE);
+      expectDoesNotFire('registerMethodPatch({ patchHandler: ({ originalArguments }) => originalArguments.length });', MESSAGE);
+      expectDoesNotFire('registerMethodPatch({ patchHandler: ({ items }) => items[0] });', MESSAGE);
+    });
+  });
+
   describe('PropertyDefinition[definite=true]', () => {
     const MESSAGE = 'Do not use definite assignment assertions (!). Initialize the field or make it optional.';
 

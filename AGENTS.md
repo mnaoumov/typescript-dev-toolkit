@@ -39,6 +39,7 @@ It depends on `@mnaoumov/typescript-lib` only, and every other `@mnaoumov` repos
 - `npm run test:integration` runs the integration project (real `markdownlint-cli2`, `cspell` and shell round trips). `scripts/helpers/echo-args.mjs` is its argument-echo fixture.
 
 - **`typescript-dev-toolkit/prefer-noop-async` fixes preserve bindings.** The fixer reuses a visible value import of `noopAsync` from `@mnaoumov/typescript-lib/function`, including aliases, or adds a separate import with a collision-free name. Type-only imports and shadowed bindings are never reused. Hashbangs and directive prologues stay ahead of the new import. Scripts that cannot accept an ESM import retain the diagnostic without a fix.
+- **Shared `no-restricted-syntax` entries require named patch arguments.** Inside a `patchHandler` property, numeric indexing of `originalArguments` or the older `originalArgs` spelling is rejected, including optional access and `params.originalArguments[0]`. Destructure the tuple using the patched signature's parameter names; array holes and forwarding the whole tuple remain legal. The syntax check does not resolve renamed tuple bindings or validate binding names against types.
 
 ## Commands
 
