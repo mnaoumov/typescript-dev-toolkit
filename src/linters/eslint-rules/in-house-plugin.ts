@@ -11,6 +11,7 @@
 import type { ESLint } from 'eslint';
 
 import { noAsyncCallbackToUnsafeReturn } from './no-async-callback-to-unsafe-return.ts';
+import { noKeywordIdentifiers } from './no-keyword-identifiers.ts';
 import { noUnresolvedJsdocLink } from './no-unresolved-jsdoc-link.ts';
 import { noUnusedParamsMembers } from './no-unused-params-members.ts';
 import { noUsedUnderscoreVariables } from './no-used-underscore-variables.ts';
@@ -31,6 +32,7 @@ export const IN_HOUSE_ESLINT_PLUGIN_NAME = 'typescript-dev-toolkit';
  */
 export const genericInHouseEslintRules: NonNullable<ESLint.Plugin['rules']> = {
   'no-async-callback-to-unsafe-return': noAsyncCallbackToUnsafeReturn,
+  'no-keyword-identifiers': noKeywordIdentifiers,
   'no-unresolved-jsdoc-link': noUnresolvedJsdocLink,
   'no-unused-params-members': noUnusedParamsMembers,
   'no-used-underscore-variables': noUsedUnderscoreVariables,

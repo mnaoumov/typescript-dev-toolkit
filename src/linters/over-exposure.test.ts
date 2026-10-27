@@ -547,9 +547,9 @@ describe('analyzeOverExposure', () => {
     });
 
     expect(progressEvents).toHaveLength(2);
-    expect(new Set(progressEvents.map((event) => event.currentFilePath))).toEqual(new Set(['/proj/src/a.ts', '/proj/src/b.ts']));
-    expect(progressEvents.map((event) => event.analyzedFileCount)).toEqual([0, 1]);
-    expect(progressEvents.map((event) => event.totalFileCount)).toEqual([2, 2]);
+    expect(new Set(progressEvents.map(($event) => $event.currentFilePath))).toEqual(new Set(['/proj/src/a.ts', '/proj/src/b.ts']));
+    expect(progressEvents.map(($event) => $event.analyzedFileCount)).toEqual([0, 1]);
+    expect(progressEvents.map(($event) => $event.totalFileCount)).toEqual([2, 2]);
   });
 
   it('should report a member of an anonymous class expression used externally as public', () => {

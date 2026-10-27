@@ -568,8 +568,8 @@ function execOrThrow(dependencies: SyncDependencies, file: string, arguments_: r
 }
 
 function findOpenPr(dependencies: SyncDependencies, branch: string): null | string {
-  const number = execOrThrow(dependencies, 'gh', ['pr', 'list', '--head', branch, '--state', 'open', '--json', 'number', '--jq', '.[0].number']).trim();
-  return number === '' || number === 'null' ? null : number;
+  const $number = execOrThrow(dependencies, 'gh', ['pr', 'list', '--head', branch, '--state', 'open', '--json', 'number', '--jq', '.[0].number']).trim();
+  return $number === '' || $number === 'null' ? null : $number;
 }
 
 function isGitUpstream(entry: UpstreamEntry): entry is GitUpstreamEntry {

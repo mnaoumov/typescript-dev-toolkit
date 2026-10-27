@@ -280,9 +280,9 @@ function flattenName(name: EntityName | JSDocMemberName): string[] {
   return isIdentifier(name) ? [name.text] : [...flattenName(name.left), name.right.text];
 }
 
-function getMember(checker: TypeChecker, symbol: TsSymbol, memberName: string): TsSymbol | undefined {
+function getMember(checker: TypeChecker, $symbol: TsSymbol, memberName: string): TsSymbol | undefined {
   const escapedName = escapeLeadingUnderscores(memberName);
-  const target = resolveAlias(checker, symbol);
+  const target = resolveAlias(checker, $symbol);
   // eslint-disable-next-line no-bitwise -- Bitwise flag test is idiomatic for the TypeScript compiler API.
   const moduleExport = (target.flags & SymbolFlags.Module) === 0 ? undefined : checker.tryGetMemberInModuleExports(memberName, target);
   return moduleExport
@@ -373,9 +373,9 @@ function isResolvedName(params: IsResolvedNameParams): boolean {
   return roots.some((root) => !!resolveMemberPath(checker, root, memberNames));
 }
 
-function resolveAlias(checker: TypeChecker, symbol: TsSymbol): TsSymbol {
+function resolveAlias(checker: TypeChecker, $symbol: TsSymbol): TsSymbol {
   // eslint-disable-next-line no-bitwise -- Bitwise flag test is idiomatic for the TypeScript compiler API.
-  return (symbol.flags & SymbolFlags.Alias) === 0 ? symbol : checker.getAliasedSymbol(symbol);
+  return ($symbol.flags & SymbolFlags.Alias) === 0 ? $symbol : checker.getAliasedSymbol($symbol);
 }
 
 function resolveMemberPath(checker: TypeChecker, root: TsSymbol | undefined, memberNames: readonly string[]): TsSymbol | undefined {
