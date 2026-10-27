@@ -436,11 +436,11 @@ export async function runBuildSteps(steps: readonly string[] = LIBRARY_BUILD_STE
  * @param params - The symbol, the program it was resolved in, and the sets to add to.
  */
 function addEnvironmentGlobals(params: AddEnvironmentGlobalsParams): void {
-  const { libs, program, symbol, types } = params;
+  const { libs, program, symbol: $symbol, types } = params;
   const environmentLibs: string[] = [];
   let isNode = false;
 
-  for (const declaration of symbol.declarations ?? []) {
+  for (const declaration of $symbol.declarations ?? []) {
     const sourceFile = declaration.getSourceFile();
     if (program.isSourceFileDefaultLibrary(sourceFile)) {
       const lib = toLibName(sourceFile.fileName);
@@ -571,9 +571,9 @@ function collectEnvironmentDirectives(params: CollectEnvironmentDirectivesParams
 
     function visit(node: Node): void {
       if (isIdentifier(node) || isStringLiteral(node)) {
-        const symbol = checker.getSymbolAtLocation(node);
-        if (symbol !== undefined) {
-          addEnvironmentGlobals({ libs, program, symbol: resolveAlias(checker, symbol), types });
+        const $symbol = checker.getSymbolAtLocation(node);
+        if ($symbol !== undefined) {
+          addEnvironmentGlobals({ libs, program, symbol: resolveAlias(checker, $symbol), types });
         }
       }
       forEachChild(node, visit);
@@ -659,9 +659,9 @@ function isExcludedFromIndex(folder: string, dirent: Dirent): boolean {
   return isExcludedEntry || (dirent.isFile() && isExcludedFileName(dirent.name));
 }
 
-function resolveAlias(checker: TypeChecker, symbol: TsSymbol): TsSymbol {
+function resolveAlias(checker: TypeChecker, $symbol: TsSymbol): TsSymbol {
   // eslint-disable-next-line no-bitwise -- `SymbolFlags` is a bit set.
-  return (symbol.flags & SymbolFlags.Alias) === 0 ? symbol : checker.getAliasedSymbol(symbol);
+  return ($symbol.flags & SymbolFlags.Alias) === 0 ? $symbol : checker.getAliasedSymbol($symbol);
 }
 
 async function setExport(params: SetExportParams): Promise<void> {

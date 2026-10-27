@@ -177,16 +177,16 @@ export function getIssueReferences(params: GetIssueReferencesParams): IssueRefer
 
   for (const commitMessage of commitMessages) {
     for (const match of commitMessage.matchAll(regExp)) {
-      const number = Number(
+      const $number = Number(
         getOptionalNamedGroup(match, 'urlNumber') ?? getOptionalNamedGroup(match, 'slugNumber') ?? getOptionalNamedGroup(match, 'bareNumber')
       );
-      closingFlagByNumber.set(number, (closingFlagByNumber.get(number) ?? false) || getOptionalNamedGroup(match, 'keyword') !== null);
+      closingFlagByNumber.set($number, (closingFlagByNumber.get($number) ?? false) || getOptionalNamedGroup(match, 'keyword') !== null);
     }
   }
 
   return [...closingFlagByNumber]
     .sort(([number1], [number2]) => number1 - number2)
-    .map(([number, isClosing]) => ({ isClosing, number }));
+    .map(([$number, isClosing]) => ({ isClosing, number: $number }));
 }
 
 async function hasCommentContaining(repoSlug: string, issueNumber: number, text: string): Promise<boolean> {

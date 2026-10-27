@@ -523,6 +523,7 @@ function getInHousePluginConfigs(context: EslintConfigContext): Linter.Config[] 
       },
       rules: {
         'typescript-dev-toolkit/no-async-callback-to-unsafe-return': 'error',
+        'typescript-dev-toolkit/no-keyword-identifiers': 'error',
         /*
          * Measured over 32 plugins built on this config before it was turned on (2026-09-24): 29 had no finding,
          * the other three had 8 between them, every one a genuinely dead link.
@@ -765,10 +766,11 @@ function getUnicornConfigs(context: EslintConfigContext): Linter.Config[] {
          * `<Owner>Params` / `<Owner>Options`. Expanding it to `Parameters` would put the two rules in direct
          * contradiction and break 300+ exported type names.
          *
-         * Reserved words: a bare `args`, `fn`, `str`, `mod` or `evt` expands to an identifier that is already
-         * taken, so the rule suggests `$arguments`, `$function`, and so on. Spell those `$arguments` /
-         * `$function` instead — a `$` prefix reads better than a trailing underscore. This is deliberately NOT
-         * configured as a custom replacement: unicorn substitutes at the word level inside compound names, so
+         * Bare keyword and colliding global bindings use `$name`, enforced by
+         * `typescript-dev-toolkit/no-keyword-identifiers`: `object` becomes `$object`, `string` becomes `$string`,
+         * and so on, even when no abbreviation was expanded. Property keys and builtin reads stay legal.
+         * A bare `args`, `fn`, `str`, `mod` or `evt` likewise takes `$arguments`, `$function`, and so on.
+         * This is deliberately NOT configured as a custom replacement: unicorn substitutes at the word level inside compound names, so
          * redirecting the whole entry turns `asyncFn` into `async$function`. Compounds want the plain expansion
          * (`asyncFunction`); only the bare, genuinely-colliding identifiers take the `$` form.
          *

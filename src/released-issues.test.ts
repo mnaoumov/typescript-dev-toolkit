@@ -64,8 +64,8 @@ function setup(params: SetupParams): void {
     }
     const issueMatch = /^gh api repos\/owner\/repo\/issues\/(?<number>\d+)$/.exec(commandString);
     if (issueMatch) {
-      const number = Number(issueMatch.groups?.['number']);
-      const issue = issues[number];
+      const $number = Number(issueMatch.groups?.['number']);
+      const issue = issues[$number];
       if (issue instanceof Error) {
         return Promise.reject(issue);
       }
@@ -74,7 +74,7 @@ function setup(params: SetupParams): void {
         [PULL_REQUEST_KEY]: issue?.pullRequest,
         state: issue?.state ?? 'open',
         [STATE_REASON_KEY]: issue?.stateReason ?? null,
-        title: `Issue ${String(number)}`
+        title: `Issue ${String($number)}`
       }));
     }
     return Promise.resolve('');

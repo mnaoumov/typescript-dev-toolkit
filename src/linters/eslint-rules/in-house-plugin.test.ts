@@ -18,6 +18,7 @@ describe('in-house plugin', () => {
   it('should register every generic rule', () => {
     expect(Object.keys(genericInHouseEslintRules).sort()).toEqual([
       'no-async-callback-to-unsafe-return',
+      'no-keyword-identifiers',
       'no-unresolved-jsdoc-link',
       'no-unused-params-members',
       'no-used-underscore-variables',

@@ -518,8 +518,8 @@ function initCjs(): void {
   ensureBrowserProcess();
 
   // eslint-disable-next-line unicorn/consistent-function-scoping -- Serialized with initCjs into the banner; at module scope it would be left out of it.
-  function extractDefault(module: Partial<EsmModule> | undefined): unknown {
-    return module && module.__esModule && 'default' in module ? module.default : module;
+  function extractDefault($module: Partial<EsmModule> | undefined): unknown {
+    return $module && $module.__esModule && 'default' in $module ? $module.default : $module;
   }
 }
 

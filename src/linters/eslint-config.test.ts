@@ -86,6 +86,7 @@ describe('defineEslintConfigs', () => {
     expect(inHousePlugins.length).toBeGreaterThan(0);
     expect(inHousePlugins.every((plugin) => plugin === inHouseEslintPlugin)).toBe(true);
     expect(findRuleEntry(configs, 'typescript-dev-toolkit/no-unused-params-members')).toBe('error');
+    expect(findRuleEntry(configs, 'typescript-dev-toolkit/no-keyword-identifiers')).toBe('error');
   });
 
   it('should let the context be edited and append the custom configurations last', () => {
