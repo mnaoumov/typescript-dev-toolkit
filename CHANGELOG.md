@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 4.0.0
+
+- feat(eslint)!: require readonly properties in all interfaces
+
 ## 3.13.1
 
 - test: give expensive suites a budget for machine load
