@@ -86,12 +86,6 @@ vi.mock('./check-project-types.ts', async (importOriginal) => {
   };
 });
 
-/*
- * Each case bundles real files with esbuild or emits real declarations with TypeScript, which is quick alone and slow
- * under the full suite's load: a `buildLibraryTypes` case once took 5268 ms against vitest's default 5 s.
- */
-const BUILD_TEST_TIMEOUT_IN_MILLISECONDS = 30_000;
-
 interface PackageJsonWithExports {
   exports: Record<string, unknown>;
 }
@@ -282,7 +276,7 @@ describe('generateLibraryIndex', () => {
   });
 });
 
-describe('buildLibraryTypes', { timeout: BUILD_TEST_TIMEOUT_IN_MILLISECONDS }, () => {
+describe('buildLibraryTypes', () => {
   it('writes a .d.cts and a .d.mts per declaration, with the index carrying the lib and types references', async () => {
     mockParseTsConfig.mockReturnValue(makeParsedTsConfig({ lib: ['lib.es2022.d.ts', 'lib.dom.iterable.d.ts'], types: ['vitest', 'node'] }));
     await writeFiles({
@@ -582,7 +576,7 @@ describe('generateLibraryExports', () => {
   });
 });
 
-describe('buildLibrary', { timeout: BUILD_TEST_TIMEOUT_IN_MILLISECONDS }, () => {
+describe('buildLibrary', () => {
   async function writeSources(): Promise<void> {
     await writeFiles({
       'src/a.test.ts': 'throw new Error(\'not built\');\n',
