@@ -87,7 +87,7 @@ vi.mock('./check-project-types.ts', async (importOriginal) => {
 });
 
 interface PackageJsonWithExports {
-  exports: Record<string, unknown>;
+  readonly exports: Record<string, unknown>;
 }
 
 interface SourceMapWithMappings {

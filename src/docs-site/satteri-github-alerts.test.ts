@@ -73,14 +73,14 @@ describe('satteriGitHubAlerts', () => {
 });
 
 interface MockContext {
-  properties: RecordedProperty[];
-  replacements: unknown[];
-  value: MdastVisitorContext;
+  readonly properties: RecordedProperty[];
+  readonly replacements: unknown[];
+  readonly value: MdastVisitorContext;
 }
 
 interface RecordedProperty {
-  key: string;
-  value: unknown;
+  readonly key: string;
+  readonly value: unknown;
 }
 
 function blockquote(children: PhrasingContent[]): Blockquote {

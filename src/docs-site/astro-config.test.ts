@@ -37,15 +37,15 @@ afterEach(() => {
 });
 
 interface StarlightStub {
-  options: StarlightStubOptions;
+  readonly options: StarlightStubOptions;
 }
 
 interface StarlightStubComponents {
-  SiteTitle: string;
+  readonly SiteTitle: string;
 }
 
 interface StarlightStubEditLink {
-  baseUrl: string;
+  readonly baseUrl: string;
 }
 
 interface StarlightStubOptions {

@@ -79,8 +79,8 @@ describe('satteriRelativeLinks', () => {
 });
 
 interface MockContext {
-  rewrites: string[];
-  value: MdastVisitorContext;
+  readonly rewrites: string[];
+  readonly value: MdastVisitorContext;
 }
 
 function link(url: string): Link {

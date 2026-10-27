@@ -251,7 +251,7 @@ export interface OverExposureFileSystem {
    * @param path - Directory path.
    * @returns `true` when the directory exists.
    */
-  directoryExists: (path: string) => boolean;
+  readonly directoryExists: (path: string) => boolean;
 
   /**
    * Checks whether a file exists.
@@ -259,14 +259,14 @@ export interface OverExposureFileSystem {
    * @param path - File path.
    * @returns `true` when the file exists.
    */
-  fileExists: (path: string) => boolean;
+  readonly fileExists: (path: string) => boolean;
 
   /**
    * Resolves the directory that relative paths are resolved against.
    *
    * @returns The current working directory.
    */
-  getCurrentDirectory: () => string;
+  readonly getCurrentDirectory: () => string;
 
   /**
    * Lists the immediate subdirectories of a directory.
@@ -274,7 +274,7 @@ export interface OverExposureFileSystem {
    * @param path - Directory path.
    * @returns The immediate subdirectory names.
    */
-  getDirectories: (path: string) => string[];
+  readonly getDirectories: (path: string) => string[];
 
   /**
    * Lists the files under a directory, filtered by extension and include/exclude patterns.
@@ -286,7 +286,7 @@ export interface OverExposureFileSystem {
    * @param depth - Maximum recursion depth.
    * @returns The matching file paths.
    */
-  readDirectory: (path: string, extensions?: readonly string[], exclude?: readonly string[], include?: readonly string[], depth?: number) => string[];
+  readonly readDirectory: (path: string, extensions?: readonly string[], exclude?: readonly string[], include?: readonly string[], depth?: number) => string[];
 
   /**
    * Reads a file as text.
@@ -294,7 +294,7 @@ export interface OverExposureFileSystem {
    * @param path - File path.
    * @returns The file contents, or `undefined` when absent.
    */
-  readFile: (path: string) => string | undefined;
+  readonly readFile: (path: string) => string | undefined;
 }
 
 /**

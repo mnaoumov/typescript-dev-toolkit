@@ -138,7 +138,7 @@ interface BrowserProcess extends Partial<NodeJS.Process> {
   /**
    * Marks the process as a browser one. The bundled `debug` package selects its browser entry point on it.
    */
-  browser: boolean;
+  readonly browser: boolean;
 }
 
 /**
@@ -146,14 +146,16 @@ interface BrowserProcess extends Partial<NodeJS.Process> {
  * symbols optional because an engine without Explicit Resource Management does not have them.
  */
 interface DisposeSymbolHost {
+  // eslint-disable-next-line typescript-dev-toolkit/readonly-interface-members -- Missing disposal symbols are installed on the host.
   asyncDispose?: symbol;
+  // eslint-disable-next-line typescript-dev-toolkit/readonly-interface-members -- Missing disposal symbols are installed on the host.
   dispose?: symbol;
-  for: (key: string) => symbol;
+  readonly for: (key: string) => symbol;
 }
 
 interface EsmModule {
-  __esModule: boolean;
-  default: unknown;
+  readonly __esModule: boolean;
+  readonly default: unknown;
 }
 
 /**
@@ -166,7 +168,7 @@ interface InsertPreambleParams {
 }
 
 interface LocationHost {
-  location?: PageLocation;
+  readonly location?: PageLocation;
 }
 
 interface ModuleShimNeeds {
@@ -176,15 +178,16 @@ interface ModuleShimNeeds {
 }
 
 interface PageLocation {
-  href: string;
+  readonly href: string;
 }
 
 interface SourceMapWithMappings {
+  // eslint-disable-next-line typescript-dev-toolkit/readonly-interface-members -- Adding a preamble shifts the source map mappings.
   mappings: string;
 }
 
 interface UrlModule {
-  pathToFileURL: typeof pathToFileURL;
+  readonly pathToFileURL: typeof pathToFileURL;
 }
 
 /**

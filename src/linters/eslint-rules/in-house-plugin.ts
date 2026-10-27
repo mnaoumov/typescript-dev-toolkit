@@ -17,7 +17,7 @@ import { noUsedUnderscoreVariables } from './no-used-underscore-variables.ts';
 import { paramsOptionsNameMatch } from './params-options-name-match.ts';
 import { preferLogicalOperatorOverTernary } from './prefer-logical-operator-over-ternary.ts';
 import { preferNoopAsync } from './prefer-noop-async.ts';
-import { readonlyParamsOptionsResultMembers } from './readonly-params-options-result-members.ts';
+import { readonlyInterfaceMembers } from './readonly-interface-members.ts';
 import { requireMethodTemplate } from './require-method-template.ts';
 import { requireSuperCall } from './require-super-call.ts';
 
@@ -37,7 +37,7 @@ export const genericInHouseEslintRules: NonNullable<ESLint.Plugin['rules']> = {
   'params-options-name-match': paramsOptionsNameMatch,
   'prefer-logical-operator-over-ternary': preferLogicalOperatorOverTernary,
   'prefer-noop-async': preferNoopAsync,
-  'readonly-params-options-result-members': readonlyParamsOptionsResultMembers,
+  'readonly-interface-members': readonlyInterfaceMembers,
   'require-method-template': requireMethodTemplate,
   'require-super-call': requireSuperCall
 };

@@ -41,11 +41,12 @@ export const MESSAGE_ID = 'requireSuperCall';
 type MethodKind = 'get' | 'method' | 'set';
 
 interface OverrideMethodInfo {
+  // eslint-disable-next-line typescript-dev-toolkit/readonly-interface-members -- Traversal records whether a super call was found.
   hasSuperCall: boolean;
-  kind: MethodKind;
-  methodName: string;
-  node: TSESTree.MethodDefinition;
-  reportNode: Rule.Node;
+  readonly kind: MethodKind;
+  readonly methodName: string;
+  readonly node: TSESTree.MethodDefinition;
+  readonly reportNode: Rule.Node;
 }
 
 /**

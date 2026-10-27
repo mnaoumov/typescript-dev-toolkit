@@ -37,22 +37,22 @@ export interface BrokenLink {
    * The HTTP status returned by an external link, when {@link BrokenLink.reason} is
    * `external-error`. `0` denotes a network-level failure (timeout, DNS, connection refused).
    */
-  httpStatus?: number;
+  readonly httpStatus?: number;
 
   /**
    * The absolute URL of the page that contains the broken link.
    */
-  pageUrl: string;
+  readonly pageUrl: string;
 
   /**
    * Why the link is considered broken.
    */
-  reason: 'external-error' | 'missing-fragment' | 'missing-page';
+  readonly reason: 'external-error' | 'missing-fragment' | 'missing-page';
 
   /**
    * The resolved absolute URL the link points at.
    */
-  targetUrl: string;
+  readonly targetUrl: string;
 }
 
 /**
@@ -77,12 +77,12 @@ export interface DocumentationPage {
   /**
    * The page's rendered HTML.
    */
-  html: string;
+  readonly html: string;
 
   /**
    * The page's path relative to the build-output root, e.g. `api/foo/index.html`.
    */
-  relativePath: string;
+  readonly relativePath: string;
 }
 
 /**
@@ -147,7 +147,7 @@ export interface LinkCheckFileSystem {
    * @param pageKey - The key returned by {@link LinkCheckFileSystem.resolveExistingPage}.
    * @returns The set of element ids on that page.
    */
-  readIds: (pageKey: string) => Set<string>;
+  readonly readIds: (pageKey: string) => Set<string>;
 
   /**
    * Resolves an output-relative path to an existing page.
@@ -156,7 +156,7 @@ export interface LinkCheckFileSystem {
    * @returns A stable key (e.g. the resolved absolute file path) for the existing page, or
    *   `null` when nothing exists at that path or the path escapes the build-output root.
    */
-  resolveExistingPage: (outputRelativePath: string) => null | string;
+  readonly resolveExistingPage: (outputRelativePath: string) => null | string;
 }
 
 /**

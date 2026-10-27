@@ -77,9 +77,9 @@ interface GenerateImagesWithPoolOptions {
 }
 
 interface PageEntry {
-  hash: string;
-  params: OgCardContent;
-  slug: string;
+  readonly hash: string;
+  readonly params: OgCardContent;
+  readonly slug: string;
 }
 
 const CONCURRENCY = 10;

@@ -521,11 +521,11 @@ describe('using a library disposable on an engine without Symbol.dispose', () =>
   `;
 
   interface Probe {
-    asyncDisposed: boolean;
-    asyncDone: Promise<void>;
-    asyncError: null | string;
-    disposed: boolean;
-    error: null | string;
+    readonly asyncDisposed: boolean;
+    readonly asyncDone: Promise<void>;
+    readonly asyncError: null | string;
+    readonly disposed: boolean;
+    readonly error: null | string;
   }
 
   async function runOnEngineWithoutDisposeSymbols(plugins: Plugin[]): Promise<Probe> {

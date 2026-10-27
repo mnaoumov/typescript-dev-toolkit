@@ -59,15 +59,15 @@ const FIXTURE: UpstreamsConfig = {
 One file of a GitHub compare, as the API spells it.
 */
 interface CompareFile {
-  filename: string;
+  readonly filename: string;
 
-  previous_filename?: string;
+  readonly previous_filename?: string;
 }
 
 interface FakeWorld {
-  calls: string[];
-  dependencies: SyncDependencies;
-  logs: string[];
+  readonly calls: string[];
+  readonly dependencies: MutableSyncDependencies;
+  readonly logs: string[];
 }
 
 interface FakeWorldOptions {
@@ -89,13 +89,16 @@ interface FakeWorldOptions {
   readonly remoteBranchSame?: boolean;
 }
 
+// Each test replaces the dependencies needed for its scenario.
+type MutableSyncDependencies = { -readonly [Key in keyof SyncDependencies]: SyncDependencies[Key] };
+
 /**
 Stands a fixture in for GitHub, npm, git and gh, recording every command run.
 */
 function createFakeWorld(options: FakeWorldOptions = {}): FakeWorld {
   const calls: string[] = [];
   const logs: string[] = [];
-  const dependencies: SyncDependencies = {
+  const dependencies: MutableSyncDependencies = {
     exec(file, arguments_) {
       const line = `${file} ${arguments_.join(' ')}`;
       calls.push(line);

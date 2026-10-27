@@ -135,6 +135,7 @@ export type ImportStatementProvider = (context: ImportStatementContext) => strin
 export type MemberRouteSegmentProvider = (name: string) => string | undefined;
 
 interface ModuleState {
+  // eslint-disable-next-line typescript-dev-toolkit/readonly-interface-members -- Configuration replaces the active settings between builds.
   settings: ApiDocSettings | undefined;
 }
 
