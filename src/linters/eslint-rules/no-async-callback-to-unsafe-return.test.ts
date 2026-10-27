@@ -2,8 +2,7 @@ import { RuleTester } from '@typescript-eslint/rule-tester';
 import {
   afterAll,
   describe,
-  it,
-  vi
+  it
 } from 'vitest';
 
 import {
@@ -11,10 +10,6 @@ import {
   noAsyncCallbackToUnsafeReturn
 } from './no-async-callback-to-unsafe-return.ts';
 import { toRuleTesterModule } from './rule-tester-helper.ts';
-
-const TYPE_CHECK_TIMEOUT_IN_MILLISECONDS = 60_000;
-
-vi.setConfig({ testTimeout: TYPE_CHECK_TIMEOUT_IN_MILLISECONDS });
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;

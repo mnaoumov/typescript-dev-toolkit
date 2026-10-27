@@ -23,10 +23,6 @@ vi.mock('./og-image.ts', async (importOriginal) => ({
 
 const PAGE_COUNT = 101;
 
-// Crossing the hundred-card line means some three hundred real file reads and writes, which take a quarter of a
-// second alone and went past vitest's 5 s default under `test:coverage` load.
-const LARGE_SITE_TEST_TIMEOUT_IN_MILLISECONDS = 30_000;
-
 const roots: string[] = [];
 
 afterEach(() => {
@@ -37,7 +33,7 @@ afterEach(() => {
 });
 
 describe('generateOgImages on a large site', () => {
-  it('logs its progress every hundred cards', { timeout: LARGE_SITE_TEST_TIMEOUT_IN_MILLISECONDS }, async () => {
+  it('logs its progress every hundred cards', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const root = mkdtempSync(join(tmpdir(), 'og-images-progress-'));
     roots.push(root);

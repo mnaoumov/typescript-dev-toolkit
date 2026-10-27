@@ -21,9 +21,6 @@ import {
   formatDocsSnippetProblems
 } from './docs-snippets.ts';
 
-// Each case builds a TypeScript program, which is slow on a busy machine.
-const COMPILE_TIMEOUT_IN_MILLISECONDS = 60_000;
-
 const TSCONFIG = {
   compilerOptions: {
     lib: ['ES2022', 'DOM'],
@@ -117,7 +114,7 @@ describe('findDocsSnippetProblems', () => {
     writeFileSync(path, lines.join('\n'));
   }
 
-  it('should report a type error on the guide line it is on', { timeout: COMPILE_TIMEOUT_IN_MILLISECONDS }, async () => {
+  it('should report a type error on the guide line it is on', async () => {
     writeGuide('docs/src/content/docs/guides/a.md', [
       '# A',
       '',
@@ -135,7 +132,7 @@ describe('findDocsSnippetProblems', () => {
     expect(problems[0]?.message).toMatch(/^TS2345: /u);
   });
 
-  it('should hold a JavaScript snippet to its typed members but not to implicit any', { timeout: COMPILE_TIMEOUT_IN_MILLISECONDS }, async () => {
+  it('should hold a JavaScript snippet to its typed members but not to implicit any', async () => {
     writeGuide('docs/src/content/docs/b.mdx', [
       '```js',
       'function f(x) { return x; }',
@@ -147,7 +144,7 @@ describe('findDocsSnippetProblems', () => {
     expect(problems.map((problem) => [problem.line, problem.message.slice(0, 'TS0000'.length)])).toEqual([[4, 'TS2339']]);
   });
 
-  it('should compile every snippet with the prelude', { timeout: COMPILE_TIMEOUT_IN_MILLISECONDS }, async () => {
+  it('should compile every snippet with the prelude', async () => {
     writeGuide('guides/c.md', ['```typescript', 'const n: number = preludeValue;', '```']);
     const prelude = 'declare global {\n  const preludeValue: number;\n}\nexport {};\n';
     expect(await findDocsSnippetProblems({ docsDirectory: 'guides', prelude, rootDirectory })).toEqual([]);
@@ -157,7 +154,7 @@ describe('findDocsSnippetProblems', () => {
     ]);
   });
 
-  it('should skip a snippet with a reason, the API reference and other files, and refuse a skip without one', { timeout: COMPILE_TIMEOUT_IN_MILLISECONDS }, async () => {
+  it('should skip a snippet with a reason, the API reference and other files, and refuse a skip without one', async () => {
     writeGuide('docs/src/content/docs/d.md', [
       '<!-- snippet-check: skip pseudo-code -->',
       '```ts',
@@ -182,12 +179,12 @@ describe('findDocsSnippetProblems', () => {
     await expect(findDocsSnippetProblems({ rootDirectory })).rejects.toThrow(/tsconfig\.json/u);
   });
 
-  it('should throw listing the problems from assertDocsSnippetsCompile', { timeout: COMPILE_TIMEOUT_IN_MILLISECONDS }, async () => {
+  it('should throw listing the problems from assertDocsSnippetsCompile', async () => {
     writeGuide('docs/src/content/docs/g.md', ['```ts', 'const a: string = 1;', '```']);
     await expect(assertDocsSnippetsCompile({ rootDirectory })).rejects.toThrow(/^1 problem\(s\) in the documentation snippets:\ndocs\/src\/content\/docs\/g\.md:2 - TS2322: /u);
   });
 
-  it('should pass assertDocsSnippetsCompile when every snippet compiles', { timeout: COMPILE_TIMEOUT_IN_MILLISECONDS }, async () => {
+  it('should pass assertDocsSnippetsCompile when every snippet compiles', async () => {
     writeGuide('docs/src/content/docs/h.md', ['```ts', 'const a: string = \'a\';', '```']);
     await expect(assertDocsSnippetsCompile({ rootDirectory })).resolves.toBeUndefined();
   });
