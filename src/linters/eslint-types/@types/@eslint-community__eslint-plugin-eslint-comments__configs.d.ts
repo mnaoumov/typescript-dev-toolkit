@@ -10,7 +10,7 @@ declare module '@eslint-community/eslint-plugin-eslint-comments/configs' {
   import type { Linter } from 'eslint';
 
   interface EslintCommentsConfigs {
-    recommended: Linter.Config;
+    readonly recommended: Linter.Config;
   }
 
   const configs: EslintCommentsConfigs;

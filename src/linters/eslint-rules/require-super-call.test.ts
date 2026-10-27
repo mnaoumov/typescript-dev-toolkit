@@ -27,11 +27,11 @@ RuleTester.it = it;
 const ruleTester = new RuleTester();
 
 interface MockBaseType {
-  getProperty: (name: string) => MockBaseTypeProperty | undefined;
+  readonly getProperty: (name: string) => MockBaseTypeProperty | undefined;
 }
 
 interface MockBaseTypeProperty {
-  getDeclarations: () => undefined | unknown[];
+  readonly getDeclarations: () => undefined | unknown[];
 }
 
 interface MockRuleContextResult {
@@ -40,7 +40,7 @@ interface MockRuleContextResult {
 }
 
 interface MockTypeCheckerOverrides {
-  getBaseTypes?: () => MockBaseType[] | undefined;
+  readonly getBaseTypes?: () => MockBaseType[] | undefined;
 }
 
 /**

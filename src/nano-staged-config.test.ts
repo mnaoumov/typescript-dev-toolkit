@@ -125,7 +125,7 @@ describe('getNanoStagedConfig', () => {
 const COMPLEMENT_KEY = '!(*.{ts,tsx,mts}!(?)|*.md!(?))*';
 
 interface GlobToRegexModule {
-  globToRegex: (glob: string, options: GlobToRegexOptions) => GlobToRegexResult;
+  readonly globToRegex: (glob: string, options: GlobToRegexOptions) => GlobToRegexResult;
 }
 
 interface GlobToRegexOptions {
@@ -140,7 +140,7 @@ interface GlobToRegexResult {
 const SAMPLE_FILE = 'src/main.ts';
 
 interface NanoStagedUtilsModule {
-  stringArgvToArray: (command: string) => string[];
+  readonly stringArgvToArray: (command: string) => string[];
 }
 
 async function getClaimingKeys(config: NanoStagedConfig, file: string): Promise<string[]> {

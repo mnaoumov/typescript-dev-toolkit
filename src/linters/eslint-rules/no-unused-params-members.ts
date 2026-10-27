@@ -45,17 +45,18 @@ Message ID reported when a `*Params`/`*Options` interface member is never access
 export const MESSAGE_ID = 'unusedParamsMember';
 
 interface IdentifierBinding {
-  name: string;
-  type: 'identifier';
+  readonly name: string;
+  readonly type: 'identifier';
 }
 
 interface InterfaceUsage {
   readonly used: Set<string>;
+  // eslint-disable-next-line typescript-dev-toolkit/readonly-interface-members -- Traversal marks an interface as escaped when the object is passed whole.
   usesAll: boolean;
 }
 
 interface MaybeTypedNode {
-  type?: unknown;
+  readonly type?: unknown;
 }
 
 type ParameterBinding = IdentifierBinding | PatternBinding;
@@ -66,8 +67,8 @@ interface ParameterInfo {
 }
 
 interface PatternBinding {
-  pattern: Rule.Node;
-  type: 'pattern';
+  readonly pattern: Rule.Node;
+  readonly type: 'pattern';
 }
 
 /**

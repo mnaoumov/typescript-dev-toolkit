@@ -24,7 +24,7 @@ describe('in-house plugin', () => {
       'params-options-name-match',
       'prefer-logical-operator-over-ternary',
       'prefer-noop-async',
-      'readonly-params-options-result-members',
+      'readonly-interface-members',
       'require-method-template',
       'require-super-call'
     ]);

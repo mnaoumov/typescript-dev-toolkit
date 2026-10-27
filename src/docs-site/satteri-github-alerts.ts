@@ -31,9 +31,9 @@ export const GITHUB_ALERT_ASIDE_VARIANTS: ReadonlyMap<string, string> = new Map(
 const ALERT_MARKER_REG_EXP = /^\[!(?<Type>\w+)\][\r\n]*/;
 
 interface Alert {
-  markerLength: number;
-  markerText: Text;
-  variant: string;
+  readonly markerLength: number;
+  readonly markerText: Text;
+  readonly variant: string;
 }
 
 /**

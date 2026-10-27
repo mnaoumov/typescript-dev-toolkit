@@ -10,8 +10,8 @@ import {
 import { onRequest } from './route-data.ts';
 
 interface FakeHeadEntry {
-  attrs: Partial<Record<string, string>>;
-  tag: string;
+  readonly attrs: Partial<Record<string, string>>;
+  readonly tag: string;
 }
 
 function makeContext(id: string, url: string, head: FakeHeadEntry[]): APIContext {

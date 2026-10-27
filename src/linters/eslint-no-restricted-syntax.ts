@@ -15,12 +15,12 @@ export interface NoRestrictedSyntaxRuleEntry {
   /**
    * Human-readable message shown when the selector matches.
    */
-  message: string;
+  readonly message: string;
 
   /**
    * ESLint AST selector identifying the banned pattern.
    */
-  selector: string;
+  readonly selector: string;
 }
 
 /**

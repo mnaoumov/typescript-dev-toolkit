@@ -28,49 +28,49 @@ export interface GitUpstreamEntry {
   /**
    * The pinned commit: the last upstream state the handler was run against.
    */
-  commit: string;
+  readonly commit: string;
   /**
    * The shell command that turns a newer upstream state into changes in this repository.
    */
-  handler: string;
-  name: string;
+  readonly handler: string;
+  readonly name: string;
   /**
    * The paths watched upstream, as globs relative to the repository root. A move that touches none of them opens no PR.
    */
-  paths: readonly string[];
+  readonly paths: readonly string[];
   /**
    * The branch or tag followed.
    */
-  ref: string;
+  readonly ref: string;
   /**
    * `<owner>/<repo>` on GitHub.
    */
-  repo: string;
+  readonly repo: string;
   /**
    * The shell command that checks the handler's result. Overrides the file's top-level `verify`.
    */
-  verify?: string;
+  readonly verify?: string;
 }
 
 /**
  * An upstream followed as an npm package's dist-tag, pinned to a version.
  */
 export interface NpmUpstreamEntry {
-  handler: string;
-  name: string;
+  readonly handler: string;
+  readonly name: string;
   /**
    * The package name.
    */
-  npm: string;
+  readonly npm: string;
   /**
    * The dist-tag followed. `latest` when absent.
    */
-  tag?: string;
-  verify?: string;
+  readonly tag?: string;
+  readonly verify?: string;
   /**
    * The pinned version.
    */
-  version: string;
+  readonly version: string;
 }
 
 /**
@@ -80,25 +80,25 @@ export interface SyncDependencies {
   /**
    * Runs an executable with arguments and no shell.
    */
-  exec: (file: string, arguments_: readonly string[], env?: Readonly<Record<string, string>>) => CommandResult;
+  readonly exec: (file: string, arguments_: readonly string[], env?: Readonly<Record<string, string>>) => CommandResult;
   /**
    * GETs a URL and parses the JSON it returns, throwing on an HTTP error.
    */
-  fetchJson: (url: string) => Promise<unknown>;
-  log: (text: string) => void;
+  readonly fetchJson: (url: string) => Promise<unknown>;
+  readonly log: (text: string) => void;
   /**
    * Runs a command line through the shell: a handler or a verify command.
    */
-  shell: (command: string, env?: Readonly<Record<string, string>>) => CommandResult;
+  readonly shell: (command: string, env?: Readonly<Record<string, string>>) => CommandResult;
 }
 
 /**
  * The PR an upstream move asks for.
  */
 export interface SyncPlan {
-  branch: string;
-  status: UpstreamStatus;
-  title: string;
+  readonly branch: string;
+  readonly status: UpstreamStatus;
+  readonly title: string;
 }
 
 /**
@@ -148,11 +148,11 @@ export type UpstreamEntry = GitUpstreamEntry | NpmUpstreamEntry;
  * The content of `upstreams.json`.
  */
 export interface UpstreamsConfig {
-  upstreams: readonly UpstreamEntry[];
+  readonly upstreams: readonly UpstreamEntry[];
   /**
    * The shell command that checks every handler's result, unless an entry names its own.
    */
-  verify?: string;
+  readonly verify?: string;
 }
 
 /**
@@ -162,49 +162,49 @@ export interface UpstreamStatus {
   /**
    * The upstream paths that changed and are watched, sorted. Always empty for an npm upstream.
    */
-  changedPaths: readonly string[];
+  readonly changedPaths: readonly string[];
   /**
    * A link that shows what changed between the pin and the head.
    */
-  compareUrl: string;
-  entry: UpstreamEntry;
+  readonly compareUrl: string;
+  readonly entry: UpstreamEntry;
   /**
    * The commit or version the upstream is at now.
    */
-  head: string;
+  readonly head: string;
   /**
    * The commit or version `upstreams.json` records.
    */
-  pin: string;
+  readonly pin: string;
   /**
    * `current`: nothing to do. `moved`: a PR is due. `unwatched`: upstream moved, but no watched path changed.
    */
-  state: 'current' | 'moved' | 'unwatched';
+  readonly state: 'current' | 'moved' | 'unwatched';
   /**
    * Whether GitHub truncated the compare's file list, so a watched path may be missing from `changedPaths`.
    */
-  truncated: boolean;
+  readonly truncated: boolean;
 }
 
 interface GitHubCommit {
-  sha: string;
+  readonly sha: string;
 }
 
 interface GitHubCompare {
-  files?: readonly GitHubCompareFile[];
+  readonly files?: readonly GitHubCompareFile[];
 }
 
 /**
  * One file of a GitHub compare, as the API spells it.
  */
 interface GitHubCompareFile {
-  filename: string;
+  readonly filename: string;
 
-  previous_filename?: string;
+  readonly previous_filename?: string;
 }
 
 interface NpmPackument {
-  'dist-tags': Record<string, string>;
+  readonly 'dist-tags': Record<string, string>;
 }
 
 interface StepResult {
@@ -216,15 +216,15 @@ interface StepResult {
  * The handler and verify runs a PR body reports.
  */
 interface StepResults {
-  handler: StepResult;
-  verify: null | StepResult;
+  readonly handler: StepResult;
+  readonly verify: null | StepResult;
 }
 
 /**
  * `upstreams.json` read loosely, to write one value back without disturbing the rest.
  */
 interface UpstreamsFileShape {
-  upstreams: Record<string, unknown>[];
+  readonly upstreams: Record<string, unknown>[];
 }
 
 /**

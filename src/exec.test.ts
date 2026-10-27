@@ -20,8 +20,11 @@ vi.mock('@mnaoumov/typescript-lib/debug', () => ({
 }));
 
 interface MockChild extends EventEmitter {
+  // eslint-disable-next-line typescript-dev-toolkit/readonly-interface-members -- The mock attaches streams to the event emitter before each test.
   stderr: PassThrough;
+  // eslint-disable-next-line typescript-dev-toolkit/readonly-interface-members -- The mock attaches streams to the event emitter before each test.
   stdin: PassThrough;
+  // eslint-disable-next-line typescript-dev-toolkit/readonly-interface-members -- The mock attaches streams to the event emitter before each test.
   stdout: PassThrough;
 }
 

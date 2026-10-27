@@ -48,6 +48,7 @@ Loaded from typedoc-plugin-mdn-links data at runtime
 Module-level mutable state, held in one object so each mutation names it explicitly.
  */
 interface ModuleState {
+  // eslint-disable-next-line typescript-dev-toolkit/readonly-interface-members -- The Web API metadata cache is replaced after loading.
   webApiTypes: Record<string, unknown>;
 }
 

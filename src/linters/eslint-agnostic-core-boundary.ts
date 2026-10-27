@@ -35,12 +35,12 @@ export interface NoRestrictedImportPatternEntry {
   /**
    * The glob group of import specifiers to ban.
    */
-  group: string[];
+  readonly group: string[];
 
   /**
    * Human-readable message shown when an import matches the group.
    */
-  message: string;
+  readonly message: string;
 }
 
 /**

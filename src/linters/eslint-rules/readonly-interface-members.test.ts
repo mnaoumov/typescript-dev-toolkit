@@ -7,8 +7,8 @@ import {
 
 import {
   MESSAGE_ID,
-  readonlyParamsOptionsResultMembers
-} from './readonly-params-options-result-members.ts';
+  readonlyInterfaceMembers
+} from './readonly-interface-members.ts';
 import { toRuleTesterModule } from './rule-tester-helper.ts';
 
 RuleTester.afterAll = afterAll;
@@ -17,8 +17,26 @@ RuleTester.it = it;
 
 const ruleTester = new RuleTester();
 
-ruleTester.run('readonly-params-options-result-members', toRuleTesterModule(readonlyParamsOptionsResultMembers), {
+ruleTester.run('readonly-interface-members', toRuleTesterModule(readonlyInterfaceMembers), {
   invalid: [
+    {
+      code: 'interface Subscription { handler: () => void; install?: () => void; }',
+      errors: [{ messageId: MESSAGE_ID }, { messageId: MESSAGE_ID }],
+      name: 'callback properties are readonly regardless of interface name',
+      output: 'interface Subscription { readonly handler: () => void; readonly install?: () => void; }'
+    },
+    {
+      code: 'type State = { nested: { value: string }; } & { [key: string]: unknown };',
+      errors: [{ messageId: MESSAGE_ID }, { messageId: MESSAGE_ID }],
+      name: 'nested properties of object type aliases are readonly',
+      output: 'type State = { readonly nested: { readonly value: string }; } & { [key: string]: unknown };'
+    },
+    {
+      code: 'interface State { [Symbol.iterator]: () => Iterator<string>; "value"?: string; }',
+      errors: [{ messageId: MESSAGE_ID }, { messageId: MESSAGE_ID }],
+      name: 'computed and quoted property names keep their syntax',
+      output: 'interface State { readonly [Symbol.iterator]: () => Iterator<string>; readonly "value"?: string; }'
+    },
     {
       code: 'interface FooParams { bar: string; }',
       errors: [{ messageId: MESSAGE_ID }],
@@ -73,6 +91,24 @@ ruleTester.run('readonly-params-options-result-members', toRuleTesterModule(read
   ],
   valid: [
     {
+      code: 'interface Methods { run(): void; new (): Methods; [key: string]: unknown; }',
+      name: 'methods, constructors and index signatures are outside property enforcement'
+    },
+    {
+      code: 'const state: { value: number } = { value: 1 }; state.value++;',
+      name: 'local object annotations may describe mutable implementation state'
+    },
+    {
+      code: 'type State = { readonly value: number };',
+      name: 'readonly object type alias without a bag suffix'
+    },
+    {
+      code: 'interface State {\n// eslint-disable-next-line @rule-tester/readonly-interface-members -- The counter changes.\ncount: number;\n}',
+      name: 'mutable members can carry an explicit exception',
+      // RuleTester supplies its own rule name, independent of the registered plugin name.
+      options: []
+    },
+    {
       code: 'interface FooParams { readonly bar: string; }',
       name: 'all readonly in *Params interface'
     },
@@ -85,8 +121,8 @@ ruleTester.run('readonly-params-options-result-members', toRuleTesterModule(read
       name: 'all readonly in *Result interface'
     },
     {
-      code: 'interface Foo { bar: string; }',
-      name: 'non-Params/Options/Result interface is not checked'
+      code: 'interface Foo { readonly bar: string; }',
+      name: 'readonly properties are valid regardless of interface name'
     },
     {
       code: 'type BarOptions = { readonly baz: boolean; };',

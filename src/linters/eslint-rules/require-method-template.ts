@@ -21,7 +21,7 @@ import { getMandatoryNamedGroup } from '@mnaoumov/typescript-lib/reg-exp';
 import { toTSESTreeNode } from './ts-estree-node.ts';
 
 interface JsdocSettings {
-  tagNamePreference?: Record<string, string>;
+  readonly tagNamePreference?: Record<string, string>;
 }
 
 const TAG_NAME = 'typeParam';
@@ -110,8 +110,8 @@ export const requireMethodTemplate: Rule.RuleModule = {
 };
 
 interface ParsedTag {
-  hasDescription: boolean;
-  name: string;
+  readonly hasDescription: boolean;
+  readonly name: string;
 }
 
 /**

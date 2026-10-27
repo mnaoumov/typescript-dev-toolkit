@@ -15,7 +15,9 @@ import {
 } from './git.ts';
 
 interface FakeChild extends EventEmitter {
+  // eslint-disable-next-line typescript-dev-toolkit/readonly-interface-members -- The mock attaches streams to the event emitter before each test.
   stderr: PassThrough;
+  // eslint-disable-next-line typescript-dev-toolkit/readonly-interface-members -- The mock attaches streams to the event emitter before each test.
   stdout: PassThrough;
 }
 

@@ -13,7 +13,7 @@ import type { Rule } from 'eslint';
 import { assertNonNullable } from '@mnaoumov/typescript-lib/type-guards';
 
 interface NodeWithBody {
-  body?: Rule.Node;
+  readonly body?: Rule.Node;
 }
 
 /**

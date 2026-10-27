@@ -49,7 +49,7 @@ import { getRootFolder } from './root.ts';
  * The fields this reads out of the staged `package.json`, which is only enough to prove it is that file.
  */
 interface PackageManifest {
-  name: string;
+  readonly name: string;
 }
 
 const BINARY_FIXTURE_NAME = 'blob.bin';

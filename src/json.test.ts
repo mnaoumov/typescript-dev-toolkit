@@ -18,22 +18,24 @@ import {
 } from './json.ts';
 
 interface CountJson {
+  // eslint-disable-next-line typescript-dev-toolkit/readonly-interface-members -- The test mutates the loaded JSON before saving it.
   count: number;
 }
 
 interface ItemsJson {
-  items: string[];
+  readonly items: string[];
 }
 
 interface KeyJson {
-  key: string;
+  readonly key: string;
 }
 
 interface NameJson {
-  name: string;
+  readonly name: string;
 }
 
 interface ValueJson {
+  // eslint-disable-next-line typescript-dev-toolkit/readonly-interface-members -- The test mutates the loaded JSON before saving it.
   value: number;
 }
 

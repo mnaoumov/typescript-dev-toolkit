@@ -36,6 +36,9 @@ vi.mock('node:child_process', async (importOriginal) => ({
 const HTTP_NOT_FOUND = 404;
 const SIGNAL_EXIT_CODE = 1;
 
+// Each test replaces the dependencies needed for its scenario.
+type MutableSyncDependencies = { -readonly [Key in keyof SyncDependencies]: SyncDependencies[Key] };
+
 describe('parseSyncUpstreamsArguments', () => {
   it('defaults to every entry of ./upstreams.json, targeting main', () => {
     expect(parseSyncUpstreamsArguments([])).toEqual({ baseBranch: 'main', configPath: 'upstreams.json', dryRun: false, only: [] });
@@ -132,7 +135,7 @@ describe('runSyncUpstreamsCli', () => {
     rmSync(directory, { force: true, recursive: true });
   });
 
-  function createDependencies(head: string): SyncDependencies {
+  function createDependencies(head: string): MutableSyncDependencies {
     return {
       exec: () => ({ exitCode: 0, output: '' }),
       fetchJson: async (url): Promise<unknown> => {

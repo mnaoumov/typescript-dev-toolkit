@@ -22,20 +22,20 @@ interface MarkdownlintCli2TestFormatterOptions {
  * The options override this module passes, as the mock sees it.
  */
 interface MarkdownlintCli2TestOptionsOverride {
-  outputFormatters: [(options: MarkdownlintCli2TestFormatterOptions) => void][];
+  readonly outputFormatters: [(options: MarkdownlintCli2TestFormatterOptions) => void][];
 }
 
 /**
  * The subset of `markdownlint-cli2`'s parameters this module passes, as the mock sees them.
  */
 interface MarkdownlintCli2TestParameters {
-  directory: string;
-  logError: (message: string) => void;
-  logMessage: (message: string) => void;
-  noGlobs: boolean;
-  nonFileContents: Record<string, string>;
-  optionsDefault: unknown;
-  optionsOverride?: MarkdownlintCli2TestOptionsOverride;
+  readonly directory: string;
+  readonly logError: (message: string) => void;
+  readonly logMessage: (message: string) => void;
+  readonly noGlobs: boolean;
+  readonly nonFileContents: Record<string, string>;
+  readonly optionsDefault: unknown;
+  readonly optionsOverride?: MarkdownlintCli2TestOptionsOverride;
 }
 
 // Hoisted with the mocks that reference it: `vi.mock`'s factory runs before any module-scope `const` of this
