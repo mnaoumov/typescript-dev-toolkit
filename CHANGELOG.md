@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 5.0.0
+
+1. **Breaking:** enable `typescript-dev-toolkit/no-keyword-identifiers` in the shared ESLint configuration. Bare `object`, `string`, `number`, `boolean`, `symbol`, `bigint`, `undefined`, `arguments`, `function`, `module` and `event` binding names now require a `$` prefix, such as `$object`.
+2. Offer scope-aware rename suggestions for local bindings, updating their references while preserving TypeScript annotations. Renames are suggestions only; `lint:fix` never applies them automatically. Contract-sensitive cases and name collisions require a manual rename.
+3. Keep compound names, property keys, import aliases and reads of builtin globals legal. Update this package's own bindings to the convention.
+
 ## 4.0.0
 
 - feat(eslint)!: require readonly properties in all interfaces
