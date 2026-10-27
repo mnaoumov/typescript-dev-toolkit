@@ -3,6 +3,7 @@ import type { Linter } from 'eslint';
 // eslint-disable-next-line import-x/no-rename-default -- The default export name `plugin` is too confusing.
 import stylistic from '@stylistic/eslint-plugin';
 import { ESLint } from 'eslint';
+import { rules as perfectionistRules } from 'eslint-plugin-perfectionist';
 import { spawnSync } from 'node:child_process';
 import {
   mkdtempSync,
@@ -27,6 +28,7 @@ import { defineEslintConfigs } from './linters/eslint-config.ts';
 // fixture is formatted, fixed with every `@stylistic` rule the shared config enables, and formatted again. A rule that
 // fights the formatter shows up as a second format that changes the fixed text, or as a report left after it — which
 // is how `wrap-iife` and `jsx-quotes` were found against dprint, one gate failure at a time, before this test existed.
+// A separate lint-fix / format / lint sequence covers core braces and named-import sorting, including local aliases.
 const REPOSITORY_ROOT = join(import.meta.dirname, '..');
 const DPRINT_JSON_PATH = join(REPOSITORY_ROOT, 'dprint.json');
 const DPRINT_BIN_PATH = join(REPOSITORY_ROOT, 'node_modules/dprint/bin.cjs');
@@ -146,7 +148,7 @@ const wrap = <div>
 </div>;
 `;
 
-function createStylisticEslint(rules: Linter.RulesRecord, shouldFix: boolean): ESLint {
+function createFormatterEslint(rules: Linter.RulesRecord, shouldFix: boolean): ESLint {
   return new ESLint({
     cwd: REPOSITORY_ROOT,
     fix: shouldFix,
@@ -161,7 +163,8 @@ function createStylisticEslint(rules: Linter.RulesRecord, shouldFix: boolean): E
         }
       },
       plugins: {
-        '@stylistic': stylistic
+        '@stylistic': stylistic,
+        'perfectionist': { rules: perfectionistRules }
       },
       rules
     }],
@@ -169,13 +172,13 @@ function createStylisticEslint(rules: Linter.RulesRecord, shouldFix: boolean): E
   });
 }
 
-async function getEnabledStylisticRules(): Promise<Linter.RulesRecord> {
+async function getEnabledFormatterRules(ruleIds: readonly string[] = []): Promise<Linter.RulesRecord> {
   const eslint = new ESLint({ cwd: REPOSITORY_ROOT, overrideConfig: defineEslintConfigs(), overrideConfigFile: true });
   const config = await eslint.calculateConfigForFile(join(REPOSITORY_ROOT, 'src/fixture.tsx')) as Linter.Config;
   const rules: Linter.RulesRecord = {};
   for (const [ruleId, entry] of Object.entries(config.rules ?? {})) {
     const severity = Array.isArray(entry) ? entry[0] : entry;
-    if (entry !== undefined && ruleId.startsWith('@stylistic/') && severity !== 0 && severity !== 'off') {
+    if (entry !== undefined && (ruleId.startsWith('@stylistic/') || ruleIds.includes(ruleId)) && severity !== 0 && severity !== 'off') {
       rules[ruleId] = entry;
     }
   }
@@ -199,17 +202,49 @@ describe.each(FORMATTERS)('the shared ESLint config against the shared $name con
     { fileName: 'fixture.ts', fixture: TS_FIXTURE },
     { fileName: 'fixture.tsx', fixture: TSX_FIXTURE }
   ])('should leave no @stylistic report and nothing for the formatter to undo in $fileName', async ({ fileName, fixture }) => {
-    const rules = await getEnabledStylisticRules();
+    const rules = await getEnabledFormatterRules();
     expect(Object.keys(rules)).not.toHaveLength(0);
     const filePath = join(REPOSITORY_ROOT, 'src', fileName);
 
     const formatted = format(fixture, fileName);
-    const [fixResult] = await createStylisticEslint(rules, true).lintText(formatted, { filePath });
+    const [fixResult] = await createFormatterEslint(rules, true).lintText(formatted, { filePath });
     const fixed = fixResult?.output ?? formatted;
     const reformatted = format(fixed, fileName);
     expect(reformatted).toBe(fixed);
 
-    const [lintResult] = await createStylisticEslint(rules, false).lintText(reformatted, { filePath });
+    const [lintResult] = await createFormatterEslint(rules, false).lintText(reformatted, { filePath });
     expect(lintResult?.messages.map((message) => `${String(message.line)}: ${message.ruleId ?? ''} ${message.message}`)).toEqual([]);
+  });
+});
+
+describe('dprint and the shared control-flow and import rules', () => {
+  it.each([
+    `function choose(condition: boolean) {
+  if (condition) return 1; else return 2;
+}
+for (let i = 0; i < 2; i++) act(i);
+for (const key in record) act(key);
+for (const value of values) act(value);
+while (condition) act();
+do act(); while (condition);
+if (condition) { act(); }
+`,
+    `import { Zebra as Alpha, Alpha as Zebra, Middle } from 'fixture';
+import type { Zebra as AlphaType, Alpha as ZebraType, MiddleType } from 'types';
+`
+  ])('should converge after lint fixes and formatting (fixture %#)', async (fixture) => {
+    const rules = await getEnabledFormatterRules(['curly', 'perfectionist/sort-named-imports']);
+    expect(rules).toHaveProperty('curly');
+    expect(rules).toHaveProperty('perfectionist/sort-named-imports');
+    const filePath = join(REPOSITORY_ROOT, 'src/fixture.ts');
+    const [fixResult] = await createFormatterEslint(rules, true).lintText(fixture, { filePath });
+    expect(fixResult?.output).toBeDefined();
+    const fixed = fixResult?.output ?? fixture;
+    const formatted = runFormatter([DPRINT_BIN_PATH, 'fmt', '--config', DPRINT_JSON_PATH, '--stdin', 'fixture.ts'], REPOSITORY_ROOT, fixed);
+    const [lintResult] = await createFormatterEslint(rules, false).lintText(formatted, { filePath });
+    expect(lintResult?.messages).toEqual([]);
+    const [secondFix] = await createFormatterEslint(rules, true).lintText(formatted, { filePath });
+    expect(secondFix?.output).toBeUndefined();
+    expect(runFormatter([DPRINT_BIN_PATH, 'fmt', '--config', DPRINT_JSON_PATH, '--stdin', 'fixture.ts'], REPOSITORY_ROOT, formatted)).toBe(formatted);
   });
 });
