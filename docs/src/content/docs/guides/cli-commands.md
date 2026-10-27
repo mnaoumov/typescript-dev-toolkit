@@ -95,6 +95,19 @@ Formats the code with the formatter the project configures, found from the files
 
 A project with none of them gets dprint. Pass `{ formatter: 'prettier' }` (or `'biome'`, `'dprint'`) to choose one, and `{ rewrite: false }` to check the formatting without changing anything. Each formatter also has a module of its own: `formatters/dprint`, `formatters/prettier` and `formatters/biome`.
 
+When using dprint with the shared ESLint configuration, add these options to the `typescript` section of your project's `dprint.json`:
+
+```json
+{
+  "typescript": {
+    "importDeclaration.sortNamedImports": "maintain",
+    "useBraces": "always"
+  }
+}
+```
+
+`useBraces` keeps single-line control-flow bodies compatible with ESLint's required braces. Preserving named-import order lets ESLint sort by local aliases; dprint would otherwise sort by imported names and undo the lint fix. The formatter reads your configuration as given, so updating the toolkit alone does not change these project options.
+
 Prettier and Biome are optional peers, so install the one you use (`npm install --save-dev prettier` or `npm install --save-dev @biomejs/biome`). The package ships a shared configuration for each, written to match the dprint style as closely as the tool allows: single quotes, no trailing commas, semicolons, two-space indentation, parentheses around every arrow parameter, and a 120-column line, because both re-wrap every statement to their line width.
 
 For Prettier, `prettier.config.mjs`:
