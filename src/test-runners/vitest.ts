@@ -4,9 +4,17 @@
  * This module provides functions for running tests using the Vitest framework.
  */
 
-/* v8 ignore start -- Executes vitest as a CLI subprocess; correctness is verified by running tests, not unit tests. */
+import { availableParallelism } from 'node:os';
+import process from 'node:process';
 
-import { execFromRoot } from '../root.ts';
+import { getBulkConcurrency } from '../bulk-concurrency.ts';
+import {
+  execFromRoot,
+  resolvePathFromRootSafe
+} from '../root.ts';
+
+const WATCH_WORKER_DIVISOR = 2;
+const workerEnvironmentQueue = { pending: Promise.resolve<unknown>(undefined) };
 
 /**
  * Options for running tests with coverage.
@@ -43,7 +51,9 @@ export type TestWatchOptions = TestOptions;
  * @returns A {@link Promise} that resolves when the tests have completed.
  */
 export async function test(options: TestOptions = {}): Promise<void> {
-  await execFromRoot(['vitest', 'run', ...buildProjectFlags(options.projects)]);
+  await execFromRoot(['vitest', 'run', ...buildProjectFlags(options.projects)], {
+    env: await getWorkerEnvironment(options)
+  });
 }
 
 /**
@@ -63,7 +73,7 @@ export async function testCoverage(options: TestCoverageOptions = {}): Promise<v
     `--coverage.thresholds.functions=${threshold}`,
     `--coverage.thresholds.branches=${threshold}`,
     `--coverage.thresholds.statements=${threshold}`
-  ]);
+  ], { env: await getWorkerEnvironment(options) });
 }
 
 /**
@@ -73,7 +83,9 @@ export async function testCoverage(options: TestCoverageOptions = {}): Promise<v
  * @returns A {@link Promise} that resolves when the tests have completed.
  */
 export async function testWatch(options: TestWatchOptions = {}): Promise<void> {
-  await execFromRoot(['vitest', ...buildProjectFlags(options.projects)]);
+  await execFromRoot(['vitest', ...buildProjectFlags(options.projects)], {
+    env: await getWorkerEnvironment(options, true)
+  });
 }
 
 /**
@@ -88,4 +100,64 @@ function buildProjectFlags(projects?: string[]): string[] {
   return (projects ?? []).flatMap((project) => [`--project=${project}`, `--project=${project}:*`]);
 }
 
-/* v8 ignore stop */
+/**
+ * Resolves the bulk cap without letting Vitest's environment override hide narrower project limits.
+ * The narrowest limit applies to the whole invocation because CLI and environment limits replace project limits.
+ *
+ * @param options - The selected test projects.
+ * @param isWatch - Whether this invocation watches for changes.
+ * @returns Child environment overrides, empty outside bulk work.
+ */
+async function getWorkerEnvironment(options: TestOptions, isWatch = false): Promise<NodeJS.ProcessEnv> {
+  const next = workerEnvironmentQueue.pending.then(() => resolveWorkerEnvironment(options, isWatch));
+  workerEnvironmentQueue.pending = next.catch(() => undefined);
+  return next;
+}
+
+/**
+ * Resolves one invocation's worker environment while holding the configuration-resolution queue.
+ *
+ * @param options - The selected test projects.
+ * @param isWatch - Whether this invocation watches for changes.
+ * @returns Child environment overrides.
+ */
+async function resolveWorkerEnvironment(options: TestOptions, isWatch: boolean): Promise<NodeJS.ProcessEnv> {
+  const budget = getBulkConcurrency(Infinity);
+  if (!Number.isFinite(budget)) {
+    return {};
+  }
+
+  // Optional peer: leave loading Vitest to the CLI outside bulk work.
+  const { resolveConfig } = await import('vitest/node');
+  const inheritedWorkers = process.env['VITEST_MAX_WORKERS'];
+  delete process.env['VITEST_MAX_WORKERS'];
+  let config;
+  try {
+    config = await resolveConfig({
+      project: (options.projects ?? []).flatMap((project) => [project, `${project}:*`]),
+      root: resolvePathFromRootSafe({ path: '.' }),
+      watch: isWatch
+    });
+  } finally {
+    if (inheritedWorkers !== undefined) {
+      // eslint-disable-next-line require-atomic-updates -- Worker environment resolutions are serialized; restore the inherited value before the next invocation reads it.
+      process.env['VITEST_MAX_WORKERS'] = inheritedWorkers;
+    }
+  }
+
+  const ordinaryWorkers = Math.max(isWatch ? Math.floor(availableParallelism() / WATCH_WORKER_DIVISOR) : availableParallelism() - 1, 1);
+  const inheritedLimit = Number.parseInt(inheritedWorkers ?? '', 10);
+  let workers = Math.min(budget, ordinaryWorkers);
+  if (Number.isSafeInteger(inheritedLimit) && inheritedLimit > 0) {
+    workers = Math.min(workers, inheritedLimit);
+  }
+
+  const configs = [config.test, ...config.test.resolvedProjects.filter((entry) => !entry.hidden).map((entry) => entry.projectConfig)];
+  for (const testConfig of configs) {
+    if (testConfig.maxWorkers) {
+      workers = Math.min(workers, testConfig.maxWorkers);
+    }
+  }
+
+  return { VITEST_MAX_WORKERS: String(workers) };
+}

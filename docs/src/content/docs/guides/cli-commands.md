@@ -190,6 +190,8 @@ Runs the test suite once, once with v8 coverage, or in watch mode, with the runn
 
 A project with neither gets Vitest. A `vite.config.*` does not count, since a project can bundle with vite and test with jest. Pass `{ runner: 'jest' }` (or `'vitest'`) to choose one, `{ projects: ['unit-tests'] }` to run some projects only, and `{ minCoverageInPercents: 100 }` to `testCoverage` to fail below that coverage of lines, functions, branches and statements alike. Each runner also has a module of its own: `test-runners/vitest` and `test-runners/jest`. The two read `projects` differently: Vitest also runs each name's `name:*` sub-projects, while jest's `--selectProjects` matches a `displayName` exactly.
 
+The Vitest wrappers honor `BULK_CORES` when it is a positive safe integer. For example, `BULK_CORES=2` caps a run at two workers, while a selected project configured for one worker keeps the entire invocation serial. The cap also respects a smaller inherited `VITEST_MAX_WORKERS` setting. Missing or invalid budgets leave Vitest's ordinary behavior unchanged. In bulk mode the configuration is resolved before the CLI starts, so it loads twice; keep configuration modules free of side effects.
+
 #### Jest
 
 Jest and ts-jest are optional peers, so install them when you use jest:
