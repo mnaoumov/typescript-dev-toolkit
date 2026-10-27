@@ -22,6 +22,7 @@ import type {
   LinkCheckFileSystem
 } from './link-check.ts';
 
+import { getBulkConcurrency } from '../bulk-concurrency.ts';
 import {
   collectBrokenExternalLinks,
   collectBrokenLinks,
@@ -91,7 +92,7 @@ export async function assertDocsLinksResolve(options: AssertDocsLinksResolvePara
   const internalBrokenLinks = collectBrokenLinks(pages, createFileSystem({ allFiles, outputDirectory, pages }), options.siteBaseUrl);
 
   const externalTargets = collectExternalTargets(pages, options.siteBaseUrl);
-  const externalBrokenLinks = await collectBrokenExternalLinks(externalTargets, fetchUrlStatus, EXTERNAL_LINK_CONCURRENCY);
+  const externalBrokenLinks = await collectBrokenExternalLinks(externalTargets, fetchUrlStatus, getBulkConcurrency(EXTERNAL_LINK_CONCURRENCY));
 
   const brokenLinks = [...internalBrokenLinks, ...externalBrokenLinks];
   if (brokenLinks.length > 0) {
