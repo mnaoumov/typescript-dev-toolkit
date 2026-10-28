@@ -12,6 +12,7 @@ import type {
 import { extractDefaultExportInterop } from '@mnaoumov/typescript-lib/object-utils';
 
 import { readPackageJson } from '../../npm.ts';
+import { createSveltePreprocessor } from './svelte-preprocessor.ts';
 
 const MISSING_SVELTE_MESSAGE_REG_EXP = /Cannot find (?:module|package) 'svelte(?:\/[^']*)?'/;
 const MODULE_NOT_FOUND_CODES = new Set(['ERR_MODULE_NOT_FOUND', 'MODULE_NOT_FOUND']);
@@ -38,7 +39,7 @@ export function isMissingSveltePackageError(error: unknown): boolean {
 /**
  * Wraps the esbuild-svelte plugin to ensure that the correct format is used.
  *
- * `esbuild-svelte` and `svelte-preprocess` are loaded when the plugin is set up, not when this module is imported. When
+ * `esbuild-svelte` is loaded when the plugin is set up, not when this module is imported. When
  * the `svelte` package is not installed, a build with no `.svelte` file succeeds, and a build that reaches one fails
  * with an error that names the missing package.
  *
@@ -73,9 +74,9 @@ export function svelteWrapperPlugin(isProductionBuild: boolean): Plugin {
   };
 }
 
-/* v8 ignore start -- loads esbuild-svelte with svelte-preprocess; esbuild-svelte compiles only inside a live esbuild build. */
+/* v8 ignore start -- esbuild-svelte compiles only inside a live esbuild build; svelte-wrapper-plugin.integration.test.ts runs one. */
 async function createEsbuildSveltePlugin(isProductionBuild: boolean): Promise<Plugin> {
-  const [esbuildSvelteModule, { sveltePreprocess }] = await Promise.all([import('esbuild-svelte'), import('svelte-preprocess')]);
+  const esbuildSvelteModule = await import('esbuild-svelte');
   const esbuildSvelte = extractDefaultExportInterop(esbuildSvelteModule.default);
   return esbuildSvelte({
     compilerOptions: {
@@ -85,7 +86,7 @@ async function createEsbuildSveltePlugin(isProductionBuild: boolean): Promise<Pl
     moduleCompilerOptions: {
       dev: !isProductionBuild
     },
-    preprocess: sveltePreprocess()
+    preprocess: createSveltePreprocessor()
   });
 }
 /* v8 ignore stop */
