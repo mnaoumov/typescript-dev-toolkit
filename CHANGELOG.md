@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## 5.1.0
+
+- fix(eslint): leave a locally bound Promise.resolve() to prefer-noop-async
+- feat(test-runners): forward CLI arguments through the test wrappers
+- fix(over-exposure): stop reporting symbol-keyed members as unreferenced
+- fix(svelte): compile TypeScript components without svelte-preprocess
+- feat(eslint): require named patch arguments
+- fix(eslint): preserve imports in async no-op fixes
+- fix(test): honor bulk worker budgets in Vitest runners
+- fix(docs): respect bulk concurrency limits and bound link retries
+- fix(format): align dprint with ESLint braces and imports
+- feat(eslint): add opt-in readonly member array policy
+- fix: honor bulk processor budgets in staged checks
+
 ## 5.0.0
 
 1. **Breaking:** enable `typescript-dev-toolkit/no-keyword-identifiers` in the shared ESLint configuration. Bare `object`, `string`, `number`, `boolean`, `symbol`, `bigint`, `undefined`, `arguments`, `function`, `module` and `event` binding names now require a `$` prefix, such as `$object`.
