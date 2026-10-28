@@ -2,6 +2,7 @@ import type { Mock } from 'vitest';
 
 import { noopAsync } from '@mnaoumov/typescript-lib/function';
 import { castTo } from '@mnaoumov/typescript-lib/object-utils';
+import dedent from 'dedent';
 import {
   describe,
   expect,
@@ -342,12 +343,12 @@ describe('formatBrokenLinks', () => {
       { pageUrl: 'https://s/p2/', reason: 'missing-fragment', targetUrl: 'https://s/x/#f' },
       { httpStatus: HTTP_SERVER_ERROR, pageUrl: 'https://s/p3/', reason: 'external-error', targetUrl: 'https://ext/' },
       { httpStatus: NETWORK_FAILURE_STATUS, pageUrl: 'https://s/p4/', reason: 'external-error', targetUrl: 'https://dead/' }
-    ])).toBe([
-      'https://s/p1/ links to missing page https://s/gone/.',
-      'https://s/p2/ links to missing fragment https://s/x/#f.',
-      'https://s/p3/ links to external URL https://ext/ that returned HTTP 500.',
-      'https://s/p4/ links to external URL https://dead/ that returned a network failure.'
-    ].join('\n'));
+    ])).toBe(dedent`
+      https://s/p1/ links to missing page https://s/gone/.
+      https://s/p2/ links to missing fragment https://s/x/#f.
+      https://s/p3/ links to external URL https://ext/ that returned HTTP 500.
+      https://s/p4/ links to external URL https://dead/ that returned a network failure.
+    `);
   });
 });
 

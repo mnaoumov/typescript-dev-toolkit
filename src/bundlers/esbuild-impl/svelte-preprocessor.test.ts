@@ -1,3 +1,4 @@
+import dedent from 'dedent';
 import {
   afterEach,
   describe,
@@ -105,13 +106,13 @@ describe('createSveltePreprocessor', () => {
 
   it('compiles TypeScript, keeping imports the markup may use and dropping type imports', async () => {
     const { createSveltePreprocessor } = await importPreprocessor();
-    const content = [
-      'import type { Props } from \'./props.ts\';',
-      'import { format } from \'./format.ts\';',
-      'enum Color { Red }',
-      'let { name }: Props = $props();',
-      'const color: Color = Color.Red;'
-    ].join('\n');
+    const content = dedent`
+      import type { Props } from './props.ts';
+      import { format } from './format.ts';
+      enum Color { Red }
+      let { name }: Props = $props();
+      const color: Color = Color.Red;
+    `;
     const result = await createSveltePreprocessor().script(createParams({ lang: 'ts' }, content));
     expect(result?.code).toContain('import { format } from "./format.ts";');
     expect(result?.code).not.toContain('./props.ts');

@@ -1,3 +1,4 @@
+import dedent from 'dedent';
 import {
   mkdir,
   mkdtemp,
@@ -66,16 +67,16 @@ describe('validateDependencies', () => {
     await writeFiles({
       'bin/cli.mjs': 'import \'@scope/self/cli\';\n',
       'dist/lib/esm/a.d.mts': 'import type { Peer } from \'@peer/scoped/types\';\nexport declare const peer: Peer;\n',
-      'dist/lib/esm/a.mjs': [
-        'import { a } from \'dependency\';',
-        'import { b } from \'optional/sub\';',
-        'import { readFile } from \'node:fs\';',
-        'import { join } from \'path\';',
-        'import { c } from \'./c.mjs\';',
-        'import { d } from \'/absolute/d.mjs\';',
-        '// import \'dev-only\';',
-        'const text = \'import "dev-only"\';'
-      ].join('\n'),
+      'dist/lib/esm/a.mjs': dedent`
+        import { a } from 'dependency';
+        import { b } from 'optional/sub';
+        import { readFile } from 'node:fs';
+        import { join } from 'path';
+        import { c } from './c.mjs';
+        import { d } from '/absolute/d.mjs';
+        // import 'dev-only';
+        const text = 'import "dev-only"';
+      `,
       'dist/lib/esm/readme.md': 'import \'dev-only\';\n'
     });
 
@@ -90,23 +91,23 @@ describe('validateDependencies', () => {
     });
 
     await expect(validateDependencies()).rejects.toThrow(
-      [
-        'The published output imports packages that are not in dependencies, optionalDependencies or peerDependencies:',
-        'dist/lib/cjs/a.cjs: @dev/scoped/sub',
-        'dist/lib/cjs/a.d.cts: dev-only/types',
-        'bin/cli.mjs: dev-only'
-      ].join('\n')
+      dedent`
+        The published output imports packages that are not in dependencies, optionalDependencies or peerDependencies:
+        dist/lib/cjs/a.cjs: @dev/scoped/sub
+        dist/lib/cjs/a.d.cts: dev-only/types
+        bin/cli.mjs: dev-only
+      `
     );
   });
 
   it('passes for every node: specifier and for Electron builtins, which Node does not list', async () => {
     await writeFiles({
-      'dist/lib/cjs/a.cjs': [
-        'const fs = window.require(\'node:original-fs\');',
-        'const fs2 = require(\'original-fs\');',
-        'const { ipcRenderer } = require(\'electron\');',
-        'const { webUtils } = require(\'electron/renderer\');'
-      ].join('\n'),
+      'dist/lib/cjs/a.cjs': dedent`
+        const fs = window.require('node:original-fs');
+        const fs2 = require('original-fs');
+        const { ipcRenderer } = require('electron');
+        const { webUtils } = require('electron/renderer');
+      `,
       'dist/lib/esm/a.d.mts': 'import type { App } from \'electron/main\';\nexport declare const app: App;\n'
     });
 

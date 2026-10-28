@@ -1,3 +1,4 @@
+import dedent from 'dedent';
 import {
   describe,
   expect,
@@ -25,12 +26,12 @@ describe('collectUnrenderedAlerts', () => {
 
   it('ignores a marker that does not open a blockquote, an unknown type, and a rendered aside', () => {
     const pages = [{
-      html: [
-        '<p>Write <code>&gt; [!NOTE]</code> to get an aside.</p>',
-        '<blockquote><p>Quoted [!NOTE] mid-sentence.</p></blockquote>',
-        '<blockquote><p>[!BOGUS] not a GitHub type</p></blockquote>',
-        '<aside class="starlight-aside starlight-aside--note"><p>Body</p></aside>'
-      ].join('\n'),
+      html: dedent`
+        <p>Write <code>&gt; [!NOTE]</code> to get an aside.</p>
+        <blockquote><p>Quoted [!NOTE] mid-sentence.</p></blockquote>
+        <blockquote><p>[!BOGUS] not a GitHub type</p></blockquote>
+        <aside class="starlight-aside starlight-aside--note"><p>Body</p></aside>
+      `,
       relativePath: 'c/index.html'
     }];
 

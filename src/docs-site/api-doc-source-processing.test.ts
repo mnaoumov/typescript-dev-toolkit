@@ -1,3 +1,4 @@
+import dedent from 'dedent';
 import {
   mkdirSync,
   mkdtempSync,
@@ -38,16 +39,16 @@ describe('api-doc source processing', () => {
   it('collects exported declarations and skips private implementation details', () => {
     const sourceFile = new Project({ useInMemoryFileSystem: true }).createSourceFile(
       'alpha.ts',
-      [
-        '/** A function.',
-        ' * @param value - The input.',
-        ' * @returns - The output.',
-        ' */',
-        'export function alpha(value: string): number { return value.length; }',
-        '/** A value. */',
-        'export const BRAVO = \'bravo\';',
-        'function hidden(): void {}'
-      ].join('\n')
+      dedent`
+        /** A function.
+         * @param value - The input.
+         * @returns - The output.
+         */
+        export function alpha(value: string): number { return value.length; }
+        /** A value. */
+        export const BRAVO = 'bravo';
+        function hidden(): void {}
+      `
     );
     const types = new Map<string, TypeInfo>();
 
@@ -65,12 +66,12 @@ describe('api-doc source processing', () => {
   it('processes classes, interfaces, enums, aliases, and generic type parameters', () => {
     const sourceFile = new Project({ useInMemoryFileSystem: true }).createSourceFile(
       'bravo.ts',
-      [
-        'export class Alpha<T> {}',
-        'export interface Bravo {}',
-        'export enum Charlie { Delta }',
-        'export type Echo<T> = T;'
-      ].join('\n')
+      dedent`
+        export class Alpha<T> {}
+        export interface Bravo {}
+        export enum Charlie { Delta }
+        export type Echo<T> = T;
+      `
     );
     const types = new Map<string, TypeInfo>();
 

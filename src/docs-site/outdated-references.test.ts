@@ -1,3 +1,4 @@
+import dedent from 'dedent';
 import {
   mkdirSync,
   mkdtempSync,
@@ -26,22 +27,22 @@ const RETIRED = ['obsidian', 'dev', 'utils'].join('-');
 
 describe('findOutdatedReferencesInText', () => {
   it('should flag the retired package used as an address', () => {
-    const text = [
-      `See \`${RETIRED}/obsidian/markdown\`.`,
-      `import { loop } from '${RETIRED}';`,
-      '__obsidianDevUtils.sharedAbortController.value.abort();',
-      `https://github.com/mnaoumov/${RETIRED}/releases/latest/download/styles.css`
-    ].join('\n');
+    const text = dedent`
+      See \`${RETIRED}/obsidian/markdown\`.
+      import { loop } from '${RETIRED}';
+      __obsidianDevUtils.sharedAbortController.value.abort();
+      https://github.com/mnaoumov/${RETIRED}/releases/latest/download/styles.css
+    `;
     expect(findOutdatedReferencesInText('a.md', text).map((reference) => reference.line)).toEqual([1, 2, 3, 4]);
   });
 
   it('should not flag the wire names that are kept', () => {
-    const text = [
-      `window.DEBUG.enable('*:${RETIRED}:*');`,
-      `.alpha-bravo.${RETIRED} :invalid {`,
-      `It replaces [\`${RETIRED}\`](https://github.com/mnaoumov/${RETIRED}).`,
-      'globalThis.__obsidianDevUtils.pluginApiRegistry.value.records[pluginId]'
-    ].join('\n');
+    const text = dedent`
+      window.DEBUG.enable('*:${RETIRED}:*');
+      .alpha-bravo.${RETIRED} :invalid {
+      It replaces [\`${RETIRED}\`](https://github.com/mnaoumov/${RETIRED}).
+      globalThis.__obsidianDevUtils.pluginApiRegistry.value.records[pluginId]
+    `;
     expect(findOutdatedReferencesInText('a.md', text)).toEqual([]);
   });
 
