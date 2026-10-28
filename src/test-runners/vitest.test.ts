@@ -124,4 +124,20 @@ describe('Vitest wrappers', () => {
     await run();
     expect(mockExec.mock.calls[0]?.[1]).toEqual({ env: { VITEST_MAX_WORKERS: expected } });
   });
+
+  it.each([test, testCoverage, testWatch])('appends forwarded filters and options after its own', async (run) => {
+    await run({ additionalArguments: ['src/a.test.ts', '--maxWorkers=2', '-t', 'adds'], projects: ['unit-tests'] });
+    expect(mockExec.mock.calls[0]?.[0].slice(-4)).toEqual(['src/a.test.ts', '--maxWorkers=2', '-t', 'adds']);
+    expect(mockExec.mock.calls[0]?.[0]).toContain('--project=unit-tests');
+  });
+
+  it.each(['--project=other', '--project', '--coverage', '--no-coverage', '--coverage.thresholds.lines=0', '--watch', '-w', '--run'])(
+    'refuses forwarded option %s the wrapper owns',
+    async (argument) => {
+      vi.stubEnv('BULK_CORES', '2');
+      await expect(testCoverage({ additionalArguments: [argument] })).rejects.toThrow(`vitest wrapper sets these options itself, so they cannot be forwarded: ${argument}`);
+      expect(mockExec).not.toHaveBeenCalled();
+      expect(mockResolveConfig).not.toHaveBeenCalled();
+    }
+  );
 });

@@ -7,14 +7,26 @@
 import { availableParallelism } from 'node:os';
 import process from 'node:process';
 
+import type { OwnedOption } from './forwarded-arguments.ts';
+
 import { getBulkConcurrency } from '../bulk-concurrency.ts';
 import {
   execFromRoot,
   resolvePathFromRootSafe
 } from '../root.ts';
+import { assertNoOwnedArguments } from './forwarded-arguments.ts';
 
 const WATCH_WORKER_DIVISOR = 2;
 const workerEnvironmentQueue = { pending: Promise.resolve<unknown>(undefined) };
+
+const PROJECT_OPTION: OwnedOption = { names: ['--project'], replacement: 'the `projects` option' };
+const RUN_MODE_OPTION: OwnedOption = { names: ['--run', '--watch', '-w'], replacement: 'the `test`, `testCoverage` or `testWatch` wrapper' };
+const COVERAGE_OPTION: OwnedOption = {
+  names: ['--coverage', '--no-coverage'],
+  prefixes: ['--coverage.'],
+  replacement: 'the `testCoverage` wrapper and its `minCoverageInPercents` option'
+};
+const OWNED_OPTIONS: readonly OwnedOption[] = [PROJECT_OPTION, RUN_MODE_OPTION, COVERAGE_OPTION];
 
 /**
  * Options for running tests with coverage.
@@ -34,6 +46,12 @@ export interface TestCoverageOptions extends TestOptions {
  */
 export interface TestOptions {
   /**
+   * Further vitest CLI arguments, appended after the wrapper's own: file filters, `-t`, `--maxWorkers`, `--reporter`.
+   * An argument naming an option the wrapper sets itself (`--project`, `--coverage*`, `--run`, `--watch`) throws.
+   */
+  readonly additionalArguments?: readonly string[];
+
+  /**
    * The projects to run.
    */
   readonly projects?: string[];
@@ -51,7 +69,7 @@ export type TestWatchOptions = TestOptions;
  * @returns A {@link Promise} that resolves when the tests have completed.
  */
 export async function test(options: TestOptions = {}): Promise<void> {
-  await execFromRoot(['vitest', 'run', ...buildProjectFlags(options.projects)], {
+  await execFromRoot(['vitest', 'run', ...buildProjectFlags(options.projects), ...getAdditionalArguments(options)], {
     env: await getWorkerEnvironment(options)
   });
 }
@@ -72,7 +90,8 @@ export async function testCoverage(options: TestCoverageOptions = {}): Promise<v
     `--coverage.thresholds.lines=${threshold}`,
     `--coverage.thresholds.functions=${threshold}`,
     `--coverage.thresholds.branches=${threshold}`,
-    `--coverage.thresholds.statements=${threshold}`
+    `--coverage.thresholds.statements=${threshold}`,
+    ...getAdditionalArguments(options)
   ], { env: await getWorkerEnvironment(options) });
 }
 
@@ -83,7 +102,7 @@ export async function testCoverage(options: TestCoverageOptions = {}): Promise<v
  * @returns A {@link Promise} that resolves when the tests have completed.
  */
 export async function testWatch(options: TestWatchOptions = {}): Promise<void> {
-  await execFromRoot(['vitest', ...buildProjectFlags(options.projects)], {
+  await execFromRoot(['vitest', ...buildProjectFlags(options.projects), ...getAdditionalArguments(options)], {
     env: await getWorkerEnvironment(options, true)
   });
 }
@@ -98,6 +117,18 @@ export async function testWatch(options: TestWatchOptions = {}): Promise<void> {
  */
 function buildProjectFlags(projects?: string[]): string[] {
   return (projects ?? []).flatMap((project) => [`--project=${project}`, `--project=${project}:*`]);
+}
+
+/**
+ * Checks the forwarded arguments against the options the wrappers set themselves.
+ *
+ * @param options - The options for the test.
+ * @returns The forwarded arguments.
+ */
+function getAdditionalArguments(options: TestOptions): readonly string[] {
+  const { additionalArguments = [] } = options;
+  assertNoOwnedArguments({ forwardedArguments: additionalArguments, ownedOptions: OWNED_OPTIONS, runnerName: 'vitest' });
+  return additionalArguments;
 }
 
 /**
