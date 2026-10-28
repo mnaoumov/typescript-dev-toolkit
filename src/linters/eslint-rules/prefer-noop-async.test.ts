@@ -95,6 +95,12 @@ ruleTester.run('prefer-noop-async', toRuleTesterModule(preferNoopAsync), {
       output: 'import { noopAsync } from \'@mnaoumov/typescript-lib/function\';\nconst p = noopAsync();'
     },
     {
+      code: 'interface Promise<T> { extra: T } await Promise.resolve();',
+      errors: [{ messageId: MESSAGE_ID }],
+      name: 'a type-only Promise declaration leaves the global value',
+      output: 'import { noopAsync } from \'@mnaoumov/typescript-lib/function\';\ninterface Promise<T> { extra: T } await noopAsync();'
+    },
+    {
       code: 'return Promise.resolve();',
       errors: [{ messageId: MESSAGE_ID }],
       name: 'Promise.resolve() as return value',
@@ -125,6 +131,22 @@ ruleTester.run('prefer-noop-async', toRuleTesterModule(preferNoopAsync), {
     {
       code: 'MyPromise.resolve();',
       name: 'non-standard Promise.resolve (different identifier)'
+    },
+    {
+      code: 'const Promise = { resolve() { return 42; } }; const value = Promise.resolve();',
+      name: 'locally declared Promise'
+    },
+    {
+      code: 'function f(Promise) { return Promise.resolve(); }',
+      name: 'Promise parameter'
+    },
+    {
+      code: 'import Promise from \'bluebird\'; await Promise.resolve();',
+      name: 'imported Promise'
+    },
+    {
+      code: 'const Promise = { resolve() { return 42; } }; function f() { return Promise.resolve(); }',
+      name: 'Promise declared in an enclosing scope'
     }
   ]
 });
@@ -140,4 +162,15 @@ it('fixes multiple calls with one import and leaves no unresolved bindings', () 
   expect(result.output).toBe('import { noopAsync } from \'@mnaoumov/typescript-lib/function\';\nawait noopAsync(); await noopAsync();');
   expect(result.messages).toEqual([]);
   expect(linter.verifyAndFix(result.output, config).fixed).toBe(false);
+});
+
+it('reports a global Promise that resolves to no variable', () => {
+  const linter = new Linter();
+  // ES5 declares no `Promise` global, so the reference stays unresolved.
+  const messages = linter.verify('Promise.resolve();', {
+    languageOptions: { ecmaVersion: 5, sourceType: 'script' },
+    plugins: { toolkit: { rules: { 'prefer-noop-async': preferNoopAsync } } },
+    rules: { 'toolkit/prefer-noop-async': 'error' }
+  });
+  expect(messages.map((message) => message.messageId)).toEqual([MESSAGE_ID]);
 });
