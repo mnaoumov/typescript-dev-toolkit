@@ -532,6 +532,7 @@ function getInHousePluginConfigs(context: EslintConfigContext): Linter.Config[] 
         'typescript-dev-toolkit/no-unused-params-members': 'error',
         'typescript-dev-toolkit/no-used-underscore-variables': 'error',
         'typescript-dev-toolkit/params-options-name-match': 'error',
+        'typescript-dev-toolkit/prefer-dedent': 'error',
         'typescript-dev-toolkit/prefer-logical-operator-over-ternary': 'error',
         'typescript-dev-toolkit/prefer-noop-async': 'error',
         'typescript-dev-toolkit/readonly-interface-members': 'error',

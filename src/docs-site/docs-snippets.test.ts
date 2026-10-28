@@ -1,3 +1,4 @@
+import dedent from 'dedent';
 import {
   mkdirSync,
   mkdtempSync,
@@ -36,7 +37,21 @@ const TSCONFIG = {
 
 describe('extractDocsSnippets', () => {
   it('should extract only the checked languages, with the line the code starts on', () => {
-    const snippets = extractDocsSnippets(['# Title', '', '```ts', 'const a = 1;', '```', '', '```bash', 'npm test', '```', '', '```js', 'b();', '```'].join('\n'));
+    const snippets = extractDocsSnippets(dedent`
+      # Title
+
+      \`\`\`ts
+      const a = 1;
+      \`\`\`
+
+      \`\`\`bash
+      npm test
+      \`\`\`
+
+      \`\`\`js
+      b();
+      \`\`\`
+    `);
     expect(snippets.map((snippet) => [snippet.language, snippet.code, snippet.codeStartLine, snippet.isJavaScript])).toEqual([
       ['ts', 'const a = 1;', 4, false],
       ['js', 'b();', 12, true]
@@ -44,37 +59,48 @@ describe('extractDocsSnippets', () => {
   });
 
   it('should strip a blockquote prefix', () => {
-    const [snippet] = extractDocsSnippets(['> ```ts', '> class A {}', '>', '> ```'].join('\n'));
+    const [snippet] = extractDocsSnippets(dedent`
+      > \`\`\`ts
+      > class A {}
+      >
+      > \`\`\`
+    `);
     expect(snippet?.code).toBe('class A {}\n');
   });
 
   it('should strip the indentation of a fence in a list item', () => {
-    const [snippet] = extractDocsSnippets(['1. Step:', '', '   ~~~TypeScript', '   const a = 1;', '   ~~~'].join('\n'));
+    const [snippet] = extractDocsSnippets(dedent`
+      1. Step:
+
+         ~~~TypeScript
+         const a = 1;
+         ~~~
+    `);
     expect([snippet?.language, snippet?.code]).toEqual(['typescript', 'const a = 1;']);
   });
 
   it('should read the skip and context markers right above the fence', () => {
-    const snippets = extractDocsSnippets([
-      '<!-- snippet-check: skip pseudo-code -->',
-      '',
-      '```ts',
-      'alpha();',
-      '```',
-      '<!-- snippet-check: context declare const x: number; -->',
-      '<!-- snippet-check: context declare const y: number; -->',
-      '```ts',
-      'x + y;',
-      '```',
-      '<!-- snippet-check: skip: a reason after a colon -->',
-      'Some prose in between.',
-      '```ts',
-      'z();',
-      '```',
-      '<!-- snippet-check: skip — a reason after a dash -->',
-      '```ts',
-      'w();',
-      '```'
-    ].join('\n'));
+    const snippets = extractDocsSnippets(dedent`
+      <!-- snippet-check: skip pseudo-code -->
+
+      \`\`\`ts
+      alpha();
+      \`\`\`
+      <!-- snippet-check: context declare const x: number; -->
+      <!-- snippet-check: context declare const y: number; -->
+      \`\`\`ts
+      x + y;
+      \`\`\`
+      <!-- snippet-check: skip: a reason after a colon -->
+      Some prose in between.
+      \`\`\`ts
+      z();
+      \`\`\`
+      <!-- snippet-check: skip — a reason after a dash -->
+      \`\`\`ts
+      w();
+      \`\`\`
+    `);
     expect(snippets.map((snippet) => [snippet.skipReason, snippet.context])).toEqual([
       ['pseudo-code', ''],
       [null, 'declare const x: number;\ndeclare const y: number;'],
@@ -84,12 +110,22 @@ describe('extractDocsSnippets', () => {
   });
 
   it('should report a skip marker without a reason as an empty reason', () => {
-    const [snippet] = extractDocsSnippets(['<!-- snippet-check: skip -->', '```ts', 'a();', '```'].join('\n'));
+    const [snippet] = extractDocsSnippets(dedent`
+      <!-- snippet-check: skip -->
+      \`\`\`ts
+      a();
+      \`\`\`
+    `);
     expect(snippet?.skipReason).toBe('');
   });
 
   it('should ignore an unknown marker kind', () => {
-    const [snippet] = extractDocsSnippets(['<!-- snippet-check: other x -->', '```ts', 'a();', '```'].join('\n'));
+    const [snippet] = extractDocsSnippets(dedent`
+      <!-- snippet-check: other x -->
+      \`\`\`ts
+      a();
+      \`\`\`
+    `);
     expect([snippet?.skipReason, snippet?.context]).toEqual([null, '']);
   });
 });

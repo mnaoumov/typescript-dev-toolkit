@@ -23,6 +23,7 @@ describe('in-house plugin', () => {
       'no-unused-params-members',
       'no-used-underscore-variables',
       'params-options-name-match',
+      'prefer-dedent',
       'prefer-logical-operator-over-ternary',
       'prefer-noop-async',
       'readonly-interface-members',

@@ -7,6 +7,7 @@ import type {
 } from 'esbuild';
 
 import { ensureGenericObject } from '@mnaoumov/typescript-lib/type-guards';
+import dedent from 'dedent';
 import { build as bundle } from 'esbuild';
 import { Buffer } from 'node:buffer';
 import {
@@ -288,18 +289,17 @@ describe('preprocessPlugin in an unbundled build', () => {
   }
 
   it('leaves a module that needs no shim untouched', async () => {
-    const code = [
-      'import { a } from "./a.js";',
-      'export { b } from "./b.js";',
-      'export { a };',
-      'const api = { process() { return 1; }, get __name() { return 2; }, set __name(value) {} };',
-      'class Worker { process() {} static __name = 1; }',
-      'function process(...args) { return args; }',
-      'const { process: renamed } = api;',
-      'process(api.process(), renamed, new Worker(), require(name), call());',
-      'const text = "process";',
-      ''
-    ].join('\n');
+    const code = dedent`
+      import { a } from "./a.js";
+      export { b } from "./b.js";
+      export { a };
+      const api = { process() { return 1; }, get __name() { return 2; }, set __name(value) {} };
+      class Worker { process() {} static __name = 1; }
+      function process(...args) { return args; }
+      const { process: renamed } = api;
+      process(api.process(), renamed, new Worker(), require(name), call());
+      const text = "process";\n
+    `;
 
     expect(await runOne(code)).toBe(code);
   });

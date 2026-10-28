@@ -1,4 +1,5 @@
 import { assertNonNullable } from '@mnaoumov/typescript-lib/type-guards';
+import dedent from 'dedent';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 import {
@@ -735,11 +736,11 @@ describe('exec', () => {
 
     it('should name a silent access violation a crash and say it is not a finding', async () => {
       const message = await getFailureMessage({ exitCode: 3_221_225_477 });
-      expect(message).toBe([
-        'Command failed with exit code 3221225477 (NTSTATUS 0xC0000005 STATUS_ACCESS_VIOLATION)',
-        'Command: eslint .',
-        'The child process crashed before writing anything to stdout or stderr. This is not a failure the tool reported (not a lint finding, not a type error): re-run the command.'
-      ].join('\n'));
+      expect(message).toBe(dedent`
+        Command failed with exit code 3221225477 (NTSTATUS 0xC0000005 STATUS_ACCESS_VIOLATION)
+        Command: eslint .
+        The child process crashed before writing anything to stdout or stderr. This is not a failure the tool reported (not a lint finding, not a type error): re-run the command.
+      `);
     });
 
     it('should read a signed NTSTATUS the same as the unsigned one', async () => {
@@ -786,30 +787,33 @@ describe('exec', () => {
 
     it('should name the signal that killed a child and call a silent one not a finding', async () => {
       const message = await getFailureMessage({ exitCode: null, exitSignal: 'SIGSEGV' });
-      expect(message).toBe([
-        'Command failed with exit code (null), terminated by signal SIGSEGV',
-        'Command: eslint .',
-        'The child process was killed by SIGSEGV before writing anything to stdout or stderr. This is not a failure the tool reported (not a lint finding, not a type error): re-run the command.'
-      ].join('\n'));
+      expect(message).toBe(dedent`
+        Command failed with exit code (null), terminated by signal SIGSEGV
+        Command: eslint .
+        The child process was killed by SIGSEGV before writing anything to stdout or stderr. This is not a failure the tool reported (not a lint finding, not a type error): re-run the command.
+      `);
     });
 
     it('should carry stdout in full when quiet mode hid it', async () => {
       const message = await getFailureMessage({ exitCode: 1, stdout: 'a.ts\n  1:1 error' });
-      expect(message).toBe([
-        'Command failed with exit code 1',
-        'Command: eslint .',
-        'stdout:\na.ts\n  1:1 error'
-      ].join('\n'));
+      expect(message).toBe(dedent`
+        Command failed with exit code 1
+        Command: eslint .
+        stdout:
+        a.ts
+          1:1 error
+      `);
     });
 
     it('should only count the stdout lines when they were already printed', async () => {
       const message = await getFailureMessage({ exitCode: 1, isQuiet: false, stderr: 'oops', stdout: 'a\nb' });
-      expect(message).toBe([
-        'Command failed with exit code 1',
-        'Command: eslint .',
-        'stdout: 2 line(s), printed above.',
-        'stderr:\noops'
-      ].join('\n'));
+      expect(message).toBe(dedent`
+        Command failed with exit code 1
+        Command: eslint .
+        stdout: 2 line(s), printed above.
+        stderr:
+        oops
+      `);
     });
 
     it('should truncate a long command in the message', async () => {

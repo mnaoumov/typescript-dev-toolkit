@@ -1,3 +1,4 @@
+import dedent from 'dedent';
 import {
   beforeEach,
   describe,
@@ -84,15 +85,14 @@ const RULE_CRASH_STDERR = [
  * The real stderr of a mistyped path, transcribed from `npm run lint -- src/no-such-file.ts`. It carries the
  * SAME `Oops!` banner as the rule crash above.
  */
-const USAGE_ERROR_STDERR = [
-  '',
-  'Oops! Something went wrong! :(',
-  '',
-  'ESLint: 10.7.0',
-  '',
-  'No files matching the pattern "src/no-such-file.ts" were found.',
-  'Please check for typing mistakes in the pattern.'
-].join('\n');
+const USAGE_ERROR_STDERR = dedent`
+  \nOops! Something went wrong! :(
+
+  ESLint: 10.7.0
+
+  No files matching the pattern "src/no-such-file.ts" were found.
+  Please check for typing mistakes in the pattern.
+`;
 
 /**
  * `0xC0000005`, the access violation the ESLint child raises on Windows with no output of its own. It cannot

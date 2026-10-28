@@ -1,3 +1,4 @@
+import dedent from 'dedent';
 import {
   existsSync,
   mkdirSync,
@@ -25,12 +26,12 @@ import type { ApiDocSettings } from './api-doc-settings.ts';
 import { generateApiDocs } from './api-docs.ts';
 
 const FIXTURE_FILES: Readonly<Partial<Record<string, string>>> = {
-  'node_modules/@mnaoumov/obsidian-lib/dist/lib/esm/app.d.mts': [
-    'export declare class RemoteApp {',
-    '  name: string;',
-    '}',
-    'export declare function makeRemote(): RemoteApp;'
-  ].join('\n'),
+  'node_modules/@mnaoumov/obsidian-lib/dist/lib/esm/app.d.mts': dedent`
+    export declare class RemoteApp {
+      name: string;
+    }
+    export declare function makeRemote(): RemoteApp;
+  `,
   'node_modules/@mnaoumov/obsidian-lib/package.json': JSON.stringify({
     exports: { './*': { types: './dist/lib/esm/*.d.mts' } },
     name: '@mnaoumov/obsidian-lib',
@@ -42,284 +43,284 @@ const FIXTURE_FILES: Readonly<Partial<Record<string, string>>> = {
     Broken: 1
   }),
   'src/@types/ignored.d.ts': 'export interface Ignored { value: string; }',
-  'src/alpha.ts': [
-    '/**',
-    ' * @file',
-    ' *',
-    ' * The alpha module, with a {@link Base}.',
-    ' *',
-    ' * ```ts',
-    ' * const x = 1;',
-    ' * ```',
-    ' */',
-    '',
-    'import { makeRemote, RemoteApp } from \'@mnaoumov/obsidian-lib/app\';',
-    'import { missing } from \'./missing.ts\';',
-    '',
-    '/**',
-    ' * A base class.',
-    ' *',
-    ' * @remarks Base remarks.',
-    ' *',
-    ' * @example',
-    ' * ```ts',
-    ' * new Base();',
-    ' * ```',
-    ' */',
-    'export class Base<Instance> {',
-    '  /** The shared value. */',
-    '  public shared?: Instance;',
-    '  /** A static counter. */',
-    '  public static counter = 0;',
-    '  private hidden = 1;',
-    '',
-    '  /**',
-    '   * Creates it.',
-    '   *',
-    '   * @param seed - The seed.',
-    '   */',
-    '  public constructor(seed?: number) {',
-    '    void seed;',
-    '  }',
-    '',
-    '  /**',
-    '   * Listens for a change.',
-    '   *',
-    '   * @param name - The event.',
-    '   * @param callback - The callback.',
-    '   * @returns Nothing.',
-    '   * @since 1.0.0',
-    '   */',
-    '  public on(name: \'changed\', callback: () => void): void;',
-    '  public on(name: string, callback: () => void): void {',
-    '    void name;',
-    '    void callback;',
-    '  }',
-    '',
-    '  /** Gets the remote. @example getRemote() */',
-    '  public getRemote(): RemoteApp {',
-    '    return makeRemote();',
-    '  }',
-    '',
-    '  /** Gets this. */',
-    '  public self(): this {',
-    '    return this;',
-    '  }',
-    '',
-    '  /** A member named index. */',
-    '  public index(): void {',
-    '    void this.hidden;',
-    '  }',
-    '',
-    '  /** A static method. */',
-    '  public static create(): Base<string> {',
-    '    return new Base<string>();',
-    '  }',
-    '}',
-    '',
-    '/** A derived class. Uses {@link Base.on | the on method} and {@link Base<string>}. */',
-    'export class Derived extends Base<string> implements Shape {',
-    '  /** The area. */',
-    '  public area = 0;',
-    '}',
-    '',
-    '/** A shape. */',
-    'export interface Shape {',
-    '  /** The area. */',
-    '  area: number;',
-    '  /** A method. */',
-    '  measure?(unit: string): number;',
-    '  /** Listens. */',
-    '  on(name: \'changed\', callback: () => void): void;',
-    '}',
-    '',
-    '/** An extended shape. */',
-    'export interface Square extends Shape {',
-    '  /** The side. */',
-    '  side: number;',
-    '}',
-    '',
-    '/** A color. */',
-    'export enum Color {',
-    '  /** Red. */',
-    '  Red = \'red\',',
-    '  Green',
-    '}',
-    '',
-    '/** An empty enum. */',
-    'export enum Empty {}',
-    '',
-    '/** A pair. */',
-    'export type Pair<T extends string> = [T, T];',
-    '',
-    '/**',
-    ' * Adds numbers.',
-    ' *',
-    ' * @param left - The left one.',
-    ' * @param right - The right one, a {@link Shape}.',
-    ' * @returns The sum.',
-    ' * @example add(1, 2)',
-    ' */',
-    'export function add(left: number, right: number): number {',
-    '  return left + right + Number(missing);',
-    '}',
-    '',
-    '/** Makes a remote. */',
-    'export function remote() {',
-    '  return makeRemote();',
-    '}',
-    '',
-    '/** Takes nothing. */',
-    'export function nothing(): AbortSignal | Blob | Promise<void> | Partial<Shape> | undefined {',
-    '  return undefined;',
-    '}',
-    '',
-    '/** A constant. */',
-    'export const ANSWER = 42;',
-    '',
-    'export let mutable: string | undefined;',
-    'function internal(): void {}',
-    'void internal;'
-  ].join('\n'),
-  'src/gamma.ts': [
-    'import { makeRemote as mk } from \'@mnaoumov/obsidian-lib/app\';',
-    '',
-    'type Hidden = string;',
-    'void (0 as unknown as Hidden);',
-    'enum HiddenEnum { A }',
-    'interface HiddenInterface { a: string; }',
-    'class HiddenClass {}',
-    'const hiddenConst = 1;',
-    'void hiddenConst;',
-    '',
-    '/** A collision: the variable below shares the name. */',
-    'export interface Same { a: string; }',
-    'export const Same = 1;',
-    '',
-    '/** A generic box. */',
-    'export interface Box<T> {',
-    '  /** Measures. */',
-    '  measure(value: string): number;',
-    '  /** Measures. */',
-    '  measure(value: number): number;',
-    '}',
-    '',
-    '/**',
-    ' * A worker.',
-    ' *',
-    ' * @remarks',
-    ' * First paragraph.',
-    ' *',
-    ' * Second paragraph.',
-    ' */',
-    'export class Worker extends Error {',
-    '  public constructor(undocumented?: string) {',
-    '    super(undocumented);',
-    '  }',
-    '',
-    '  /**',
-    '   * Runs.',
-    '   *',
-    '   * @remarks Run remarks.',
-    '   * @since 2.0.0',
-    '   * @param optional',
-    '   * @returns The result.',
-    '   */',
-    '  public run(optional?: string) {',
-    '    return optional;',
-    '  }',
-    '',
-    '  /** A static. */',
-    '  public static zeta(): void {}',
-    '  /** A static. */',
-    '  public static alpha(): void {}',
-    '  /** Instance. */',
-    '  public beta(): void {}',
-    '}',
-    '',
-    '/** Only methods. */',
-    'export class OnlyMethods {',
-    '  /**',
-    '   * @param',
-    '   * @example',
-    '   * @remarks',
-    '   * @returns',
-    '   * @since',
-    '   */',
-    '  public empty(): void {}',
-    '}',
-    '',
-    '/** Has a documented property. */',
-    'export interface Documented {',
-    '  /**',
-    '   * A property.',
-    '   *',
-    '   * @remarks Property remarks.',
-    '   * @since 3.0.0',
-    '   * @example',
-    '   * documented.value',
-    '   */',
-    '  value: string;',
-    '  undocumentedProperty: number;',
-    '  /** The maker. */',
-    '  maker: typeof mk;',
-    '  /** Another. */',
-    '  other: typeof Same;',
-    '}',
-    '',
-    '/** A generic function. */',
-    'export function generic<T>(value: T, undocumented: number): T {',
-    '  void undocumented;',
-    '  return value;',
-    '}',
-    '',
-    'export default function () {}',
-    'export default class {}',
-    'void HiddenEnum;',
-    'void HiddenClass;',
-    'export type Twice = 1;',
-    'export type Twice = 2;',
-    'export enum Merged { A }',
-    'export enum Merged { B = 1 }',
-    'export interface Joined { a: string; }',
-    'export interface Joined { b: string; }',
-    'export class Again {}',
-    'export class Again {}',
-    'export interface Dup { a: string; }',
-    'export function Dup(): void {}',
-    '/** Holds a shape. */',
-    'export class Holder<Shape> {',
-    '  public constructor(required: number) { void required; }',
-    '  /** Takes. */',
-    '  public take(maybe?: Shape): void { void maybe; }',
-    '}',
-    '/** Accepts. */',
-    'export interface Accepts {',
-    '  /** Accepts. */',
-    '  accept(maybe?: string): void;',
-    '}'
-  ].join('\n'),
+  'src/alpha.ts': dedent`
+    /**
+     * @file
+     *
+     * The alpha module, with a {@link Base}.
+     *
+     * \`\`\`ts
+     * const x = 1;
+     * \`\`\`
+     */
+
+    import { makeRemote, RemoteApp } from '@mnaoumov/obsidian-lib/app';
+    import { missing } from './missing.ts';
+
+    /**
+     * A base class.
+     *
+     * @remarks Base remarks.
+     *
+     * @example
+     * \`\`\`ts
+     * new Base();
+     * \`\`\`
+     */
+    export class Base<Instance> {
+      /** The shared value. */
+      public shared?: Instance;
+      /** A static counter. */
+      public static counter = 0;
+      private hidden = 1;
+
+      /**
+       * Creates it.
+       *
+       * @param seed - The seed.
+       */
+      public constructor(seed?: number) {
+        void seed;
+      }
+
+      /**
+       * Listens for a change.
+       *
+       * @param name - The event.
+       * @param callback - The callback.
+       * @returns Nothing.
+       * @since 1.0.0
+       */
+      public on(name: 'changed', callback: () => void): void;
+      public on(name: string, callback: () => void): void {
+        void name;
+        void callback;
+      }
+
+      /** Gets the remote. @example getRemote() */
+      public getRemote(): RemoteApp {
+        return makeRemote();
+      }
+
+      /** Gets this. */
+      public self(): this {
+        return this;
+      }
+
+      /** A member named index. */
+      public index(): void {
+        void this.hidden;
+      }
+
+      /** A static method. */
+      public static create(): Base<string> {
+        return new Base<string>();
+      }
+    }
+
+    /** A derived class. Uses {@link Base.on | the on method} and {@link Base<string>}. */
+    export class Derived extends Base<string> implements Shape {
+      /** The area. */
+      public area = 0;
+    }
+
+    /** A shape. */
+    export interface Shape {
+      /** The area. */
+      area: number;
+      /** A method. */
+      measure?(unit: string): number;
+      /** Listens. */
+      on(name: 'changed', callback: () => void): void;
+    }
+
+    /** An extended shape. */
+    export interface Square extends Shape {
+      /** The side. */
+      side: number;
+    }
+
+    /** A color. */
+    export enum Color {
+      /** Red. */
+      Red = 'red',
+      Green
+    }
+
+    /** An empty enum. */
+    export enum Empty {}
+
+    /** A pair. */
+    export type Pair<T extends string> = [T, T];
+
+    /**
+     * Adds numbers.
+     *
+     * @param left - The left one.
+     * @param right - The right one, a {@link Shape}.
+     * @returns The sum.
+     * @example add(1, 2)
+     */
+    export function add(left: number, right: number): number {
+      return left + right + Number(missing);
+    }
+
+    /** Makes a remote. */
+    export function remote() {
+      return makeRemote();
+    }
+
+    /** Takes nothing. */
+    export function nothing(): AbortSignal | Blob | Promise<void> | Partial<Shape> | undefined {
+      return undefined;
+    }
+
+    /** A constant. */
+    export const ANSWER = 42;
+
+    export let mutable: string | undefined;
+    function internal(): void {}
+    void internal;
+  `,
+  'src/gamma.ts': dedent`
+    import { makeRemote as mk } from '@mnaoumov/obsidian-lib/app';
+
+    type Hidden = string;
+    void (0 as unknown as Hidden);
+    enum HiddenEnum { A }
+    interface HiddenInterface { a: string; }
+    class HiddenClass {}
+    const hiddenConst = 1;
+    void hiddenConst;
+
+    /** A collision: the variable below shares the name. */
+    export interface Same { a: string; }
+    export const Same = 1;
+
+    /** A generic box. */
+    export interface Box<T> {
+      /** Measures. */
+      measure(value: string): number;
+      /** Measures. */
+      measure(value: number): number;
+    }
+
+    /**
+     * A worker.
+     *
+     * @remarks
+     * First paragraph.
+     *
+     * Second paragraph.
+     */
+    export class Worker extends Error {
+      public constructor(undocumented?: string) {
+        super(undocumented);
+      }
+
+      /**
+       * Runs.
+       *
+       * @remarks Run remarks.
+       * @since 2.0.0
+       * @param optional
+       * @returns The result.
+       */
+      public run(optional?: string) {
+        return optional;
+      }
+
+      /** A static. */
+      public static zeta(): void {}
+      /** A static. */
+      public static alpha(): void {}
+      /** Instance. */
+      public beta(): void {}
+    }
+
+    /** Only methods. */
+    export class OnlyMethods {
+      /**
+       * @param
+       * @example
+       * @remarks
+       * @returns
+       * @since
+       */
+      public empty(): void {}
+    }
+
+    /** Has a documented property. */
+    export interface Documented {
+      /**
+       * A property.
+       *
+       * @remarks Property remarks.
+       * @since 3.0.0
+       * @example
+       * documented.value
+       */
+      value: string;
+      undocumentedProperty: number;
+      /** The maker. */
+      maker: typeof mk;
+      /** Another. */
+      other: typeof Same;
+    }
+
+    /** A generic function. */
+    export function generic<T>(value: T, undocumented: number): T {
+      void undocumented;
+      return value;
+    }
+
+    export default function () {}
+    export default class {}
+    void HiddenEnum;
+    void HiddenClass;
+    export type Twice = 1;
+    export type Twice = 2;
+    export enum Merged { A }
+    export enum Merged { B = 1 }
+    export interface Joined { a: string; }
+    export interface Joined { b: string; }
+    export class Again {}
+    export class Again {}
+    export interface Dup { a: string; }
+    export function Dup(): void {}
+    /** Holds a shape. */
+    export class Holder<Shape> {
+      public constructor(required: number) { void required; }
+      /** Takes. */
+      public take(maybe?: Shape): void { void maybe; }
+    }
+    /** Accepts. */
+    export interface Accepts {
+      /** Accepts. */
+      accept(maybe?: string): void;
+    }
+  `,
   'src/index.ts': 'export * from \'./alpha.ts\';',
-  'src/mocks.ts': [
-    '/** A factory. */',
-    'export class Factory {',
-    '  /** Creates. */',
-    '  public create(): void {}',
-    '  /** Creates a mock. */',
-    '  public create__(): void {}',
-    '}'
-  ].join('\n'),
+  'src/mocks.ts': dedent`
+    /** A factory. */
+    export class Factory {
+      /** Creates. */
+      public create(): void {}
+      /** Creates a mock. */
+      public create__(): void {}
+    }
+  `,
   'src/nested/beta.test.ts': 'export const ignored = 1;',
-  'src/nested/beta.ts': [
-    '/** Another {@link Base}. */',
-    'export interface Base {',
-    '  /** A value. */',
-    '  value: string;',
-    '}',
-    '',
-    '/** Uses an ambiguous {@link Base}. */',
-    'export type UsesBase = Base;'
-  ].join('\n'),
+  'src/nested/beta.ts': dedent`
+    /** Another {@link Base}. */
+    export interface Base {
+      /** A value. */
+      value: string;
+    }
+
+    /** Uses an ambiguous {@link Base}. */
+    export type UsesBase = Base;
+  `,
   'src/no-docs.ts': 'export const plain = 1;',
   'src/test-helpers/helper.ts': 'export const helper = 1;',
   'tsconfig.json': JSON.stringify({
@@ -537,13 +538,13 @@ describe('generateApiDocs', () => {
     const barrelPath = join(other.root, 'src/public.ts');
     writeFileSync(
       barrelPath,
-      [
-        'import { add } from \'./alpha.ts\';',
-        'void add;',
-        'export { Derived } from \'./alpha.ts\';',
-        'export type { Shape } from \'./alpha.ts\';',
-        'export * from \'./nested/beta.ts\';'
-      ].join('\n')
+      dedent`
+        import { add } from './alpha.ts';
+        void add;
+        export { Derived } from './alpha.ts';
+        export type { Shape } from './alpha.ts';
+        export * from './nested/beta.ts';
+      `
     );
     const settings: ApiDocSettings = { ...other.settings, publicApiEntry: barrelPath };
     await generateApiDocs({ rootDirectory: other.root, settings, sourceDirectory: join(other.root, 'src') });
