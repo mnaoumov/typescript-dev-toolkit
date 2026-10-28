@@ -57,6 +57,21 @@ interface ApplyFixesOutcome {
 
 const SRC_FOLDER = '/proj/src';
 
+// The analyzer's programs run with `noLib`, so the disposable protocol is declared here.
+const SYMBOL_LIB = `
+  interface SymbolConstructor {
+    readonly asyncDispose: unique symbol;
+    readonly dispose: unique symbol;
+  }
+  declare var Symbol: SymbolConstructor;
+  interface PromiseLike<T> {
+    then(): T;
+  }
+  interface AsyncDisposable {
+    [Symbol.asyncDispose](): PromiseLike<void>;
+  }
+`;
+
 const COMPILER_OPTIONS: CompilerOptions = {
   allowImportingTsExtensions: true,
   module: ModuleKind.ESNext,
@@ -514,6 +529,120 @@ describe('analyzeOverExposure', () => {
       `
     });
     expect(Array.isArray(findings)).toBe(true);
+  });
+
+  it('should not flag a symbol-keyed member used from another file and required by an implemented interface', () => {
+    const findings = analyze({
+      '/proj/src/a.ts': `
+        export class A implements AsyncDisposable {
+          public [Symbol.asyncDispose](): PromiseLike<void> {
+            return this.done;
+          }
+          public [Symbol.dispose](): void {
+            void 0;
+          }
+          private readonly done!: PromiseLike<void>;
+        }
+      `,
+      '/proj/src/b.ts': `
+        import { A } from './a.ts';
+        export function release(a: A): PromiseLike<void> {
+          return a[Symbol.asyncDispose]();
+        }
+      `,
+      '/proj/symbols.d.ts': SYMBOL_LIB
+    });
+    expect(findings.filter((finding) => finding.name.startsWith('[Symbol.'))).toEqual([]);
+  });
+
+  it('should leave a symbol-keyed member alone in a forced fix run', () => {
+    const { findings, writes } = applyFixes({
+      '/proj/src/a.ts': `
+        export class A implements AsyncDisposable {
+          public [Symbol.asyncDispose](): PromiseLike<void> {
+            return this.done;
+          }
+          private readonly done!: PromiseLike<void>;
+        }
+        await using a = new A();
+        void a;
+      `,
+      '/proj/symbols.d.ts': SYMBOL_LIB
+    }, { shouldForce: true });
+    expect(hasFinding(findings, '[Symbol.asyncDispose]')).toBe(false);
+    expect(writes.get('/proj/src/a.ts') ?? '').not.toContain('private [Symbol.asyncDispose]');
+  });
+
+  it('should resolve references of a member keyed by a computed string literal', () => {
+    const findings = analyze({
+      '/proj/src/a.ts': `
+        export class A {
+          public ['shared'](): number {
+            return 1;
+          }
+          public ['inner'](): number {
+            return this['inner']();
+          }
+        }
+      `,
+      '/proj/src/b.ts': `
+        import { A } from './a.ts';
+        export const value = new A()['shared']();
+      `
+    });
+    expect(hasFinding(findings, '[\'shared\']')).toBe(false);
+    expect(findFinding(findings, '[\'inner\']').suggestedExposure).toBe('private');
+  });
+
+  it('should resolve references of a member keyed by a computed numeric literal', () => {
+    const findings = analyze({
+      '/proj/src/a.ts': `
+        export class A {
+          public [0](): number {
+            return 1;
+          }
+        }
+      `,
+      '/proj/src/b.ts': `
+        import { A } from './a.ts';
+        export const value = new A()[0]();
+      `
+    });
+    expect(hasFinding(findings, '[0]')).toBe(false);
+  });
+
+  it('should not count the declaration of a member keyed by a computed literal as its reference', () => {
+    const findings = analyze({
+      '/proj/src/a.ts': `
+        export class A {
+          public ['unused'](): number {
+            return 1;
+          }
+          public [\`tagged\`](): number {
+            return 1;
+          }
+        }
+      `
+    });
+    expect(findFinding(findings, '[\'unused\']').hasNoReferences).toBe(true);
+    expect(findFinding(findings, '[`tagged`]').hasNoReferences).toBe(true);
+  });
+
+  it('should treat a member whose references the language service cannot find as unreferenced', () => {
+    const files = {
+      '/proj/src/a.ts': `
+        export class A {
+          public helper(): number {
+            return 1;
+          }
+        }
+      `
+    };
+    const host = createLanguageServiceHost({ compilerOptions: COMPILER_OPTIONS, fileNames: Object.keys(files), fileSystem: createSpyFileSystem(files) });
+    const languageService = createLanguageService(host, createDocumentRegistry());
+    vi.spyOn(languageService, 'findReferences').mockReturnValue(undefined);
+    const findings = analyzeOverExposure({ languageService, srcFolder: SRC_FOLDER });
+    expect(findFinding(findings, 'helper').hasNoReferences).toBe(true);
   });
 
   it('should report progress once per analyzed source file, skipping test files', () => {

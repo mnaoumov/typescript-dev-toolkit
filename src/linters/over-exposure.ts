@@ -24,7 +24,9 @@
  * rather than by visible references (Obsidian lifecycle hooks, settings-tab `display`, etc.) are
  * excluded via {@link LIFECYCLE_ALLOWLIST}, as are `override` and `static` members whose exposure is
  * constrained by a base declaration. ECMAScript hard-private members (`#name`) are also excluded —
- * they are already maximally private and cannot carry a visibility modifier. A declaration carrying
+ * they are already maximally private and cannot carry a visibility modifier. So are members keyed by a
+ * computed name other than a literal (`[Symbol.asyncDispose]`), whose uses and interface obligations
+ * references cannot show. A declaration carrying
  * a TSDoc (`/** … *\/`) documentation comment is likewise excluded — whether a top-level `export` or
  * a class member, documenting it is a deliberate signal that it is part of the intended public API,
  * regardless of where it currently happens to be referenced.
@@ -62,6 +64,7 @@ import type {
   Node,
   Program,
   PropertyDeclaration,
+  PropertyName,
   ReferencedSymbol,
   SetAccessorDeclaration,
   SourceFile,
@@ -83,12 +86,14 @@ import {
   getModifiers,
   isClassDeclaration,
   isClassLike,
+  isComputedPropertyName,
   isEnumDeclaration,
   isFunctionDeclaration,
   isGetAccessorDeclaration,
   isIdentifier,
   isInterfaceDeclaration,
   isMethodDeclaration,
+  isNumericLiteral,
   isPrivateIdentifier,
   isPropertyDeclaration,
   isSetAccessorDeclaration,
@@ -899,6 +904,11 @@ function analyzeMember(node: Node, context: AnalysisContext): void {
     return;
   }
 
+  const referenceNode = getMemberReferenceNode(nameNode);
+  if (!referenceNode) {
+    return;
+  }
+
   const modifierKinds = getModifierKinds(member);
   if (modifierKinds.has(SyntaxKind.StaticKeyword) || modifierKinds.has(SyntaxKind.OverrideKeyword) || LIFECYCLE_ALLOWLIST.has(nameNode.getText()) || hasTsDocComment(member)) {
     return;
@@ -910,8 +920,8 @@ function analyzeMember(node: Node, context: AnalysisContext): void {
   }
 
   const sourceFile = member.getSourceFile();
-  const directReferences = collectReferences(context.languageService.findReferences(sourceFile.fileName, nameNode.getStart()))
-    .filter((reference) => !isDeclarationItself(reference, nameNode))
+  const directReferences = collectReferences(context.languageService.findReferences(sourceFile.fileName, referenceNode.getStart()))
+    .filter((reference) => !isDeclarationItself(reference, referenceNode))
     .filter((reference) => isCodeReference(context, reference));
   const references = [...directReferences, ...collectStringLiteralReferences({ context, declaringClass, nameNode })];
   const nonTestReferences = references.filter((reference) => !isTestFile(toCanonical(reference.fileName)));
@@ -1252,6 +1262,28 @@ function getExportedNameNodes(declaration: ExportableDeclaration): Node[] {
   return declaration.name ? [declaration.name] : [];
 }
 
+/**
+ * The node whose position {@link LanguageService.findReferences} resolves to the member itself, or `undefined`
+ * when the member cannot be analyzed.
+ *
+ * A computed name is queried at its literal (`['name']`, `[0]`), because at the `[` the language service finds
+ * nothing and the member read as having no references at all. A computed name keyed by anything else, such as
+ * `[Symbol.asyncDispose]`, has no position that resolves to the member: the expression resolves to the key, whose
+ * references are every use of that key anywhere. Such a member is also used where no reference exists, by `using`,
+ * `await using` or `for...of`, and an interface such as `AsyncDisposable` requires it to stay public, so it is never
+ * reported.
+ *
+ * @param nameNode - The member's name.
+ * @returns The node to query, or `undefined` to leave the member alone.
+ */
+function getMemberReferenceNode(nameNode: PropertyName): Node | undefined {
+  if (!isComputedPropertyName(nameNode)) {
+    return nameNode;
+  }
+  const { expression } = nameNode;
+  return isStringLiteralLike(expression) || isNumericLiteral(expression) ? expression : undefined;
+}
+
 function getModifierKinds(node: Node): ReadonlySet<SyntaxKind> {
   const kinds = new Set<SyntaxKind>();
   if (canHaveModifiers(node)) {
@@ -1310,8 +1342,11 @@ function isCodeReference(context: AnalysisContext, reference: ReferenceLocation)
   return findNodeAtPosition(sourceFile, reference.start) !== undefined;
 }
 
+// The span of a string-literal name starts after its opening quote, so a declaration matches by range.
 function isDeclarationItself(reference: ReferenceLocation, nameNode: Node): boolean {
-  return toCanonical(reference.fileName) === toCanonical(nameNode.getSourceFile().fileName) && reference.start === nameNode.getStart();
+  return toCanonical(reference.fileName) === toCanonical(nameNode.getSourceFile().fileName)
+    && reference.start >= nameNode.getStart()
+    && reference.start < nameNode.getEnd();
 }
 
 function isDerivedFrom(params: IsDerivedFromParams): boolean {
