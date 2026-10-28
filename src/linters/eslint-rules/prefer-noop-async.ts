@@ -35,7 +35,7 @@ export const preferNoopAsync: Rule.RuleModule = {
       'CallExpression'(node: Rule.Node): void {
         const callNode = toTSESTreeNode(node) as TSESTree.CallExpression;
 
-        if (!isPromiseResolveWithNoArguments(callNode)) {
+        if (!isPromiseResolveWithNoArguments(callNode) || isLocallyBoundPromise(context.sourceCode.getScope(node), callNode)) {
           return;
         }
 
@@ -105,6 +105,21 @@ export const preferNoopAsync: Rule.RuleModule = {
     type: 'suggestion'
   }
 };
+
+/**
+ * Checks whether the `Promise` of a `Promise.resolve()` call resolves to a binding the code declares itself,
+ * such as a local variable, a parameter or an import, rather than the global.
+ *
+ * @param scope - The scope enclosing the call.
+ * @param node - The `Promise.resolve()` call expression.
+ * @returns `true` if `Promise` is bound by a declaration in the code.
+ */
+function isLocallyBoundPromise(scope: Scope.Scope, node: TSESTree.CallExpression): boolean {
+  const callee = node.callee as TSESTree.MemberExpression;
+  const reference = ensureNonNullable(scope.references.find((candidate) => toTSESTreeNode(candidate.identifier) === callee.object));
+  // A global `Promise` resolves to a variable without definitions, or to nothing when no globals are configured.
+  return (reference.resolved?.defs.length ?? 0) > 0;
+}
 
 /**
  * Checks whether a call expression is `Promise.resolve()` with no arguments.
