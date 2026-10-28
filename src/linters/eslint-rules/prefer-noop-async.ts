@@ -16,8 +16,12 @@ import type {
 } from 'eslint';
 
 import { ensureNonNullable } from '@mnaoumov/typescript-lib/type-guards';
-import { AST_NODE_TYPES } from '@typescript-eslint/utils';
 
+import {
+  findVisibleImportName,
+  getUnusedName,
+  insertImport
+} from './import-fix.ts';
 import { toTSESTreeNode } from './ts-estree-node.ts';
 
 const FUNCTION_MODULE = '@mnaoumov/typescript-lib/function';
@@ -42,48 +46,19 @@ export const preferNoopAsync: Rule.RuleModule = {
         context.report({
           fix(fixer) {
             const sourceCode = context.sourceCode;
-            const seen = new Set<string>();
-            for (let scope: null | Scope.Scope = sourceCode.getScope(node); scope; scope = scope.upper) {
-              for (const variable of scope.variables) {
-                if (seen.has(variable.name)) {
-                  continue;
-                }
-                seen.add(variable.name);
-                for (const definition of variable.defs) {
-                  if (definition.type !== 'ImportBinding') {
-                    continue;
-                  }
-                  const specifier = toTSESTreeNode(definition.node);
-                  const declaration = toTSESTreeNode(definition.parent) as TSESTree.ImportDeclaration;
-                  if (
-                    specifier.type === AST_NODE_TYPES.ImportSpecifier
-                    && specifier.importKind !== 'type' && declaration.importKind !== 'type'
-                    && declaration.source.value === FUNCTION_MODULE
-                    && specifier.imported.type === AST_NODE_TYPES.Identifier && specifier.imported.name === 'noopAsync'
-                  ) {
-                    return fixer.replaceText(node, `${variable.name}()`);
-                  }
-                }
-              }
+            const importedName = findVisibleImportName({ importedName: 'noopAsync', moduleName: FUNCTION_MODULE, node, sourceCode });
+            if (importedName !== null) {
+              return fixer.replaceText(node, `${importedName}()`);
             }
 
             // A script cannot accept an ESM import. Leave its diagnostic for a manual edit.
             if (sourceCode.ast.sourceType !== 'module') {
               return null;
             }
-            // Include references as well as declarations, so an import never captures an existing free read.
-            const names = new Set(sourceCode.getTokens(sourceCode.ast).map((token) => token.value));
-            let name = 'noopAsync';
-            let suffix = 0;
-            while (names.has(name)) {
-              name = `noopAsync${String(++suffix)}`;
-            }
+            const name = getUnusedName(sourceCode, 'noopAsync');
             const binding = name === 'noopAsync' ? name : `noopAsync as ${name}`;
-            const firstStatement = ensureNonNullable(sourceCode.ast.body.find((statement) => !('directive' in statement && typeof statement.directive === 'string')));
-            const firstToken = sourceCode.getFirstToken(firstStatement);
-            // The reported call guarantees a non-empty program, including when a hashbang precedes it.
             return [
-              fixer.insertTextBefore(firstToken, `import { ${binding} } from '${FUNCTION_MODULE}';\n`),
+              insertImport(fixer, sourceCode, `import { ${binding} } from '${FUNCTION_MODULE}';`),
               fixer.replaceText(node, `${name}()`)
             ];
           },

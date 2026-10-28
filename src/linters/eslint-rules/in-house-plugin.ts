@@ -16,6 +16,7 @@ import { noUnresolvedJsdocLink } from './no-unresolved-jsdoc-link.ts';
 import { noUnusedParamsMembers } from './no-unused-params-members.ts';
 import { noUsedUnderscoreVariables } from './no-used-underscore-variables.ts';
 import { paramsOptionsNameMatch } from './params-options-name-match.ts';
+import { preferDedent } from './prefer-dedent.ts';
 import { preferLogicalOperatorOverTernary } from './prefer-logical-operator-over-ternary.ts';
 import { preferNoopAsync } from './prefer-noop-async.ts';
 import { readonlyInterfaceMembers } from './readonly-interface-members.ts';
@@ -38,6 +39,7 @@ export const genericInHouseEslintRules: NonNullable<ESLint.Plugin['rules']> = {
   'no-unused-params-members': noUnusedParamsMembers,
   'no-used-underscore-variables': noUsedUnderscoreVariables,
   'params-options-name-match': paramsOptionsNameMatch,
+  'prefer-dedent': preferDedent,
   'prefer-logical-operator-over-ternary': preferLogicalOperatorOverTernary,
   'prefer-noop-async': preferNoopAsync,
   'readonly-interface-members': readonlyInterfaceMembers,
