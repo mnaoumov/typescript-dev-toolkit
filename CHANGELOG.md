@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 5.2.0
+
+- feat(eslint): add prefer-dedent, fixing literal arrays joined with a newline to dedent
+
 ## 5.1.0
 
 - fix(eslint): leave a locally bound Promise.resolve() to prefer-noop-async
