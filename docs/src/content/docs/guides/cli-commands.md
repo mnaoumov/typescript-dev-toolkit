@@ -192,6 +192,8 @@ A project with neither gets Vitest. A `vite.config.*` does not count, since a pr
 
 The Vitest wrappers honor `BULK_CORES` when it is a positive safe integer. For example, `BULK_CORES=2` caps a run at two workers, while a selected project configured for one worker keeps the entire invocation serial. The cap also respects a smaller inherited `VITEST_MAX_WORKERS` setting. Missing or invalid budgets leave Vitest's ordinary behavior unchanged. In bulk mode the configuration is resolved before the CLI starts, so it loads twice; keep configuration modules free of side effects.
 
+Pass `{ additionalArguments: [...] }` to append further runner CLI arguments after the wrapper's own: file filters, `-t`, `--maxWorkers`, `--reporter` or `--bail`. A script entry point forwards its own arguments that way, so `npm test -- src/foo.test.ts --maxWorkers=2` runs that one file on two workers. An argument naming an option the wrapper sets itself throws instead of being forwarded, because it would not override the wrapper reliably: Vitest adds every `--project` to the wrapper's own, and a later `--coverage.thresholds.lines` would quietly lower the coverage gate. For Vitest those are `--project`, `--coverage` and `--coverage.*`, `--run` and `--watch`; for Jest `--selectProjects`, `--coverage`, `--collectCoverage`, `--coverageThreshold`, `--watch` and `--watchAll`. An explicit `--maxWorkers` replaces the `BULK_CORES` cap, since a CLI limit replaces the environment one.
+
 #### Jest
 
 Jest and ts-jest are optional peers, so install them when you use jest:

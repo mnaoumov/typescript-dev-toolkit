@@ -76,6 +76,12 @@ export interface TestCoverageOptions extends TestOptions {
  */
 export interface TestOptions {
   /**
+   * Further CLI arguments for the runner, appended after the wrapper's own: file filters, `-t`, `--maxWorkers`. An
+   * argument naming an option the wrapper sets itself (projects, coverage, watch mode) throws.
+   */
+  readonly additionalArguments?: readonly string[];
+
+  /**
    * Whether jest runs the suite as ES modules. Vitest ignores it.
    *
    * @default `true` when `package.json` declares `"type": "module"`

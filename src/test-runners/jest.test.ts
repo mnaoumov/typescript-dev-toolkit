@@ -172,3 +172,18 @@ describe('testWatch', () => {
     expect(mockExecFromRoot).toHaveBeenCalledWith([JEST, '--watch'], { env: {}, isInteractive: true });
   });
 });
+
+describe('forwarded arguments', () => {
+  it('should append them after the wrapper arguments', async () => {
+    await testCoverage({ additionalArguments: ['src/sum', '--maxWorkers=2'], projects: ['unit'] });
+    expect(mockExecFromRoot.mock.calls[0]?.[0].slice(-4)).toEqual(['--selectProjects', 'unit', 'src/sum', '--maxWorkers=2']);
+  });
+
+  it.each(['--selectProjects', '--select-projects=unit', '--watchAll', '--coverage=false', '--collectCoverage', '--coverageThreshold={}'])(
+    'should refuse the wrapper-owned option %s',
+    async (argument) => {
+      await expect(test({ additionalArguments: [argument] })).rejects.toThrow(`jest wrapper sets these options itself, so they cannot be forwarded: ${argument}`);
+      expect(mockExecFromRoot).not.toHaveBeenCalled();
+    }
+  );
+});

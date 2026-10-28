@@ -7,6 +7,8 @@
 import { existsSync } from 'node:fs';
 import process from 'node:process';
 
+import type { OwnedOption } from './forwarded-arguments.ts';
+
 import { readPackageJson } from '../npm.ts';
 import { resolveToolCommand } from '../package-manager.ts';
 import { RepoPaths } from '../repo-paths.ts';
@@ -14,7 +16,17 @@ import {
   execFromRoot,
   resolvePathFromRootSafe
 } from '../root.ts';
+import { assertNoOwnedArguments } from './forwarded-arguments.ts';
 import { isEsmPackage } from './jest-config.ts';
+
+const OWNED_OPTIONS: readonly OwnedOption[] = [
+  { names: ['--selectProjects', '--select-projects'], replacement: 'the `projects` option' },
+  { names: ['--watch', '--watchAll', '--watch-all'], replacement: 'the `testWatch` wrapper' },
+  {
+    names: ['--coverage', '--no-coverage', '--collectCoverage', '--collect-coverage', '--no-collectCoverage', '--coverageThreshold', '--coverage-threshold'],
+    replacement: 'the `testCoverage` wrapper and its `minCoverageInPercents` option'
+  }
+];
 
 /**
  * Every file jest reads its configuration from, besides the `jest` key of `package.json`.
@@ -54,6 +66,12 @@ export interface TestCoverageOptions extends TestOptions {
  * Options for running tests.
  */
 export interface TestOptions {
+  /**
+   * Further jest CLI arguments, appended after the wrapper's own: test path patterns, `-t`, `--maxWorkers`, `--bail`.
+   * An argument naming an option the wrapper sets itself (`--selectProjects`, `--coverage*`, `--watch*`) throws.
+   */
+  readonly additionalArguments?: readonly string[];
+
   /**
    * Whether jest runs the suite as ES modules, which adds {@link EXPERIMENTAL_VM_MODULES_FLAG} to `NODE_OPTIONS`.
    *
@@ -155,9 +173,13 @@ function addExperimentalVmModulesFlag(nodeOptions: string | undefined): string {
  * @returns A {@link Promise} that resolves when jest exits.
  */
 async function runJest(runArguments: string[], options: TestOptions, isInteractive = false): Promise<void> {
-  const { esm = isEsmPackage(), projects = [] } = options;
+  const { additionalArguments = [], esm = isEsmPackage(), projects = [] } = options;
+  assertNoOwnedArguments({ forwardedArguments: additionalArguments, ownedOptions: OWNED_OPTIONS, runnerName: 'jest' });
   const projectArguments = projects.length > 0 ? ['--selectProjects', ...projects] : [];
   const env = esm ? { NODE_OPTIONS: addExperimentalVmModulesFlag(process.env['NODE_OPTIONS']) } : {};
 
-  await execFromRoot([...resolveToolCommand({ tool: 'jest' }), ...runArguments, ...projectArguments], { env, isInteractive });
+  await execFromRoot([...resolveToolCommand({ tool: 'jest' }), ...runArguments, ...projectArguments, ...additionalArguments], {
+    env,
+    isInteractive
+  });
 }
