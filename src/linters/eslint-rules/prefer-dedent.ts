@@ -12,6 +12,10 @@
  * represent that way keeps the diagnostic without a fix: a backslash, which `dedent` passes on raw; leading or trailing
  * whitespace that `dedent` would trim; a template literal with expressions, whose values are unknown; and comments
  * inside the call. The fix reuses a visible default import of `dedent`, or adds one under a free name.
+ *
+ * The `ignoreInsideCallsTo` option names functions whose callback arguments are serialized and run elsewhere (an
+ * Obsidian test's `evalInObsidian`), where the module's imports are not in scope. A join inside a function nested in
+ * the arguments of such a call is not reported, because `dedent` cannot be used there.
  */
 import type { TSESTree } from '@typescript-eslint/utils';
 import type { Rule } from 'eslint';
@@ -27,6 +31,11 @@ import {
 import { toTSESTreeNode } from './ts-estree-node.ts';
 
 const DEDENT_MODULE = 'dedent';
+const FUNCTION_NODE_TYPES: ReadonlySet<AST_NODE_TYPES> = new Set([
+  AST_NODE_TYPES.ArrowFunctionExpression,
+  AST_NODE_TYPES.FunctionDeclaration,
+  AST_NODE_TYPES.FunctionExpression
+]);
 const INDENT = '  ';
 const LINE_BREAK_SEPARATORS = new Set(['\n', '\r\n']);
 const MINIMUM_ELEMENTS_WITH_A_LINE_BREAK = 2;
@@ -43,11 +52,13 @@ type StringElement = TSESTree.StringLiteral | TSESTree.TemplateLiteral;
  */
 export const preferDedent: Rule.RuleModule = {
   create(context) {
+    const options = (context.options[0] ?? {}) as PreferDedentOptions;
+    const ignoredCalleeNames = new Set(options.ignoreInsideCallsTo);
     return {
       'CallExpression'(node: Rule.Node): void {
         const callNode = toTSESTreeNode(node) as TSESTree.CallExpression;
         const joined = getJoinedStringElements(callNode);
-        if (!joined) {
+        if (!joined || isInsideIgnoredCallback(callNode, ignoredCalleeNames)) {
           return;
         }
 
@@ -94,10 +105,34 @@ export const preferDedent: Rule.RuleModule = {
     messages: {
       [MESSAGE_ID]: 'Write this multiline string as a `dedent` template instead of joining an array of string literals with a newline.'
     },
-    schema: [],
+    schema: [
+      {
+        additionalProperties: false,
+        properties: {
+          ignoreInsideCallsTo: {
+            items: { type: 'string' },
+            type: 'array',
+            uniqueItems: true
+          }
+        },
+        type: 'object'
+      }
+    ],
     type: 'suggestion'
   }
 };
+
+/**
+ * Options of the `prefer-dedent` rule.
+ */
+export interface PreferDedentOptions {
+  /**
+   * Names of functions whose callback arguments run where the module's imports are not in scope. A join inside a
+   * function nested in the arguments of a call to one of them is not reported. A name matches a bare callee
+   * (`evalInObsidian(...)`) and the property of a member callee (`helpers.evalInObsidian(...)`).
+   */
+  readonly ignoreInsideCallsTo?: readonly string[];
+}
 
 interface JoinedStringElements {
   readonly elements: readonly StringElement[];
@@ -110,6 +145,15 @@ function escapeLineBreaks(text: string): string {
 
 function escapeTemplateText(text: string): string {
   return text.replaceAll('`', '\\`').replaceAll('${', '\\${').replaceAll('\r', String.raw`\r`);
+}
+
+function getCalleeName(callee: TSESTree.Expression): null | string {
+  if (callee.type === AST_NODE_TYPES.Identifier) {
+    return callee.name;
+  }
+  return callee.type === AST_NODE_TYPES.MemberExpression && !callee.computed && callee.property.type === AST_NODE_TYPES.Identifier
+    ? callee.property.name
+    : null;
 }
 
 function getJoinedStringElements(node: TSESTree.CallExpression): JoinedStringElements | null {
@@ -157,6 +201,25 @@ function getStaticString(node: TSESTree.Node): null | string {
   }
   // An untagged template with an invalid escape is a syntax error, so its cooked text always exists.
   return node.type === AST_NODE_TYPES.TemplateLiteral && node.expressions.length === 0 ? ensureNonNullable(node.quasis[0]).value.cooked : null;
+}
+
+function isInsideIgnoredCallback(node: TSESTree.Node, ignoredCalleeNames: ReadonlySet<string>): boolean {
+  if (ignoredCalleeNames.size === 0) {
+    return false;
+  }
+  let isInsideFunction = false;
+  let child = node;
+  for (let parent = node.parent; parent; child = parent, parent = parent.parent) {
+    if (FUNCTION_NODE_TYPES.has(parent.type)) {
+      isInsideFunction = true;
+    } else if (isInsideFunction && parent.type === AST_NODE_TYPES.CallExpression && parent.callee !== child) {
+      const name = getCalleeName(parent.callee);
+      if (name !== null && ignoredCalleeNames.has(name)) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 function isStringElement(element: null | TSESTree.Node): element is StringElement {

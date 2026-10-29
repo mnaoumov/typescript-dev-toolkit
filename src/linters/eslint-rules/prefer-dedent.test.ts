@@ -101,28 +101,75 @@ ruleTester.run('prefer-dedent', toRuleTesterModule(preferDedent), {
       languageOptions: { parserOptions: { sourceType: 'script' } },
       name: 'script cannot safely receive an ESM import',
       output: null
-    }
+    },
+    ...([
+      [
+        String.raw`evalInObsidian({ args: { text: ['a', 'b'].join('\n') } });`,
+        `${IMPORT}evalInObsidian({ args: { text: dedent\`\n  a\n  b\n\` } });`,
+        'an ignored call argument outside a function, which runs in the calling process'
+      ],
+      [
+        String.raw`other(() => ['a', 'b'].join('\n'));`,
+        `${IMPORT}other(() => dedent\`\n  a\n  b\n\`);`,
+        'a callback of a call that is not ignored'
+      ],
+      [
+        String.raw`function f() { return ['a', 'b'].join('\n'); }`,
+        `${IMPORT}function f() { return dedent\`\n  a\n  b\n\`; }`,
+        'a function outside any call'
+      ],
+      [
+        String.raw`[() => ['a', 'b'].join('\n')].evalInObsidian();`,
+        `${IMPORT}[() => dedent\`\n  a\n  b\n\`].evalInObsidian();`,
+        'a function inside the callee of an ignored call'
+      ],
+      [
+        String.raw`helpers['evalInObsidian'](() => ['a', 'b'].join('\n'));`,
+        `${IMPORT}helpers['evalInObsidian'](() => dedent\`\n  a\n  b\n\`);`,
+        'a computed member callee'
+      ],
+      [
+        String.raw`factory()(() => ['a', 'b'].join('\n'));`,
+        `${IMPORT}factory()(() => dedent\`\n  a\n  b\n\`);`,
+        'a callee with no name'
+      ]
+    ] as const).map(([code, output, name]) => ({
+      code,
+      errors: [{ messageId: MESSAGE_ID }],
+      name,
+      options: [{ ignoreInsideCallsTo: ['evalInObsidian'] }] as const,
+      output
+    }))
   ],
   valid: [
-    [String.raw`const text = [a, 'b'].join('\n');`, 'a computed element'],
-    [String.raw`const text = [...lines, 'b'].join('\n');`, 'a spread element'],
-    [String.raw`const text = [, 'b'].join('\n');`, 'a hole'],
-    [String.raw`const text = [1, 'b'].join('\n');`, 'a non-string literal'],
-    ['const text = [\'a\', \'b\'].join(\', \');', 'another separator'],
-    ['const text = [\'a\', \'b\'].join();', 'the default separator'],
-    ['const text = [\'a\', \'b\'].join(separator);', 'a computed separator'],
-    ['const text = [\'a\', \'b\'].join(...separators);', 'a spread separator'],
-    ['const text = [\'a\', \'b\'].join(1);', 'a non-string separator'],
-    ['const text = [\'a\', \'b\'].join(`${separator}`);', 'a template separator with an expression'],
-    [String.raw`const text = ['a', 'b'].join('\n', extra);`, 'two arguments'],
-    [String.raw`const text = ['a'].join('\n');`, 'a single element'],
-    [String.raw`const text = lines.join('\n');`, 'an array that is not a literal'],
-    [String.raw`const text = ['a', 'b']['join']('\n');`, 'a computed member'],
-    [String.raw`const text = ['a', 'b']?.join('\n');`, 'an optional member'],
-    [String.raw`const text = ['a', 'b'].join?.('\n');`, 'an optional call'],
-    [String.raw`const text = ['a', 'b'].concat('\n');`, 'another method'],
-    [String.raw`const text = join('\n');`, 'a plain call']
-  ].map(([code, name]) => ({ code: code ?? '', name: name ?? '' }))
+    ...[
+      [String.raw`const text = [a, 'b'].join('\n');`, 'a computed element'],
+      [String.raw`const text = [...lines, 'b'].join('\n');`, 'a spread element'],
+      [String.raw`const text = [, 'b'].join('\n');`, 'a hole'],
+      [String.raw`const text = [1, 'b'].join('\n');`, 'a non-string literal'],
+      ['const text = [\'a\', \'b\'].join(\', \');', 'another separator'],
+      ['const text = [\'a\', \'b\'].join();', 'the default separator'],
+      ['const text = [\'a\', \'b\'].join(separator);', 'a computed separator'],
+      ['const text = [\'a\', \'b\'].join(...separators);', 'a spread separator'],
+      ['const text = [\'a\', \'b\'].join(1);', 'a non-string separator'],
+      ['const text = [\'a\', \'b\'].join(`${separator}`);', 'a template separator with an expression'],
+      [String.raw`const text = ['a', 'b'].join('\n', extra);`, 'two arguments'],
+      [String.raw`const text = ['a'].join('\n');`, 'a single element'],
+      [String.raw`const text = lines.join('\n');`, 'an array that is not a literal'],
+      [String.raw`const text = ['a', 'b']['join']('\n');`, 'a computed member'],
+      [String.raw`const text = ['a', 'b']?.join('\n');`, 'an optional member'],
+      [String.raw`const text = ['a', 'b'].join?.('\n');`, 'an optional call'],
+      [String.raw`const text = ['a', 'b'].concat('\n');`, 'another method'],
+      [String.raw`const text = join('\n');`, 'a plain call']
+    ].map(([code, name]) => ({ code: code ?? '', name: name ?? '' })),
+    ...[
+      [String.raw`evalInObsidian({ fn: () => ['a', 'b'].join('\n') });`, 'an arrow callback of an ignored call'],
+      [String.raw`await evalInObsidian({ fn: async function () { return ['a', 'b'].join('\n'); } });`, 'a function expression callback'],
+      [String.raw`pollInObsidian(() => { function g() { return ['a', 'b'].join('\n'); } return g(); });`, 'a function nested in a callback'],
+      [String.raw`obsidian.evalInObsidian(() => ['a', 'b'].join('\n'));`, 'a member callee'],
+      [String.raw`evalInObsidian(() => other(['a', 'b'].join('\n')));`, 'a call nested in a callback']
+    ].map(([code, name]) => ({ code: code ?? '', name: name ?? '', options: [{ ignoreInsideCallsTo: ['evalInObsidian', 'pollInObsidian'] }] }))
+  ]
 });
 
 const ROUND_TRIP_ARRAYS: readonly (readonly string[])[] = [
