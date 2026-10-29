@@ -382,7 +382,7 @@ describe('generateApiDocs', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     fixture = createFixture();
     await generateApiDocs({ rootDirectory: fixture.root, settings: fixture.settings, sourceDirectory: join(fixture.root, 'src') });
-  }, 60_000);
+  });
 
   it('writes the module index with its overview and tables', () => {
     const page = readPage(fixture, 'alpha/index.mdx');
@@ -498,7 +498,7 @@ describe('generateApiDocs', () => {
     rmSync(join(other.root, 'node_modules/typedoc-plugin-mdn-links'), { force: true, recursive: true });
     await generateApiDocs({ rootDirectory: other.root, settings: other.settings, sourceDirectory: join(other.root, 'src') });
     expect(readPage(other, 'alpha/nothing/index.mdx')).not.toContain('Web/API/AbortSignal');
-  }, 60_000);
+  });
 
   it('applies a site\'s excluded directories and its import statement and member route hooks', async () => {
     const other = createFixture();
@@ -516,7 +516,7 @@ describe('generateApiDocs', () => {
     const index = readPage(other, 'index.mdx');
     expect(index).not.toContain('import subpath');
     expect(index).toContain('each export\'s page shows the statement it is imported with');
-  }, 60_000);
+  });
 
   it('uses a site\'s own API index intro as the root page\'s prose and description', async () => {
     const other = createFixture();
@@ -531,7 +531,7 @@ describe('generateApiDocs', () => {
     expect(index).toContain('description: "The mocks modules are imported by name."');
     expect(index).toContain('\nThe `mocks` modules are imported by name.\n');
     expect(index).not.toContain('generated from its TSDoc');
-  }, 60_000);
+  });
 
   it('documents only what a public API barrel re-exports, imported from the package root', async () => {
     const other = createFixture();
@@ -563,7 +563,7 @@ describe('generateApiDocs', () => {
     writeFileSync(barrelPath, `${readFileSync(barrelPath, 'utf-8')}\nexport { add } from './alpha.ts';`);
     await generateApiDocs({ rootDirectory: other.root, settings, sourceDirectory: join(other.root, 'src') });
     expect(existsSync(join(settings.outputDirectory, 'alpha/add/index.mdx'))).toBe(true);
-  }, 60_000);
+  });
 
   it.each([
     ['export { x } from \'pkg\';', 'which is not a module of this package'],

@@ -12,6 +12,7 @@ const INTEGRATION_TEST_FILES = 'src/**/*.integration.test.ts';
 const SLOW_TEST_FILES = [
   'src/bundlers/esbuild-impl/preprocess-plugin.test.ts',
   'src/docs-site/api-doc-*.test.ts',
+  'src/docs-site/api-docs.test.ts',
   'src/docs-site/docs-snippets.test.ts',
   'src/docs-site/og-images*.test.ts',
   'src/library-build.test.ts'
@@ -40,6 +41,8 @@ export default defineLibraryVitestConfig({
       test: {
         environment: 'node',
         exclude: [...DEFAULT_VITEST_TEST_EXCLUDE, INTEGRATION_TEST_FILES],
+        // A file that builds its program once in a `beforeAll` needs the same budget there.
+        hookTimeout: LOADED_MACHINE_TIMEOUT_IN_MILLISECONDS,
         include: SLOW_TEST_FILES,
         maxWorkers: SLOW_TEST_MAX_WORKERS,
         name: 'unit-tests:slow',
