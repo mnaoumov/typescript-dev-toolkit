@@ -155,6 +155,14 @@ import { lint } from '@mnaoumov/typescript-dev-toolkit/linters/markdownlint';
 
 Lints the Markdown with `markdownlint-cli2`, then checks its links with `linkinator`. Pass `{ shouldFix: true }` to apply the autofixes.
 
+To leave some links unchecked for one run, set `LINK_CHECK_SKIP` to a comma-separated list. An entry holding `://` is a URL prefix and skips every link starting with it. Any other entry is a host and skips the links to exactly that host, so `mail.tm` does not skip `docs.mail.tm`. Use it for a host your network blocks, or for a link that only the release you are cutting will publish:
+
+```sh
+LINK_CHECK_SKIP=mail.tm,https://github.com/owner/repo/releases/tag/1.2.3 npm run lint:md
+```
+
+Every skipped link prints a `WARNING` line naming the file, and so does an entry that skipped nothing. Set the variable on the command that needs it, never in `.env`. It is read from `.env` like every other variable, but a skip that stays there lets a link go stale with nothing to report it.
+
 ### Spellcheck
 
 ```typescript

@@ -10,15 +10,29 @@ import { basename } from '@mnaoumov/typescript-lib/path';
 import { existsSync } from 'node:fs';
 import {
   cp,
-  glob
+  glob,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile
 } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import {
+  join,
   matchesGlob,
-  relative
+  relative,
+  resolve
 } from 'node:path';
+
+import type { LinkCheckSkipEntry } from '../link-check-skip.ts';
 
 import { getBulkConcurrency } from '../bulk-concurrency.ts';
 import { getNonIgnoredFiles } from '../git.ts';
+import {
+  getLinkCheckSkipWarnings,
+  mergeLinkinatorSkipConfig,
+  readLinkCheckSkipEntries
+} from '../link-check-skip.ts';
 import { resolveToolCommand } from '../package-manager.ts';
 import { RepoPaths } from '../repo-paths.ts';
 import {
@@ -112,27 +126,15 @@ export async function lint(options?: LintOptions): Promise<void> {
   if (linkCheckFiles.length === 0) {
     return;
   }
-  // Error retries use millisecond jitter. Omit --retry: its separate Retry-After mode can sleep for thousands
-  // of seconds on a 429 we already accept as a warning. Request timeouts remain errors and keep their retries.
-  await execFromRoot([
-    ...resolveToolCommand({ tool: 'linkinator' }),
-    '--concurrency',
-    String(getBulkConcurrency(LINK_CHECK_CONCURRENCY)),
-    '--timeout',
-    String(LINK_CHECK_TIMEOUT_IN_MILLISECONDS),
-    '--retry-errors',
-    '--retry-errors-count',
-    '3',
-    '--retry-errors-jitter',
-    '5000',
-    '--status-code',
-    '429:warn',
-    '--url-rewrite-search',
-    String.raw`https://www\.npmjs\.com/package/`,
-    '--url-rewrite-replace',
-    'https://registry.npmjs.org/',
-    { batchedArguments: linkCheckFiles }
-  ]);
+  const skipEntries = readLinkCheckSkipEntries();
+  const skipConfigFolder = skipEntries.length > 0 ? await writeSkipConfig(skipEntries, linkCheckFiles, rootFolder) : null;
+  try {
+    await runLinkinator(linkCheckFiles, skipConfigFolder);
+  } finally {
+    if (skipConfigFolder !== null) {
+      await rm(skipConfigFolder, { force: true, recursive: true });
+    }
+  }
 }
 
 /**
@@ -141,6 +143,7 @@ export async function lint(options?: LintOptions): Promise<void> {
 const MARKDOWN_PATHSPEC = '*.md';
 const LINK_CHECK_CONCURRENCY = 100;
 const LINK_CHECK_TIMEOUT_IN_MILLISECONDS = 30_000;
+const LINKINATOR_CONFIG_FILE_NAME = 'linkinator.config.json';
 
 /**
  * Lists the markdown files to hand to `linkinator`.
@@ -168,4 +171,53 @@ async function getMarkdownFiles(): Promise<string[]> {
         NODE_MODULES_IGNORE_GLOB
       ]
     })));
+}
+
+async function runLinkinator(linkCheckFiles: string[], skipConfigFolder: null | string): Promise<void> {
+  // Error retries use millisecond jitter. Omit --retry: its separate Retry-After mode can sleep for thousands
+  // of seconds on a 429 we already accept as a warning. Request timeouts remain errors and keep their retries.
+  await execFromRoot([
+    ...resolveToolCommand({ tool: 'linkinator' }),
+    '--concurrency',
+    String(getBulkConcurrency(LINK_CHECK_CONCURRENCY)),
+    '--timeout',
+    String(LINK_CHECK_TIMEOUT_IN_MILLISECONDS),
+    '--retry-errors',
+    '--retry-errors-count',
+    '3',
+    '--retry-errors-jitter',
+    '5000',
+    '--status-code',
+    '429:warn',
+    '--url-rewrite-search',
+    String.raw`https://www\.npmjs\.com/package/`,
+    '--url-rewrite-replace',
+    'https://registry.npmjs.org/',
+    ...(skipConfigFolder === null ? [] : ['--config', join(skipConfigFolder, LINKINATOR_CONFIG_FILE_NAME)]),
+    { batchedArguments: linkCheckFiles }
+  ]);
+}
+
+/**
+ * Warns about every link the skip entries take out of the check, and writes the `linkinator` config that skips them.
+ *
+ * @param skipEntries - The skip entries.
+ * @param linkCheckFiles - The markdown files handed to `linkinator`, relative to the root folder.
+ * @param rootFolder - The root folder.
+ * @returns A {@link Promise} that resolves with the temporary folder holding the config; the caller removes it.
+ */
+async function writeSkipConfig(skipEntries: readonly LinkCheckSkipEntry[], linkCheckFiles: readonly string[], rootFolder: string): Promise<string> {
+  const sourceFiles = await Promise.all(linkCheckFiles.map(async (path) => ({
+    content: await readFile(resolve(rootFolder, path), 'utf-8'),
+    path
+  })));
+  for (const warning of getLinkCheckSkipWarnings(skipEntries, sourceFiles)) {
+    console.warn(warning);
+  }
+
+  const projectConfigPath = resolve(rootFolder, LINKINATOR_CONFIG_FILE_NAME);
+  const projectConfig: unknown = existsSync(projectConfigPath) ? JSON.parse(await readFile(projectConfigPath, 'utf-8')) : undefined;
+  const skipConfigFolder = await mkdtemp(join(tmpdir(), 'link-check-skip-'));
+  await writeFile(join(skipConfigFolder, LINKINATOR_CONFIG_FILE_NAME), JSON.stringify(mergeLinkinatorSkipConfig(projectConfig, skipEntries)));
+  return skipConfigFolder;
 }
