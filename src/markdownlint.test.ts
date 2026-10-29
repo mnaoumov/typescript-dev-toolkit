@@ -1,4 +1,5 @@
 import { noopAsync } from '@mnaoumov/typescript-lib/function';
+import { join } from 'node:path';
 import {
   afterEach,
   beforeEach,
@@ -20,8 +21,12 @@ const {
   mockGetNonIgnoredFiles,
   mockGetRootFolder,
   mockGlob,
+  mockMkdtemp,
+  mockReadFile,
   mockResolvePathFromRootSafe,
-  mockResolveToolCommand
+  mockResolveToolCommand,
+  mockRm,
+  mockWriteFile
 } = vi.hoisted(() => ({
   mockCp: vi.fn(),
   mockExecFromRoot: vi.fn(),
@@ -29,8 +34,16 @@ const {
   mockGetNonIgnoredFiles: vi.fn<() => Promise<null | string[]>>(),
   mockGetRootFolder: vi.fn<(cwd?: string) => null | string>(),
   mockGlob: vi.fn(),
+  mockMkdtemp: vi.fn<(prefix: string) => Promise<string>>(),
+  mockReadFile: vi.fn<(path: string) => Promise<string>>(),
   mockResolvePathFromRootSafe: vi.fn<(params: ResolvePathFromRootSafeParams) => string>(),
-  mockResolveToolCommand: vi.fn<(params: ResolveToolCommandParams) => string[]>()
+  mockResolveToolCommand: vi.fn<(params: ResolveToolCommandParams) => string[]>(),
+  mockRm: vi.fn(),
+  mockWriteFile: vi.fn<(path: string, content: string) => Promise<void>>()
+}));
+
+vi.mock('./env-toggle.ts', () => ({
+  loadEnvFileIfExists: vi.fn()
 }));
 
 vi.mock('./root.ts', () => ({
@@ -60,7 +73,11 @@ vi.mock('node:fs/promises', async (importOriginal) => {
   return {
     ...$module,
     cp: mockCp,
-    glob: mockGlob
+    glob: mockGlob,
+    mkdtemp: mockMkdtemp,
+    readFile: mockReadFile,
+    rm: mockRm,
+    writeFile: mockWriteFile
   };
 });
 
@@ -70,6 +87,7 @@ vi.mock('@mnaoumov/typescript-lib/debug', () => ({
 
 beforeEach(() => {
   vi.stubEnv('BULK_CORES', undefined);
+  vi.stubEnv('LINK_CHECK_SKIP', undefined);
   vi.resetAllMocks();
   mockExecFromRoot.mockResolvedValue('');
   mockCp.mockResolvedValue(undefined);
@@ -254,6 +272,68 @@ describe('lint', () => {
     expect(mockExecFromRoot).toHaveBeenCalledWith(
       expect.arrayContaining(['markdownlint-cli2', { batchedArguments: ['/root/docs/guide.md'] }])
     );
+  });
+
+  describe('LINK_CHECK_SKIP', () => {
+    const skipConfigFolder = join('/tmp', 'link-check-skip-x');
+    const skipConfigPath = join(skipConfigFolder, 'linkinator.config.json');
+
+    beforeEach(() => {
+      vi.stubEnv('LINK_CHECK_SKIP', 'mail.tm,unused.example');
+      mockGetRootFolder.mockReturnValue('/root');
+      mockMkdtemp.mockResolvedValue(skipConfigFolder);
+      mockReadFile.mockImplementation(async (path) => {
+        await noopAsync();
+        return path.endsWith('linkinator.config.json') ? '{"recurse":true,"skip":"x"}' : '[faq](https://mail.tm/en/faq/)';
+      });
+    });
+
+    function getLinkinatorCall(): unknown[] {
+      return mockExecFromRoot.mock.calls[1]?.[0] as unknown[];
+    }
+
+    // The patterns go in a config file: as `--skip` arguments, the `|` in them broke the Windows `npx` shim chain.
+    it('skips the entries through a temporary config file, warns, and removes the folder', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(vi.fn());
+      mockExistsSync.mockImplementation((path) => !path.endsWith('linkinator.config.json'));
+      await lint();
+      expect(getLinkinatorCall()).toEqual(expect.arrayContaining(['--config', skipConfigPath]));
+      expect(getLinkinatorCall()).not.toContain('--skip');
+      const [writtenPath, content] = mockWriteFile.mock.calls[0] ?? [];
+      expect(writtenPath).toBe(skipConfigPath);
+      expect(JSON.parse(content ?? '')).toEqual({ skip: [expect.stringContaining(String.raw`mail\.tm`), expect.stringContaining(String.raw`unused\.example`)] });
+      expect(warn.mock.calls.map(([message]): unknown => message)).toEqual([
+        'WARNING: LINK_CHECK_SKIP skips https://mail.tm/en/faq/ in README.md (entry mail.tm).',
+        'WARNING: LINK_CHECK_SKIP entry unused.example matched no link; remove it.',
+        expect.stringContaining('Set it for one command only')
+      ]);
+      expect(mockRm).toHaveBeenCalledWith(skipConfigFolder, { force: true, recursive: true });
+    });
+
+    it('carries the project linkinator.config.json over', async () => {
+      vi.spyOn(console, 'warn').mockImplementation(vi.fn());
+      mockExistsSync.mockReturnValue(true);
+      await lint();
+      const content = mockWriteFile.mock.calls[0]?.[1] ?? '';
+      expect(JSON.parse(content)).toEqual({ recurse: true, skip: ['x', expect.any(String), expect.any(String)] });
+    });
+
+    it('removes the folder when linkinator fails', async () => {
+      vi.spyOn(console, 'warn').mockImplementation(vi.fn());
+      mockExistsSync.mockReturnValue(true);
+      mockExecFromRoot.mockResolvedValueOnce('').mockRejectedValueOnce(new Error('broken links'));
+      await expect(lint()).rejects.toThrow('broken links');
+      expect(mockRm).toHaveBeenCalledWith(skipConfigFolder, { force: true, recursive: true });
+    });
+
+    it('passes no config and writes nothing when the variable is unset', async () => {
+      vi.stubEnv('LINK_CHECK_SKIP', '');
+      mockExistsSync.mockReturnValue(true);
+      await lint();
+      expect(getLinkinatorCall()).not.toContain('--config');
+      expect(mockMkdtemp).not.toHaveBeenCalled();
+      expect(mockRm).not.toHaveBeenCalled();
+    });
   });
 
   it('should handle multiple markdown files from glob', async () => {
