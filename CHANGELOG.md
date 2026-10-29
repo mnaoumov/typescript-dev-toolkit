@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## 5.4.0
+
+- test(docs-site): run api-docs.test.ts in the slow project, with a hook budget for its beforeAll
+- feat(eslint): let prefer-dedent ignore callbacks of named calls, run without the imports
+
 ## 5.3.0
 
 - feat(markdownlint): skip links named in LINK_CHECK_SKIP for one run, warning on each
