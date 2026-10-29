@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 5.3.0
+
+- feat(markdownlint): skip links named in LINK_CHECK_SKIP for one run, warning on each
+
 ## 5.2.0
 
 - feat(eslint): add prefer-dedent, fixing literal arrays joined with a newline to dedent
