@@ -41,6 +41,7 @@ const PAGE_URL = 'https://mnaoumov.dev/typescript-lib/p/';
 const EXTERNAL_URL = 'https://mnaoumov.dev/obsidian-lib/api/x/';
 const HTTP_OK = 200;
 const HTTP_NOT_FOUND = 404;
+const HTTP_REQUEST_TIMEOUT = 408;
 const HTTP_TOO_MANY_REQUESTS = 429;
 const HTTP_SERVER_ERROR = 500;
 const HTTP_SERVICE_UNAVAILABLE = 503;
@@ -261,6 +262,15 @@ describe('collectBrokenExternalLinks (retry)', () => {
 
     expect(fetchUrlStatus).toHaveBeenCalledOnce();
     expect(delays).toEqual([]);
+  });
+
+  it('retries a 408, the server timing out its own upstream', async () => {
+    const { delays, retry } = createRetry();
+    const fetchUrlStatus = sequence(HTTP_REQUEST_TIMEOUT, HTTP_OK);
+
+    await expect(collectBrokenExternalLinks(new Map([[EXTERNAL_URL, PAGE_URL]]), fetchUrlStatus, 1, { retry })).resolves.toEqual([]);
+
+    expect(delays).toEqual([DEFAULT_EXTERNAL_LINK_RETRY_INITIAL_DELAY_IN_MILLISECONDS]);
   });
 
   it('waits at least the Retry-After of a 429', async () => {

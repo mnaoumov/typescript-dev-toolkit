@@ -101,7 +101,7 @@ export interface ExternalLinkProbeResult {
 }
 
 /**
- * How {@link collectBrokenExternalLinks} retries a transient failure: a network failure, an HTTP `429` or an HTTP `5xx`.
+ * How {@link collectBrokenExternalLinks} retries a transient failure: a network failure, an HTTP `408`, an HTTP `429` or an HTTP `5xx`.
  *
  * Each wait doubles from {@link ExternalLinkRetryOptions.initialDelayInMilliseconds} up to
  * {@link ExternalLinkRetryOptions.maxDelayInMilliseconds}, is jittered into its upper half, and is never shorter than the
@@ -180,6 +180,7 @@ export const DEFAULT_EXTERNAL_LINK_RETRY_MAX_DELAY_IN_MILLISECONDS = 16_000;
  */
 export const DEFAULT_EXTERNAL_LINK_RETRY_TOTAL_BUDGET_IN_MILLISECONDS = 45_000;
 
+const HTTP_REQUEST_TIMEOUT_STATUS = 408;
 const HTTP_TOO_MANY_REQUESTS_STATUS = 429;
 const HTTP_SERVER_ERROR_MIN_STATUS = 500;
 const MILLISECONDS_PER_SECOND = 1000;
@@ -196,7 +197,7 @@ interface PendingProbe {
 /**
  * Validates the deduplicated external URLs over the network through a bounded concurrency pool.
  *
- * A network failure, an HTTP `429` and an HTTP `5xx` are retried with an exponential, jittered backoff that honors
+ * A network failure, an HTTP `408`, an HTTP `429` and an HTTP `5xx` are retried with an exponential, jittered backoff that honors
  * `Retry-After` (see {@link ExternalLinkRetryOptions}); any other status, a `404` included, is final at once. Probes of
  * one host are also capped at {@link CollectBrokenExternalLinksOptions.perHostConcurrency}, and a probe of another host
  * is started while one host is at its cap.
@@ -453,7 +454,7 @@ function describeHttpStatus(httpStatus: number | undefined): string {
 }
 
 function isTransientStatus(status: number): boolean {
-  return status === NETWORK_FAILURE_STATUS || status === HTTP_TOO_MANY_REQUESTS_STATUS || status >= HTTP_SERVER_ERROR_MIN_STATUS;
+  return status === NETWORK_FAILURE_STATUS || status === HTTP_REQUEST_TIMEOUT_STATUS || status === HTTP_TOO_MANY_REQUESTS_STATUS || status >= HTTP_SERVER_ERROR_MIN_STATUS;
 }
 
 /*
