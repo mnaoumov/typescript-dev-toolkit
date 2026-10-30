@@ -123,7 +123,7 @@ describe('lint', () => {
     mockExistsSync.mockReturnValue(true);
     await lint();
     expect(mockExecFromRoot).toHaveBeenCalledWith(
-      expect.arrayContaining(['linkinator', '--retry-errors', '--retry-errors-count', '3', '--retry-errors-jitter', '5000', '--status-code', '429:warn', '--timeout', '30000'])
+      expect.arrayContaining(['linkinator', '--retry-errors', '--retry-errors-count', '3', '--retry-errors-jitter', '5000', '--status-code', '429:warn', '--status-code', '408:warn', '--timeout', '30000'])
     );
     expect(mockExecFromRoot.mock.calls[1]?.[0]).not.toContain('--retry');
   });

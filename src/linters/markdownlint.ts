@@ -176,6 +176,8 @@ async function getMarkdownFiles(): Promise<string[]> {
 async function runLinkinator(linkCheckFiles: string[], skipConfigFolder: null | string): Promise<void> {
   // Error retries use millisecond jitter. Omit --retry: its separate Retry-After mode can sleep for thousands
   // of seconds on a 429 we already accept as a warning. Request timeouts remain errors and keep their retries.
+  // A 408 is the server's own timeout (shields.io answers it when its upstream is slow); --retry-errors never retries
+  // it, so it is a warning like a 429 rather than a gate failure that says nothing about whether the link exists.
   await execFromRoot([
     ...resolveToolCommand({ tool: 'linkinator' }),
     '--concurrency',
@@ -189,6 +191,8 @@ async function runLinkinator(linkCheckFiles: string[], skipConfigFolder: null | 
     '5000',
     '--status-code',
     '429:warn',
+    '--status-code',
+    '408:warn',
     '--url-rewrite-search',
     String.raw`https://www\.npmjs\.com/package/`,
     '--url-rewrite-replace',
