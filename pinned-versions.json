@@ -10,6 +10,34 @@
     "that is actually present in the declared section; the script reports either mismatch."
   ],
   "pins": {
+    "eslint-plugin-unicorn": {
+      "section": "dependencies",
+      "why": "The shared ESLint config enables unicorn's recommended rules, so every unicorn major changes what each consumer's lint reports. 79.0.0 reported 1,682 errors on this repository alone, 1,553 of them from the new no-asterisk-prefix-in-documentation-comments, which rejects the JSDoc block style every file here uses. Adopting a new major is a deliberate change to the shared config (rules to turn off or adopt, and a toolkit major), not a dependency sweep, so the version is held until that is done.",
+      "check": "npm view eslint-plugin-unicorn version",
+      "expect": "79.0.0",
+      "manualCheck": "Any newer unicorn release changes the check's answer. Adopting it means deciding each new recommended rule in the shared config and releasing that as a toolkit major."
+    },
+    "satteri": {
+      "section": "devDependencies",
+      "why": "The docs-site mdast plugins import their types from satteri, and the runtime that calls them is the satteri @astrojs/markdown-satteri (and Starlight through @astrojs/mdx) depends on, which is ^0.10.5. A newer satteri here type-checks the plugins against an API the docs build never runs, so the dev copy stays on the release Astro uses, and the peer range stays ^0.10.5.",
+      "check": "npm view @astrojs/markdown-satteri dependencies.satteri",
+      "expect": "^0.10.5",
+      "manualCheck": "When the newest @astrojs/markdown-satteri moves to a newer satteri, move this pin, the satteri peer range and @astrojs/markdown-satteri together, and re-run the docs build."
+    },
+    "fflate": {
+      "section": "overrides",
+      "why": "Clears GHSA-px8p-9vwx-vf98 (fflate unzipSync infinite loop on a malformed ZIP64 archive, >=0.7.0 <0.7.5). Reached only through satori, whose newest release pins fflate at the exact 0.7.3, so no bump reaches the fix. 0.7.5 is the patch release on the same minor. NEVER take the `npm audit fix --force` remedy: it downgrades satori to 0.32.0.",
+      "check": "npm view satori dependencies.fflate",
+      "expect": "0.7.3",
+      "manualCheck": "The check reads the exact fflate pin of the newest satori. When it reads 0.7.5 or later, drop the override and this entry, and re-run `npm audit`."
+    },
+    "katex": {
+      "section": "overrides",
+      "why": "Clears GHSA-238p-pmpm-9mq7 (KaTeX trust restrictions bypassed through existing prototype pollution, >=0.11.0 <0.18.2). Reached only through markdownlint -> micromark-extension-math, which declares katex ^0.16.0, so no bump reaches the fix. micromark-extension-math imports katex only in its HTML renderer, which markdownlint never calls (it uses the parser alone), so the forced minor cannot change a lint result. NEVER take the `npm audit fix --force` remedy: it downgrades markdownlint to 0.36.1.",
+      "check": "npm view micromark-extension-math dependencies.katex",
+      "expect": "^0.16.0",
+      "manualCheck": "The check reads the katex range of the newest micromark-extension-math. When it admits 0.18.2 or later, drop the override and this entry once markdownlint's tree resolves to that release, and re-run `npm audit`."
+    },
     "js-yaml": {
       "section": "overrides",
       "why": "Starlight declares js-yaml ^4 and loads it through a default import, which js-yaml 5 (ESM-only, no default export) does not provide, so the tree must stay on 4.x. 4.3.1 and below sit inside GHSA-2883-xcg3-v3hh; 4.3.2 is the patched release on the v4-legacy dist-tag. The override also holds markdownlint-cli2 below the js-yaml 5 it exact-pins for itself, which works because it only uses the named `load` export, which js-yaml 4 has. The check tracks the v4-legacy dist-tag, because a backport there is the only way an advisory leaves this tree while Starlight is on 4.x.",
