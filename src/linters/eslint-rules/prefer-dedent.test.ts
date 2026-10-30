@@ -161,14 +161,14 @@ ruleTester.run('prefer-dedent', toRuleTesterModule(preferDedent), {
       [String.raw`const text = ['a', 'b'].join?.('\n');`, 'an optional call'],
       [String.raw`const text = ['a', 'b'].concat('\n');`, 'another method'],
       [String.raw`const text = join('\n');`, 'a plain call']
-    ].map(([code, name]) => ({ code: code ?? '', name: name ?? '' })),
+    ].map(([code = '', name = '']) => ({ code, name })),
     ...[
       [String.raw`evalInObsidian({ fn: () => ['a', 'b'].join('\n') });`, 'an arrow callback of an ignored call'],
       [String.raw`await evalInObsidian({ fn: async function () { return ['a', 'b'].join('\n'); } });`, 'a function expression callback'],
       [String.raw`pollInObsidian(() => { function g() { return ['a', 'b'].join('\n'); } return g(); });`, 'a function nested in a callback'],
       [String.raw`obsidian.evalInObsidian(() => ['a', 'b'].join('\n'));`, 'a member callee'],
       [String.raw`evalInObsidian(() => other(['a', 'b'].join('\n')));`, 'a call nested in a callback']
-    ].map(([code, name]) => ({ code: code ?? '', name: name ?? '', options: [{ ignoreInsideCallsTo: ['evalInObsidian', 'pollInObsidian'] }] }))
+    ].map(([code = '', name = '']) => ({ code, name, options: [{ ignoreInsideCallsTo: ['evalInObsidian', 'pollInObsidian'] }] }))
   ]
 });
 

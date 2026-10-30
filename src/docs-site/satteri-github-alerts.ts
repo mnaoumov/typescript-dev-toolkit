@@ -56,12 +56,8 @@ export function satteriGitHubAlerts(): MdastPluginDefinition {
   return {
     blockquote(node, context: MdastVisitorContext): void {
       const alert = parseAlert(node);
-      if (alert === null) {
-        return;
-      }
-
       // GitHub does not nest alerts, so neither do we: an alert inside an alert stays a blockquote.
-      if (hasAlertAncestor(node, context)) {
+      if (alert === null || hasAlertAncestor(node, context)) {
         return;
       }
 

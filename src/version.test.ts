@@ -732,7 +732,7 @@ describe('publishGitHubRelease', () => {
       if (commandString.startsWith('gh repo view')) {
         return Promise.resolve('https://github.com/user/repo');
       }
-      return commandString.includes('npm pack') ? Promise.resolve(packOutput) : Promise.resolve('');
+      return Promise.resolve(commandString.includes('npm pack') ? packOutput : '');
     });
   }
 
@@ -995,7 +995,7 @@ describe('updateChangelog', () => {
       if (commandString.startsWith('code -w')) {
         return Promise.reject(new Error('Editor crashed'));
       }
-      return commandString === 'code --version' ? Promise.resolve('1.92.0') : Promise.resolve('msg\0');
+      return Promise.resolve(commandString === 'code --version' ? '1.92.0' : 'msg\0');
     });
 
     await expect(updateChangelog('1.0.0')).rejects.toThrow('Editor crashed');
@@ -1663,7 +1663,7 @@ describe('updateVersion', () => {
       if (commandString.startsWith('gh repo view')) {
         return Promise.resolve('https://github.com/user/repo');
       }
-      return commandString.includes('npm pack') ? Promise.resolve(JSON.stringify([{ filename: 'pkg-1.0.1.tgz' }], null, 2)) : Promise.resolve('');
+      return Promise.resolve(commandString.includes('npm pack') ? JSON.stringify([{ filename: 'pkg-1.0.1.tgz' }], null, 2) : '');
     }));
   }
 
@@ -1917,7 +1917,7 @@ describe('updateVersion', () => {
       if (commandString.startsWith('gh repo view')) {
         return Promise.resolve('https://github.com/user/repo');
       }
-      return commandString.includes('npm pack') ? Promise.resolve(JSON.stringify([{ filename: 'pkg-1.0.1.tgz' }], null, 2)) : Promise.resolve('');
+      return Promise.resolve(commandString.includes('npm pack') ? JSON.stringify([{ filename: 'pkg-1.0.1.tgz' }], null, 2) : '');
     }));
     mockEditPackageJson.mockImplementation(() => {
       steps.push('bump');
@@ -1967,7 +1967,7 @@ describe('updateVersion', () => {
         if (commandString.startsWith('gh repo view')) {
           return Promise.resolve('https://github.com/user/repo');
         }
-        return commandString.includes('npm pack') ? Promise.resolve(JSON.stringify([{ filename: 'pkg.tgz' }], null, 2)) : Promise.resolve('');
+        return Promise.resolve(commandString.includes('npm pack') ? JSON.stringify([{ filename: 'pkg.tgz' }], null, 2) : '');
       }));
     }
 
@@ -2071,7 +2071,7 @@ describe('updateVersion', () => {
           return Promise.resolve('https://github.com/user/repo');
         }
         // `git rev-parse --verify --quiet` answers with nothing for a heading that is not a tag.
-        return commandString.includes('npm pack') ? Promise.resolve(JSON.stringify([{ filename: 'pkg.tgz' }], null, 2)) : Promise.resolve('');
+        return Promise.resolve(commandString.includes('npm pack') ? JSON.stringify([{ filename: 'pkg.tgz' }], null, 2) : '');
       }));
       await updateVersion('patch');
       expect(mockEditPackageJson).toHaveBeenCalled();

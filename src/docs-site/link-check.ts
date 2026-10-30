@@ -446,7 +446,7 @@ export function resolveWithinRoot(outputRootPath: string, outputRelativePath: st
     joined = joined.replace(/\/$/u, '');
   }
 
-  return joined !== root && !joined.startsWith(`${root}/`) ? null : joined;
+  return joined === root || joined.startsWith(`${root}/`) ? joined : null;
 }
 
 function describeHttpStatus(httpStatus: number | undefined): string {
@@ -476,7 +476,7 @@ async function probeWithRetry(
   let waitedInMilliseconds = 0;
   for (let attempt = 0;; attempt++) {
     const probeResult = await fetchUrlStatus(url);
-    const { retryAfterInMilliseconds, status } = typeof probeResult === 'number' ? { retryAfterInMilliseconds: undefined, status: probeResult } : probeResult;
+    const { retryAfterInMilliseconds = 0, status } = typeof probeResult === 'number' ? { retryAfterInMilliseconds: undefined, status: probeResult } : probeResult;
     const remainingInMilliseconds = totalBudgetInMilliseconds - waitedInMilliseconds;
     if (!isTransientStatus(status) || remainingInMilliseconds <= 0) {
       return status;
@@ -484,7 +484,7 @@ async function probeWithRetry(
 
     const backoffInMilliseconds = Math.min(maxDelayInMilliseconds, initialDelayInMilliseconds * BACKOFF_FACTOR ** attempt);
     const jitteredInMilliseconds = backoffInMilliseconds * (JITTER_FLOOR + (1 - JITTER_FLOOR) * random());
-    const delayInMilliseconds = Math.min(remainingInMilliseconds, Math.max(jitteredInMilliseconds, retryAfterInMilliseconds ?? 0));
+    const delayInMilliseconds = Math.min(remainingInMilliseconds, Math.max(jitteredInMilliseconds, retryAfterInMilliseconds));
     await sleep(delayInMilliseconds);
     waitedInMilliseconds += delayInMilliseconds;
   }

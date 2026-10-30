@@ -363,7 +363,7 @@ export async function compareWithUpstream(entry: UpstreamEntry, dependencies: Pi
 
   const compare = await dependencies.fetchJson(`https://api.github.com/repos/${entry.repo}/compare/${entry.commit}...${head}`) as GitHubCompare;
   const files = compare.files ?? [];
-  const touched = new Set(files.flatMap((file) => file.previous_filename === undefined ? [file.filename] : [file.filename, file.previous_filename]));
+  const touched = new Set(files.flatMap((file) => file.previous_filename === undefined ? file.filename : [file.filename, file.previous_filename]));
   const changedPaths = [...touched].filter((path) => entry.paths.some((glob) => matchesGlob(path, glob))).sort();
   const isTruncated = files.length >= COMPARE_FILE_LIMIT;
   return {

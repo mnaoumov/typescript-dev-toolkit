@@ -352,10 +352,10 @@ afterAll(() => {
 function createFixture(): Fixture {
   const root = mkdtempSync(join(tmpdir(), 'api-docs-'));
   fixtures.push(root);
-  for (const [path, content] of Object.entries(FIXTURE_FILES)) {
+  for (const [path, content = ''] of Object.entries(FIXTURE_FILES)) {
     const fullPath = join(root, path);
     mkdirSync(dirname(fullPath), { recursive: true });
-    writeFileSync(fullPath, content ?? '');
+    writeFileSync(fullPath, content);
   }
 
   return {

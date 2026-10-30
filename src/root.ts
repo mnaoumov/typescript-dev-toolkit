@@ -125,7 +125,6 @@ export function execFromRoot(command: CommandPart[] | string, options: ExecFromR
     root = options.cwd ?? process.cwd();
   }
 
-  // eslint-disable-next-line unicorn/prefer-minimal-ternary -- Each branch picks a different `exec` overload by the literal `shouldIncludeDetails`; a `boolean` matches neither.
   return options.shouldIncludeDetails ? exec(command, { ...options, cwd: root, shouldIncludeDetails: true }) : exec(command, { ...options, cwd: root, shouldIncludeDetails: false });
 }
 

@@ -13,8 +13,6 @@ import {
   vi
 } from 'vitest';
 
-type OnLoadCallback = (arguments_: OnLoadArgs) => OnLoadResult;
-
 function createBuild(): PluginBuild {
   return castTo<PluginBuild>({
     initialOptions: {},
@@ -99,6 +97,7 @@ describe('svelteWrapperPlugin', () => {
   });
 
   it('fails only a .svelte file when svelte is not installed', async () => {
+    type OnLoadCallback = (arguments_: OnLoadArgs) => OnLoadResult;
     mockEsbuildSvelteLoadError(createModuleNotFoundError('Cannot find module \'svelte/compiler\'', 'MODULE_NOT_FOUND'));
     const { svelteWrapperPlugin } = await importPlugin();
     const build = createBuild();

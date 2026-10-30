@@ -110,10 +110,10 @@ export const paramsOptionsNameMatch: Rule.RuleModule = {
 function getClassName(methodDefinition: Rule.Node): string | undefined {
   const classBody = methodDefinition.parent;
   const classNode = classBody?.parent;
-  return !classNode || !('id' in classNode) || !classNode.id || typeof classNode.id !== 'object' || !('name' in classNode.id)
-      || typeof classNode.id.name !== 'string'
-    ? undefined
-    : classNode.id.name;
+  return classNode && ('id' in classNode) && classNode.id && typeof classNode.id === 'object' && ('name' in classNode.id)
+      && typeof classNode.id.name === 'string'
+    ? classNode.id.name
+    : undefined;
 }
 
 function getExpectedPrefix(node: Rule.Node): string | undefined {
@@ -136,13 +136,10 @@ function getFunctionExpectedPrefix(node: Rule.Node): string | undefined {
 
 function getMethodExpectedPrefix(node: Rule.Node): string | undefined {
   const methodDefinition = node.parent;
-  if (methodDefinition?.type !== 'MethodDefinition') {
-    return undefined;
-  }
-
-  /* v8 ignore start -- Defensive guard: ESLint AST MethodDefinition always has a named key. */
+  /* v8 ignore start -- The key checks are a defensive guard: ESLint AST MethodDefinition always has a named key. */
   if (
-    !('key' in methodDefinition) || !methodDefinition.key || typeof methodDefinition.key !== 'object' || !('name' in methodDefinition.key) || typeof methodDefinition.key.name !== 'string'
+    methodDefinition?.type !== 'MethodDefinition'
+    || !('key' in methodDefinition) || !methodDefinition.key || typeof methodDefinition.key !== 'object' || !('name' in methodDefinition.key) || typeof methodDefinition.key.name !== 'string'
   ) {
     return undefined;
   }

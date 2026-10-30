@@ -47,10 +47,10 @@ afterEach(() => {
 function createRoot(files: Readonly<Partial<Record<string, string>>>): string {
   const root = mkdtempSync(join(tmpdir(), 'og-images-'));
   roots.push(root);
-  for (const [path, content] of Object.entries(files)) {
+  for (const [path, content = ''] of Object.entries(files)) {
     const fullPath = join(root, path);
     mkdirSync(dirname(fullPath), { recursive: true });
-    writeFileSync(fullPath, content ?? '');
+    writeFileSync(fullPath, content);
   }
   return root;
 }

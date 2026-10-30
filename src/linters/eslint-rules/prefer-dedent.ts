@@ -245,10 +245,8 @@ function toDedentLines(text: string): null | string[] {
   const leading = text.slice(0, text.length - rest.length);
   const core = rest.replace(/[\r\n]+$/, '');
   const trailing = rest.slice(core.length);
-  if (core === '' || (leading === '' && /^\s/.test(core)) || (trailing === '' && /\s$/.test(core))) {
-    return null;
-  }
-
   // The escapes hold no line break, so splitting after escaping splits only the line breaks of the core.
-  return `${escapeLineBreaks(leading)}${escapeTemplateText(core)}${escapeLineBreaks(trailing)}`.split('\n');
+  return core === '' || (leading === '' && /^\s/.test(core)) || (trailing === '' && /\s$/.test(core))
+    ? null
+    : `${escapeLineBreaks(leading)}${escapeTemplateText(core)}${escapeLineBreaks(trailing)}`.split('\n');
 }

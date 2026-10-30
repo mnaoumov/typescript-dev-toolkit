@@ -23,33 +23,66 @@ const SUGGESTION_MESSAGE_ID = 'prefer-logical-operator-over-ternary/suggestion';
 const OPTIONAL_CHAIN_MESSAGE_ID = 'prefer-logical-operator-over-ternary/optional-chain-error';
 const OPTIONAL_CHAIN_SUGGESTION_MESSAGE_ID = 'prefer-logical-operator-over-ternary/optional-chain-suggestion';
 
-const ruleTester = new RuleTester();
+const ruleTester = new RuleTester({
+  languageOptions: {
+    parserOptions: {
+      projectService: {
+        allowDefaultProject: ['*.ts'],
+        defaultProject: 'tsconfig.eslint-test.json'
+      }
+    }
+  }
+});
 
 ruleTester.run('prefer-logical-operator-over-ternary', toRuleTesterModule(preferLogicalOperatorOverTernary), {
   invalid: [
     {
-      code: 'declare const a: boolean; declare const b: string; const x = a ? false : b;',
+      code: 'declare const a: boolean; declare const b: boolean; const x = a ? false : b;',
       errors: [{ messageId: MESSAGE_ID }],
       name: 'a false consequent negates the test under &&',
-      output: 'declare const a: boolean; declare const b: string; const x = !a && b;'
+      output: 'declare const a: boolean; declare const b: boolean; const x = !a && b;'
     },
     {
-      code: 'declare const a: number; declare const b: string; const x = a ? b : true;',
+      code: 'declare const a: number; declare const b: boolean; const x = a ? b : true;',
       errors: [{ messageId: MESSAGE_ID }],
       name: 'a true alternate negates the test under ||',
-      output: 'declare const a: number; declare const b: string; const x = !a || b;'
+      output: 'declare const a: number; declare const b: boolean; const x = !a || b;'
     },
     {
-      code: 'declare const b: string; const x = 1 > 2 ? true : b;',
+      code: 'declare const b: boolean; const x = 1 > 2 ? true : b;',
       errors: [{ messageId: MESSAGE_ID }],
       name: 'a true consequent with a boolean test keeps the test under ||',
-      output: 'declare const b: string; const x = 1 > 2 || b;'
+      output: 'declare const b: boolean; const x = 1 > 2 || b;'
     },
     {
-      code: 'declare const b: string; const x = 1 > 2 ? b : false;',
+      code: 'declare const b: boolean; const x = 1 > 2 ? b : false;',
       errors: [{ messageId: MESSAGE_ID }],
       name: 'a false alternate with a boolean test keeps the test under &&',
-      output: 'declare const b: string; const x = 1 > 2 && b;'
+      output: 'declare const b: boolean; const x = 1 > 2 && b;'
+    },
+    {
+      code: 'declare const a: string | null; declare const b: boolean; const x = a ? b : false;',
+      errors: [{ messageId: MESSAGE_ID }],
+      name: 'a test that is not boolean is coerced under &&, so a falsy test still yields false',
+      output: 'declare const a: string | null; declare const b: boolean; const x = !!a && b;'
+    },
+    {
+      code: 'declare const a: number; declare const b: boolean; const x = a ? true : b;',
+      errors: [{ messageId: MESSAGE_ID }],
+      name: 'a test that is not boolean is coerced under ||',
+      output: 'declare const a: number; declare const b: boolean; const x = !!a || b;'
+    },
+    {
+      code: 'declare const a: number | undefined; declare const c: number; declare const b: boolean; const x = a ?? c ? b : false;',
+      errors: [{ messageId: MESSAGE_ID }],
+      name: 'a coerced test is parenthesized under !!',
+      output: 'declare const a: number | undefined; declare const c: number; declare const b: boolean; const x = !!(a ?? c) && b;'
+    },
+    {
+      code: 'declare const a: { b: boolean } | null; const x = a ? a.b : false;',
+      errors: [{ messageId: MESSAGE_ID }],
+      name: 'a coerced test still narrows the branch that reads it',
+      output: 'declare const a: { b: boolean } | null; const x = !!a && a.b;'
     },
     {
       code: 'declare const a: number; declare const b: boolean; declare const c: boolean; const x = a > 1 ? false : b || c;',
@@ -64,10 +97,10 @@ ruleTester.run('prefer-logical-operator-over-ternary', toRuleTesterModule(prefer
       output: 'declare const a: boolean; declare const b: boolean; declare const c: boolean; const x = !(a && b) && c && a;'
     },
     {
-      code: 'declare const b: string; declare const c: string | undefined; const x = 1 > 2 ? true : c ?? b;',
+      code: 'declare const b: boolean; declare const c: boolean | undefined; declare const d: boolean; const x = c ?? b ? true : d;',
       errors: [{ messageId: MESSAGE_ID }],
-      name: 'a ?? branch is parenthesized under ||',
-      output: 'declare const b: string; declare const c: string | undefined; const x = 1 > 2 || (c ?? b);'
+      name: 'a ?? test is parenthesized under ||',
+      output: 'declare const b: boolean; declare const c: boolean | undefined; declare const d: boolean; const x = (c ?? b) || d;'
     },
     {
       code: 'declare const a: boolean; declare const b: boolean; declare const c: boolean; const x = 1 > 2 ? true : b && c;',
@@ -88,19 +121,25 @@ ruleTester.run('prefer-logical-operator-over-ternary', toRuleTesterModule(prefer
       output: 'declare const a: boolean; declare const b: boolean; const x = !a && (b = true);'
     },
     {
-      code: 'declare const a: boolean; const x = a ? false : [a];',
+      code: 'declare const a: boolean; declare function f(): boolean; const x = a ? false : f();',
       errors: [{ messageId: MESSAGE_ID }],
-      name: 'an array branch is not parenthesized',
-      output: 'declare const a: boolean; const x = !a && [a];'
+      name: 'a call branch is not parenthesized',
+      output: 'declare const a: boolean; declare function f(): boolean; const x = !a && f();'
     },
     {
-      code: 'declare const a: boolean; declare const b: string; const x = a ? false /* why */ : b;',
+      code: 'declare const b: boolean; const x = [b] ? b : false;',
+      errors: [{ messageId: MESSAGE_ID }],
+      name: 'an array test is not parenthesized under !!',
+      output: 'declare const b: boolean; const x = !![b] && b;'
+    },
+    {
+      code: 'declare const a: boolean; declare const b: boolean; const x = a ? false /* why */ : b;',
       errors: [{ messageId: MESSAGE_ID }],
       name: 'a comment inside the ternary leaves it unfixed',
       output: null
     },
     {
-      code: 'declare const a: boolean; declare const b: string; const NO = false; const x = a ? NO : b;',
+      code: 'declare const a: boolean; declare const b: boolean; const NO = false; const x = a ? NO : b;',
       errors: [{ messageId: MESSAGE_ID }],
       name: 'a boolean constant that is not a literal leaves it unfixed',
       output: null
@@ -152,11 +191,24 @@ ruleTester.run('prefer-logical-operator-over-ternary', toRuleTesterModule(prefer
   ]
 });
 
+// Without type information no test can be proven boolean, so even a comparison is coerced.
+new RuleTester().run('prefer-logical-operator-over-ternary without type information', toRuleTesterModule(preferLogicalOperatorOverTernary), {
+  invalid: [
+    {
+      code: 'declare const b: boolean; const x = 1 > 2 ? b : false;',
+      errors: [{ messageId: MESSAGE_ID }],
+      name: 'a test is coerced when the type checker is not there to prove it boolean',
+      output: 'declare const b: boolean; const x = !!(1 > 2) && b;'
+    }
+  ],
+  valid: []
+});
+
 describe('prefer-logical-operator-over-ternary in a JavaScript file', () => {
   it('keeps the fix unicorn makes itself', () => {
     const linter = new Linter();
     const result = linter.verifyAndFix(
-      'const x = a ? false : b;\n',
+      'const x = a ? false : b > 1;\n',
       [
         {
           files: ['**/*.js'],
@@ -172,7 +224,7 @@ describe('prefer-logical-operator-over-ternary in a JavaScript file', () => {
     );
 
     expect(result.messages).toEqual([]);
-    expect(result.output).toBe('const x = !a && b;\n');
+    expect(result.output).toBe('const x = !a && (b > 1);\n');
   });
 });
 
