@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## 5.4.1
+
+- fix(markdownlint): warn on a 408 in the link check, and retry it in the site check
+- build(deps): override re2js to ^2.9.1 for GHSA-gg6h-894w-4m9c
+
 ## 5.4.0
 
 - test(docs-site): run api-docs.test.ts in the slow project, with a hook budget for its beforeAll
