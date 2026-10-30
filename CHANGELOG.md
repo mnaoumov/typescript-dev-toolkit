@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 6.0.0
+
+- feat(eslint)!: adopt eslint-plugin-unicorn 79 in the shared config
+
 ## 5.4.2
 
 - build(deps): clear the npm audit advisories fixable without a downgrade
