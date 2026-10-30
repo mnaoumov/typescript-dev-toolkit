@@ -299,9 +299,9 @@ describe('lint', () => {
       await lint();
       expect(getLinkinatorCall()).toEqual(expect.arrayContaining(['--config', skipConfigPath]));
       expect(getLinkinatorCall()).not.toContain('--skip');
-      const [writtenPath, content] = mockWriteFile.mock.calls[0] ?? [];
+      const [writtenPath, content = ''] = mockWriteFile.mock.calls[0] ?? [];
       expect(writtenPath).toBe(skipConfigPath);
-      expect(JSON.parse(content ?? '')).toEqual({ skip: [expect.stringContaining(String.raw`mail\.tm`), expect.stringContaining(String.raw`unused\.example`)] });
+      expect(JSON.parse(content)).toEqual({ skip: [expect.stringContaining(String.raw`mail\.tm`), expect.stringContaining(String.raw`unused\.example`)] });
       expect(warn.mock.calls.map(([message]): unknown => message)).toEqual([
         'WARNING: LINK_CHECK_SKIP skips https://mail.tm/en/faq/ in README.md (entry mail.tm).',
         'WARNING: LINK_CHECK_SKIP entry unused.example matched no link; remove it.',

@@ -36,9 +36,6 @@ vi.mock('node:child_process', async (importOriginal) => ({
 const HTTP_NOT_FOUND = 404;
 const SIGNAL_EXIT_CODE = 1;
 
-// Each test replaces the dependencies needed for its scenario.
-type MutableSyncDependencies = { -readonly [Key in keyof SyncDependencies]: SyncDependencies[Key] };
-
 describe('parseSyncUpstreamsArguments', () => {
   it('defaults to every entry of ./upstreams.json, targeting main', () => {
     expect(parseSyncUpstreamsArguments([])).toEqual({ baseBranch: 'main', configPath: 'upstreams.json', dryRun: false, only: [] });
@@ -125,6 +122,9 @@ describe('createNodeSyncDependencies', () => {
 });
 
 describe('runSyncUpstreamsCli', () => {
+  // Each test replaces the dependencies needed for its scenario.
+  type MutableSyncDependencies = { -readonly [Key in keyof SyncDependencies]: SyncDependencies[Key] };
+
   let directory = '';
 
   beforeEach(() => {
@@ -135,7 +135,7 @@ describe('runSyncUpstreamsCli', () => {
     rmSync(directory, { force: true, recursive: true });
   });
 
-  function createDependencies(head: string): MutableSyncDependencies {
+  function createDependencies(): MutableSyncDependencies {
     return {
       exec: () => ({ exitCode: 0, output: '' }),
       fetchJson: async (url): Promise<unknown> => {
@@ -143,7 +143,7 @@ describe('runSyncUpstreamsCli', () => {
         if (url.endsWith('/broken')) {
           throw new Error('offline');
         }
-        return { 'dist-tags': { latest: head } };
+        return { 'dist-tags': { latest: '1.0.0' } };
       },
       log: vi.fn(),
       shell: () => ({ exitCode: 0, output: '' })
@@ -162,22 +162,22 @@ describe('runSyncUpstreamsCli', () => {
       })
     );
 
-    expect(await runSyncUpstreamsCli([`--config=${configPath}`, '--only=lib'], createDependencies('1.0.0'))).toBe(0);
-    expect(await runSyncUpstreamsCli([`--config=${configPath}`], createDependencies('1.0.0'))).toBe(1);
+    expect(await runSyncUpstreamsCli([`--config=${configPath}`, '--only=lib'], createDependencies())).toBe(0);
+    expect(await runSyncUpstreamsCli([`--config=${configPath}`], createDependencies())).toBe(1);
   });
 
   it('prints a wrong argument or config without a stack trace, and exits 1', async () => {
-    const write = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
-    expect(await runSyncUpstreamsCli(['--bogus'], createDependencies('1.0.0'))).toBe(1);
-    expect(write).toHaveBeenCalledWith(expect.stringMatching(/^sync-upstreams: unknown argument "--bogus"/) as unknown);
-    expect(await runSyncUpstreamsCli([`--config=${join(directory, 'missing.json')}`], createDependencies('1.0.0'))).toBe(1);
-    expect(write).toHaveBeenLastCalledWith(expect.stringContaining('missing.json') as unknown);
-    write.mockRestore();
+    vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+    expect(await runSyncUpstreamsCli(['--bogus'], createDependencies())).toBe(1);
+    expect(process.stderr.write).toHaveBeenCalledWith(expect.stringMatching(/^sync-upstreams: unknown argument "--bogus"/) as unknown);
+    expect(await runSyncUpstreamsCli([`--config=${join(directory, 'missing.json')}`], createDependencies())).toBe(1);
+    expect(process.stderr.write).toHaveBeenLastCalledWith(expect.stringContaining('missing.json') as unknown);
+    vi.mocked(process.stderr.write).mockRestore();
   });
 
   it('prints a thrown non-error as it is', async () => {
-    const write = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
-    const dependencies = createDependencies('1.0.0');
+    vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+    const dependencies = createDependencies();
     const configPath = join(directory, 'upstreams.json');
     // The entry's own error report calls log again, so the throw escapes the sync.
     dependencies.log = (): void => {
@@ -186,8 +186,8 @@ describe('runSyncUpstreamsCli', () => {
     };
     writeFileSync(configPath, JSON.stringify({ upstreams: [{ handler: 'h', name: 'lib', npm: 'lib', version: '1.0.0' }] }));
     expect(await runSyncUpstreamsCli([`--config=${configPath}`], dependencies)).toBe(1);
-    expect(write).toHaveBeenCalledWith('odd\n');
-    write.mockRestore();
+    expect(process.stderr.write).toHaveBeenCalledWith('odd\n');
+    vi.mocked(process.stderr.write).mockRestore();
   });
 
   it('uses the real outside world when given none', async () => {

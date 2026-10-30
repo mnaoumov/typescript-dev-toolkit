@@ -9,11 +9,15 @@
  * (`!a && b`), but only outside TypeScript. `unicorn/prefer-ternary` fixes `if (a) { return false; } return b;` into
  * exactly that ternary, so in a TypeScript file `lint:fix` produced an error it then could not fix, and every site
  * had to be rewritten by hand. This rule reports what unicorn reports and adds the fix where one branch is a boolean
- * literal. The rewrite is exact at runtime: with a negated test (`a ? false : b` → `!a && b`, `a ? b : true` →
- * `!a || b`) for any test, and otherwise (`a ? true : b` → `a || b`, `a ? b : false` → `a && b`) because unicorn
- * reports that shape only for a test it has proven boolean.
+ * literal. Unicorn reports the shape only when the other branch is boolean, and since unicorn 79 for a test of any
+ * type. The rewrite is exact at runtime: a negated test (`a ? false : b` → `!a && b`, `a ? b : true` → `!a || b`) is
+ * a boolean already, and otherwise (`a ? true : b` → `a || b`, `a ? b : false` → `a && b`) a test the type checker
+ * cannot prove boolean is coerced with `!!`, because `a && b` would return a falsy `a` itself (`null`, `0`, `''`)
+ * where the ternary returned `false`. Unicorn coerces with `Boolean(a)`; `!!a` is used here because TypeScript
+ * narrows on it, so `!!a && a.b` still type-checks.
  */
 
+import type { ParserServicesWithTypeInformation } from '@typescript-eslint/utils';
 import type { Rule } from 'eslint';
 import type {
   ConditionalExpression,
@@ -22,6 +26,9 @@ import type {
 } from 'estree';
 
 import eslintPluginUnicorn from 'eslint-plugin-unicorn';
+import { TypeFlags } from 'typescript';
+
+import { toTSESTreeNode } from './ts-estree-node.ts';
 
 /**
  * The id of the unicorn rule this rule delegates to, inside the `unicorn` namespace.
@@ -34,8 +41,6 @@ export const UNICORN_RULE_NAME = 'prefer-logical-operator-over-ternary';
 export const MESSAGE_ID = 'prefer-logical-operator-over-ternary/error';
 
 type LogicalOperator = '&&' | '||';
-
-type UnicornReportDescriptor = Rule.ReportDescriptorOptions & UnicornReportDescriptorFields;
 
 interface UnicornReportDescriptorFields {
   readonly messageId?: string;
@@ -84,6 +89,18 @@ function getUnicornRule(): Rule.RuleModule {
   return rule;
 }
 
+function isProvenBoolean(node: Expression, sourceCode: Rule.RuleContext['sourceCode']): boolean {
+  const services = sourceCode.parserServices as Partial<ParserServicesWithTypeInformation>;
+  if (!services.program || !services.esTreeNodeToTSNodeMap) {
+    return false;
+  }
+
+  const type = services.program.getTypeChecker().getTypeAtLocation(services.esTreeNodeToTSNodeMap.get(toTSESTreeNode(node)));
+  const constituents = type.isUnion() ? type.types : [type];
+  // eslint-disable-next-line no-bitwise -- `TypeFlags` is a bit set.
+  return constituents.every((constituent) => (constituent.flags & TypeFlags.BooleanLike) !== 0);
+}
+
 function needsParentheses(node: Expression, operator: '!' | LogicalOperator): boolean {
   switch (node.type) {
     case 'ArrayExpression':
@@ -119,6 +136,7 @@ function toOperandText(node: Expression, operator: '!' | LogicalOperator, source
 }
 
 function withLiteralBranchFix(descriptor: Rule.ReportDescriptor, sourceCode: Rule.RuleContext['sourceCode']): Rule.ReportDescriptor {
+  type UnicornReportDescriptor = Rule.ReportDescriptorOptions & UnicornReportDescriptorFields;
   const { fix, messageId, node, suggest } = descriptor as UnicornReportDescriptor;
 
   // Unicorn fixes the shape itself outside TypeScript, and offers suggestions for the shapes it cannot fix.
@@ -145,7 +163,14 @@ function withLiteralBranchFix(descriptor: Rule.ReportDescriptor, sourceCode: Rul
   const other = isConsequentLiteral ? alternate : consequent;
   const shouldNegateTest = isConsequentLiteral !== literalValue;
   const operator: LogicalOperator = literalValue ? '||' : '&&';
-  const testText = shouldNegateTest ? `!${toOperandText(test, '!', sourceCode)}` : toOperandText(test, operator, sourceCode);
+  let testText: string;
+  if (shouldNegateTest) {
+    testText = `!${toOperandText(test, '!', sourceCode)}`;
+  } else if (isProvenBoolean(test, sourceCode)) {
+    testText = toOperandText(test, operator, sourceCode);
+  } else {
+    testText = `!!${toOperandText(test, '!', sourceCode)}`;
+  }
   const otherText = toOperandText(other, operator, sourceCode);
 
   return {

@@ -202,8 +202,8 @@ describe('gate lockfile check', () => {
     await gate();
     expect(mockAssertPackageLockIntegrity).toHaveBeenCalledOnce();
     const [lockCheckOrder] = mockAssertPackageLockIntegrity.mock.invocationCallOrder;
-    const [firstScriptOrder] = mockNpmRunOptional.mock.invocationCallOrder;
-    expect(lockCheckOrder).toBeLessThan(firstScriptOrder ?? 0);
+    const [firstScriptOrder = 0] = mockNpmRunOptional.mock.invocationCallOrder;
+    expect(lockCheckOrder).toBeLessThan(firstScriptOrder);
   });
 
   it('should not check the lockfile when the checks are off', async () => {

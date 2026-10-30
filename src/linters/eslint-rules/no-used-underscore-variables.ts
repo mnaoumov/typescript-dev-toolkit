@@ -44,14 +44,12 @@ export const noUsedUnderscoreVariables: Rule.RuleModule = {
           const functionBody = (node as NodeWithBody).body;
           const bodyRange = functionBody?.range;
           const isParameter = definitionNode.type === 'Parameter';
-          const hasBodyReferences = variable.references.some((reference) => {
-            if (!reference.isRead()) {
-              return false;
-            }
-            // Local variables or fallback: count all reads
-            return !isParameter || !bodyRange || !reference.identifier.range
-              || (reference.identifier.range[0] >= bodyRange[0] && reference.identifier.range[1] <= bodyRange[1]);
-          });
+          // Local variables or fallback: count all reads
+          const hasBodyReferences = variable.references.some((reference) =>
+            reference.isRead()
+            && (!isParameter || !bodyRange || !reference.identifier.range
+              || (reference.identifier.range[0] >= bodyRange[0] && reference.identifier.range[1] <= bodyRange[1]))
+          );
           if (hasBodyReferences) {
             context.report({
               data: { name: variable.name },

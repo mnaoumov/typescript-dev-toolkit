@@ -10,13 +10,6 @@
     "that is actually present in the declared section; the script reports either mismatch."
   ],
   "pins": {
-    "eslint-plugin-unicorn": {
-      "section": "dependencies",
-      "why": "The shared ESLint config enables unicorn's recommended rules, so every unicorn major changes what each consumer's lint reports. 79.0.0 reported 1,682 errors on this repository alone, 1,553 of them from the new no-asterisk-prefix-in-documentation-comments, which rejects the JSDoc block style every file here uses. Adopting a new major is a deliberate change to the shared config (rules to turn off or adopt, and a toolkit major), not a dependency sweep, so the version is held until that is done.",
-      "check": "npm view eslint-plugin-unicorn version",
-      "expect": "79.0.0",
-      "manualCheck": "Any newer unicorn release changes the check's answer. Adopting it means deciding each new recommended rule in the shared config and releasing that as a toolkit major."
-    },
     "satteri": {
       "section": "devDependencies",
       "why": "The docs-site mdast plugins import their types from satteri, and the runtime that calls them is the satteri @astrojs/markdown-satteri (and Starlight through @astrojs/mdx) depends on, which is ^0.10.5. A newer satteri here type-checks the plugins against an API the docs build never runs, so the dev copy stays on the release Astro uses, and the peer range stays ^0.10.5.",

@@ -927,6 +927,12 @@ function getUnicornConfigs(context: EslintConfigContext): Linter.Config[] {
               props: false,
               ref: false,
               refs: false,
+              /*
+               * `repo` is the word git and GitHub use themselves (`gh repo`, `RepoPaths`, `DocsSiteConfig.repo`),
+               * so it is vocabulary rather than an abbreviation. unicorn 79 added the replacement; following it
+               * would rename exported API in this package and report every consumer's `repo*` names.
+               */
+              repo: false,
               src: false,
               util: false,
               utils: false
@@ -944,6 +950,12 @@ function getUnicornConfigs(context: EslintConfigContext): Linter.Config[] {
          */
         'unicorn/no-array-reverse': 'off',
         'unicorn/no-array-sort': 'off',
+        /*
+         * The house style writes every block comment with a ` * ` prefix on each line, the `@file` header of
+         * every module included. unicorn 79 put this rule in `recommended`, where it reported 1,553 lines here
+         * alone; adopting it would rewrite every comment in every consumer to settle a matter of taste.
+         */
+        'unicorn/no-asterisk-prefix-in-documentation-comments': 'off',
         /*
          * `continue` inside a nested loop is ordinary, readable control flow here. The rule's remedy is to
          * extract every such loop into its own function, which spreads one coherent traversal across two

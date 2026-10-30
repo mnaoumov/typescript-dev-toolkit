@@ -121,8 +121,6 @@ type LocalDeclaration =
   | TypeAliasDeclaration
   | VariableDeclaration;
 
-type ModulePathMatchGroups = Readonly<Record<'memberPath' | 'modulePath', string>>;
-
 interface ProgramIndex {
   readonly exportsByName: Map<string, TsSymbol[]>;
   readonly modulesByPath: Map<string, TsSymbol>;
@@ -190,6 +188,7 @@ export const noUnresolvedJsdocLink: Rule.RuleModule = {
           let isResolved: boolean;
 
           if (moduleMatch?.groups) {
+            type ModulePathMatchGroups = Readonly<Record<'memberPath' | 'modulePath', string>>;
             const { memberPath, modulePath } = moduleMatch.groups as ModulePathMatchGroups;
             reportedName = moduleMatch[0];
             const moduleSymbol = findModule(program, checker, modulePath, tsSourceFile.fileName);

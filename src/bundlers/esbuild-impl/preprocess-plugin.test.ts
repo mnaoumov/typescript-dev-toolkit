@@ -236,8 +236,6 @@ describe('preprocessPlugin', () => {
 });
 
 describe('preprocessPlugin in an unbundled build', () => {
-  type EndCallback = Parameters<PluginBuild['onEnd']>[0];
-
   interface RunUnbundledParams {
     readonly banner?: string;
     readonly files: Record<string, string>;
@@ -259,6 +257,7 @@ describe('preprocessPlugin in an unbundled build', () => {
 
   // Runs the plugin's end-of-build pass over hand-written outputs and returns each output's resulting text.
   async function runUnbundled(params: RunUnbundledParams): Promise<Record<string, string>> {
+    type EndCallback = Parameters<PluginBuild['onEnd']>[0];
     const { banner, files, options = {} } = params;
     const endCallbacks: EndCallback[] = [];
     const partialBuild: Partial<PluginBuild> = {

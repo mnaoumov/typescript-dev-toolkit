@@ -195,10 +195,8 @@ export function readLinkCheckSkipEntries(): LinkCheckSkipEntry[] {
  * optional port followed by the end of the authority.
  */
 export function toLinkinatorSkipPattern(entry: LinkCheckSkipEntry): string {
-  if (entry.kind === 'prefix') {
-    return `^${escapeRegExp(entry.value)}`;
-  }
-
   // `linkinator` matches the URL it has normalized, whose scheme and host are lowercase already.
-  return String.raw`^https?://(?:[^/?#@]*@)?${escapeRegExp(entry.value)}(?::\d+)?(?:[/?#]|$)`;
+  return entry.kind === 'prefix'
+    ? `^${escapeRegExp(entry.value)}`
+    : String.raw`^https?://(?:[^/?#@]*@)?${escapeRegExp(entry.value)}(?::\d+)?(?:[/?#]|$)`;
 }

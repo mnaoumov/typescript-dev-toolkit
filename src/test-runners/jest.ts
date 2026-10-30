@@ -155,8 +155,8 @@ export async function testWatch(options: TestWatchOptions = {}): Promise<void> {
  * @param nodeOptions - The inherited `NODE_OPTIONS`.
  * @returns The `NODE_OPTIONS` jest runs with.
  */
-function addExperimentalVmModulesFlag(nodeOptions: string | undefined): string {
-  const flags = (nodeOptions ?? '').split(/\s+/).filter(Boolean);
+function addExperimentalVmModulesFlag(nodeOptions = ''): string {
+  const flags = nodeOptions.split(/\s+/).filter(Boolean);
   if (!flags.includes(EXPERIMENTAL_VM_MODULES_FLAG)) {
     flags.push(EXPERIMENTAL_VM_MODULES_FLAG);
   }

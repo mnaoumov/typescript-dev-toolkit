@@ -1382,7 +1382,7 @@ function isKeyReferenceToClass(params: IsKeyReferenceToClassParams): boolean {
     return false;
   }
   const literals = getStringLiteralConstituents(contextualType);
-  return literals ? literals.every((literal) => keySet.has(literal)) : false;
+  return !!literals && literals.every((literal) => keySet.has(literal));
 }
 
 function isOwnSourceFile(params: IsOwnSourceFileParams): boolean {

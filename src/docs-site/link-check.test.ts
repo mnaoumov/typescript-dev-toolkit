@@ -49,8 +49,6 @@ const THIRD_ATTEMPT = 3;
 const RETRY_AFTER_IN_MILLISECONDS = 7000;
 const JITTER_INITIAL_DELAY_IN_MILLISECONDS = 100;
 
-type FetchUrlStatus = (url: string) => Promise<ExternalLinkProbeResult | number>;
-
 interface RecordingRetry {
   readonly delays: number[];
   readonly retry: ExternalLinkRetryOptions;
@@ -224,6 +222,7 @@ describe('checkExternalTargets (network, concurrency-bounded)', () => {
 });
 
 describe('collectBrokenExternalLinks (retry)', () => {
+  type FetchUrlStatus = (url: string) => Promise<ExternalLinkProbeResult | number>;
   function createRetry(): RecordingRetry {
     const delays: number[] = [];
     return {
