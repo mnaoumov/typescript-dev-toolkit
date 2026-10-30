@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 5.4.2
+
+- build(deps): clear the npm audit advisories fixable without a downgrade
+
 ## 5.4.1
 
 - fix(markdownlint): warn on a 408 in the link check, and retry it in the site check
