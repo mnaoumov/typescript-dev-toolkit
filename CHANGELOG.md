@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 6.0.1
+
+- fix(markdownlint): serve linkinator from the root folder so a lone file resolves ../ links
+- docs: add issue-filing instructions for AI agents
+- chore: add issue forms
+
 ## 6.0.0
 
 - feat(eslint)!: adopt eslint-plugin-unicorn 79 in the shared config
