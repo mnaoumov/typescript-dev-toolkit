@@ -129,7 +129,7 @@ export async function lint(options?: LintOptions): Promise<void> {
   const skipEntries = readLinkCheckSkipEntries();
   const skipConfigFolder = skipEntries.length > 0 ? await writeSkipConfig(skipEntries, linkCheckFiles, rootFolder) : null;
   try {
-    await runLinkinator(linkCheckFiles, skipConfigFolder);
+    await runLinkinator(linkCheckFiles, skipConfigFolder, rootFolder);
   } finally {
     if (skipConfigFolder !== null) {
       await rm(skipConfigFolder, { force: true, recursive: true });
@@ -173,13 +173,19 @@ async function getMarkdownFiles(): Promise<string[]> {
     })));
 }
 
-async function runLinkinator(linkCheckFiles: string[], skipConfigFolder: null | string): Promise<void> {
+async function runLinkinator(linkCheckFiles: string[], skipConfigFolder: null | string, rootFolder: string): Promise<void> {
+  // The server root is always the root folder, and ABSOLUTE. Left to itself, linkinator serves a lone file's own
+  // folder, so a single staged file (or a batch of one) 404s every `../` link above it. A relative `.` is no
+  // answer either: linkinator 8.1.0 strips one leading segment per segment of the root, `.` included, so it
+  // looked for `docs/write-up.md` as `write-up.md`.
   // Error retries use millisecond jitter. Omit --retry: its separate Retry-After mode can sleep for thousands
   // of seconds on a 429 we already accept as a warning. Request timeouts remain errors and keep their retries.
   // A 408 is the server's own timeout (shields.io answers it when its upstream is slow); --retry-errors never retries
   // it, so it is a warning like a 429 rather than a gate failure that says nothing about whether the link exists.
   await execFromRoot([
     ...resolveToolCommand({ tool: 'linkinator' }),
+    '--server-root',
+    resolve(rootFolder),
     '--concurrency',
     String(getBulkConcurrency(LINK_CHECK_CONCURRENCY)),
     '--timeout',

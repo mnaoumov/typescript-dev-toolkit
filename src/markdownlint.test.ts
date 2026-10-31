@@ -1,5 +1,8 @@
 import { noopAsync } from '@mnaoumov/typescript-lib/function';
-import { join } from 'node:path';
+import {
+  join,
+  resolve
+} from 'node:path';
 import {
   afterEach,
   beforeEach,
@@ -260,6 +263,17 @@ describe('lint', () => {
     );
     expect(mockExecFromRoot).toHaveBeenCalledWith(
       expect.arrayContaining(['linkinator', { batchedArguments: ['README.md'] }])
+    );
+  });
+
+  // Given one file, linkinator served that file's own folder, so a staged `docs/write-up.md` 404'd its
+  // `../THIRD-PARTY-NOTICES.md` link in the pre-commit hook while the whole-repo lint passed.
+  it('should serve linkinator from the absolute root folder, so a lone file resolves links above its folder', async () => {
+    mockExistsSync.mockReturnValue(true);
+    mockGetRootFolder.mockReturnValue('/root');
+    await lint({ paths: ['/root/docs/write-up.md'] });
+    expect(mockExecFromRoot.mock.calls[1]?.[0]).toEqual(
+      expect.arrayContaining(['linkinator', '--server-root', resolve('/root'), { batchedArguments: ['docs/write-up.md'] }])
     );
   });
 
