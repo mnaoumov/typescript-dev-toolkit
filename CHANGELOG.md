@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## 6.1.0
+
+- feat(version): publish releases before pushing version bumps
+- fix: restore source maps for cached Vitest modules
+
 ## 6.0.2
 
 - fix(docs): link inherited members through multiple base classes
