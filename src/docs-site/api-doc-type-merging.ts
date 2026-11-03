@@ -81,13 +81,26 @@ export function parseTypeArguments(baseTypeName: string): string[] {
  * @param types - The documented types, keyed by qualified id.
  */
 export function resolveInheritedMembers(types: Map<string, TypeInfo>): void {
-  for (const [, info] of types) {
+  const resolved = new Set<TypeInfo>();
+  const resolving = new Set<TypeInfo>();
+
+  for (const info of types.values()) {
+    resolve(info);
+  }
+
+  function resolve(info: TypeInfo): void {
+    if (resolved.has(info)) {
+      return;
+    }
+    resolving.add(info);
     for (const baseTypeName of [...info.baseTypes, ...info.implementsTypes]) {
       const cleanBase = baseTypeName.replace(/<.*>$/, '').trim();
       const baseInfo = findType(types, cleanBase, info.namespace);
-      if (!baseInfo) {
+      if (!baseInfo || resolving.has(baseInfo)) {
         continue;
       }
+
+      resolve(baseInfo);
 
       const typeArguments = parseTypeArguments(baseTypeName);
       const typeParameterMap = buildTypeParameterMap(baseInfo, typeArguments);
@@ -99,13 +112,15 @@ export function resolveInheritedMembers(types: Map<string, TypeInfo>): void {
       }
 
       for (const method of baseInfo.methods) {
-        const hasOwnMethod = info.methods.some((m) => m.name === method.name && m.signature === method.signature);
-        const hasInheritedMethod = info.methods.some((m) => m.inheritedFrom === baseInfo.name && m.overloadKey === method.overloadKey);
-        if (!hasOwnMethod && !hasInheritedMethod) {
-          info.methods.push(substituteMemberTypes({ ...method, inheritedFrom: baseInfo.name }, typeParameterMap));
+        const inheritedMethod = substituteMemberTypes({ ...method, inheritedFrom: baseInfo.name }, typeParameterMap);
+        const hasMethod = info.methods.some((m) => m.name === inheritedMethod.name && m.signature === inheritedMethod.signature);
+        if (!hasMethod) {
+          info.methods.push(inheritedMethod);
         }
       }
     }
+    resolving.delete(info);
+    resolved.add(info);
   }
 }
 

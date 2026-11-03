@@ -11,6 +11,11 @@ import {
   createTypeInfo
 } from '../test-helpers/api-doc-fixtures.ts';
 import {
+  memberHref,
+  registerMemberPages,
+  registerRouteSegments
+} from './api-doc-link-rendering.ts';
+import {
   buildTypeParameterMap,
   parseTypeArguments,
   resolveInheritedMembers,
@@ -58,6 +63,45 @@ describe('api-doc type merging', () => {
 describe('api-doc type merging edge cases', () => {
   beforeEach(() => {
     configureTestApiDocs();
+  });
+
+  it.each([false, true])('resolves three levels and declaring pages regardless of processing order (%s)', (reverse) => {
+    const grand = createTypeInfo({
+      methods: [
+        createMemberInfo({ name: 'read', overloadKey: 'read', parameters: [{ description: '', name: 'value', type: 'T' }], returnType: 'T', signature: 'read(value: T)' }),
+        createMemberInfo({ name: 'read', overloadKey: 'read', parameters: [], returnType: 'T', signature: 'read()' })
+      ],
+      name: 'Grand',
+      properties: [createMemberInfo({ name: 'value', type: 'T' })],
+      typeParameters: ['T']
+    });
+    const parent = createTypeInfo({ baseTypes: ['Grand<U[]>'], name: 'Parent', typeParameters: ['U'] });
+    const child = createTypeInfo({ baseTypes: ['Parent<string>'], name: 'Child' });
+    const entries: [string, typeof grand][] = [['alpha#Grand', grand], ['alpha#Parent', parent], ['alpha#Child', child]];
+    const types = new Map(reverse ? entries.reverse() : entries);
+
+    resolveInheritedMembers(types);
+    registerRouteSegments(types);
+    registerMemberPages(types);
+
+    expect(child.properties).toMatchObject([{ inheritedFrom: 'Parent', type: 'string[]' }]);
+    expect(child.methods).toMatchObject([
+      { parameters: [{ type: 'string[]' }], returnType: 'string[]' },
+      { parameters: [], returnType: 'string[]' }
+    ]);
+    expect(memberHref('value', 'Parent', types, 'alpha')).toBe('/typescript-lib/api/alpha/Grand/value/');
+    expect(memberHref('read', 'Parent', types, 'alpha')).toBe('/typescript-lib/api/alpha/Grand/read/');
+    resolveInheritedMembers(types);
+    expect(child.methods).toHaveLength(2);
+  });
+
+  it('terminates cyclic inheritance without creating member links to missing pages', () => {
+    const first = createTypeInfo({ baseTypes: ['Second'], name: 'First' });
+    const second = createTypeInfo({ baseTypes: ['First'], name: 'Second' });
+    const types = new Map([['alpha#First', first], ['alpha#Second', second]]);
+    resolveInheritedMembers(types);
+    registerMemberPages(types);
+    expect(memberHref('value', 'First', types)).toBe('');
   });
 
   it('skips a base type the site does not document', () => {
