@@ -19,9 +19,6 @@
   "license": "MIT",
   "author": "Michael Naumov",
   "type": "module",
-  "bin": {
-    "sync-upstreams": "bin/sync-upstreams.mjs"
-  },
   "exports": {
     ".": {
       "import": {
@@ -240,6 +237,9 @@
       }
     }
   },
+  "bin": {
+    "sync-upstreams": "bin/sync-upstreams.mjs"
+  },
   "files": [
     "**/package.json",
     "assets/",
@@ -282,6 +282,20 @@
     "test:mutation": "jiti scripts/test-mutation.ts",
     "test:watch": "jiti scripts/test-watch.ts",
     "version": "jiti scripts/version.ts"
+  },
+  "overrides": {
+    "@puppeteer/browsers": "^3.2.6",
+    "@vitest/coverage-v8": "$@vitest/coverage-v8",
+    "deepmerge-ts": "^8.0.2",
+    "eslint": "$eslint",
+    "eslint-plugin-import": "npm:eslint-plugin-import-x@^4.17.1",
+    "eslint-plugin-n": "$eslint-plugin-n",
+    "fflate": "^0.7.5",
+    "js-yaml": "4.3.2",
+    "katex": "^0.19.1",
+    "re2js": "^2.9.1",
+    "smol-toml": "^1.9.1",
+    "typescript": "$typescript"
   },
   "dependencies": {
     "@commitlint/config-conventional": "^21.2.4",
@@ -328,7 +342,7 @@
     "@stryker-mutator/vitest-runner": "^10.1.1",
     "@total-typescript/ts-reset": "^0.6.1",
     "@types/mdast": "^4.0.4",
-    "@vitest/coverage-v8": "^5.0.5",
+    "@vitest/coverage-v8": "^5.1.0",
     "astro": "^7.4.4",
     "better-typescript-lib": "^2.12.0",
     "czg": "^1.14.0",
@@ -345,7 +359,7 @@
     "ts-morph": "^28.0.0",
     "tslib": "^2.8.1",
     "typedoc-plugin-mdn-links": "^5.1.1",
-    "vitest": "^5.0.5",
+    "vitest": "^5.1.0",
     "yaml": "^2.9.1"
   },
   "peerDependencies": {
@@ -364,7 +378,7 @@
     "ts-jest": "^29.4.0",
     "ts-morph": "^28.0.0",
     "typedoc-plugin-mdn-links": "^5.1.1",
-    "vitest": "^5.0.1",
+    "vitest": "^5.1.0",
     "yaml": "^2.9.1"
   },
   "peerDependenciesMeta": {
@@ -425,19 +439,5 @@
   },
   "publishConfig": {
     "access": "public"
-  },
-  "overrides": {
-    "@puppeteer/browsers": "^3.2.6",
-    "@vitest/coverage-v8": "$@vitest/coverage-v8",
-    "deepmerge-ts": "^8.0.2",
-    "eslint": "$eslint",
-    "eslint-plugin-import": "npm:eslint-plugin-import-x@^4.17.1",
-    "eslint-plugin-n": "$eslint-plugin-n",
-    "fflate": "^0.7.5",
-    "js-yaml": "4.3.2",
-    "katex": "^0.19.1",
-    "re2js": "^2.9.1",
-    "smol-toml": "^1.9.1",
-    "typescript": "$typescript"
   }
 }
