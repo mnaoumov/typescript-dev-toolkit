@@ -19,6 +19,7 @@ import { paramsOptionsNameMatch } from './params-options-name-match.ts';
 import { preferDedent } from './prefer-dedent.ts';
 import { preferLogicalOperatorOverTernary } from './prefer-logical-operator-over-ternary.ts';
 import { preferNoopAsync } from './prefer-noop-async.ts';
+import { preferSpread } from './prefer-spread.ts';
 import { readonlyInterfaceMembers } from './readonly-interface-members.ts';
 import { readonlyMemberArrays } from './readonly-member-arrays.ts';
 import { requireMethodTemplate } from './require-method-template.ts';
@@ -42,6 +43,7 @@ export const genericInHouseEslintRules: NonNullable<ESLint.Plugin['rules']> = {
   'prefer-dedent': preferDedent,
   'prefer-logical-operator-over-ternary': preferLogicalOperatorOverTernary,
   'prefer-noop-async': preferNoopAsync,
+  'prefer-spread': preferSpread,
   'readonly-interface-members': readonlyInterfaceMembers,
   'readonly-member-arrays': readonlyMemberArrays,
   'require-method-template': requireMethodTemplate,

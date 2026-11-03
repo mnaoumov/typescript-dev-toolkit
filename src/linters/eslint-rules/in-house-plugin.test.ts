@@ -26,6 +26,7 @@ describe('in-house plugin', () => {
       'prefer-dedent',
       'prefer-logical-operator-over-ternary',
       'prefer-noop-async',
+      'prefer-spread',
       'readonly-interface-members',
       'readonly-member-arrays',
       'require-method-template',
