@@ -87,6 +87,8 @@ describe('defineEslintConfigs', () => {
     expect(inHousePlugins.every((plugin) => plugin === inHouseEslintPlugin)).toBe(true);
     expect(findRuleEntry(configs, 'typescript-dev-toolkit/no-unused-params-members')).toBe('error');
     expect(findRuleEntry(configs, 'typescript-dev-toolkit/no-keyword-identifiers')).toBe('error');
+    expect(findRuleEntry(configs, 'typescript-dev-toolkit/prefer-spread')).toBe('error');
+    expect(findRuleEntry(configs, 'unicorn/prefer-spread')).toBe('off');
   });
 
   it('should let the context be edited and append the custom configurations last', () => {

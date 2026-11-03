@@ -535,6 +535,7 @@ function getInHousePluginConfigs(context: EslintConfigContext): Linter.Config[] 
         'typescript-dev-toolkit/prefer-dedent': 'error',
         'typescript-dev-toolkit/prefer-logical-operator-over-ternary': 'error',
         'typescript-dev-toolkit/prefer-noop-async': 'error',
+        'typescript-dev-toolkit/prefer-spread': 'error',
         'typescript-dev-toolkit/readonly-interface-members': 'error',
         'typescript-dev-toolkit/require-method-template': 'error',
         'typescript-dev-toolkit/require-super-call': 'off'
@@ -1081,6 +1082,8 @@ function getUnicornConfigs(context: EslintConfigContext): Linter.Config[] {
          * reported before the state it contradicts.
          */
         'unicorn/prefer-simple-condition-first': 'off',
+        // The replacement proves slice receivers are arrays before proposing a spread, preserving typed-array copies.
+        'unicorn/prefer-spread': 'off',
         /*
          * `URL.canParse` requires Node 18.17, well above the Node 16.16.0 floor that shipped source targets
          * (see the Obsidian plugin layer's `minimumNodeVersion`). The rule can therefore never be satisfied there, so it is off at the
