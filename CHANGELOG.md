@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 6.0.2
+
+- fix(docs): link inherited members through multiple base classes
+
 ## 6.0.1
 
 - fix(markdownlint): serve linkinator from the root folder so a lone file resolves ../ links
