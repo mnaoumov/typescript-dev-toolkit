@@ -141,6 +141,20 @@ describe('api-doc link rendering edge cases', () => {
     expect(memberHref('value', 'Parent', types)).toBe('/typescript-lib/api/alpha/Parent/value/');
   });
 
+  it('follows member origins in each parent namespace and stops on cycles or ambiguity', () => {
+    const parent = createTypeInfo({ name: 'Parent', namespace: 'beta', properties: [createMemberInfo({ inheritedFrom: 'Grand', name: 'value' })] });
+    const grand = createTypeInfo({ name: 'Grand', namespace: 'beta', properties: [createMemberInfo({ name: 'value' })] });
+    const otherGrand = createTypeInfo({ name: 'Grand', properties: [createMemberInfo({ name: 'value' })] });
+    const cyclic = createTypeInfo({ name: 'Cycle', properties: [createMemberInfo({ inheritedFrom: 'Cycle', name: 'value' })] });
+    const types = createTypes([parent, grand, otherGrand, cyclic]);
+    registerRouteSegments(types);
+    registerMemberPages(types);
+
+    expect(memberHref('value', 'Parent', types, 'alpha')).toBe('/typescript-lib/api/beta/Grand/value/');
+    expect(memberHref('value', 'Grand', types, 'missing')).toBe('');
+    expect(memberHref('value', 'Cycle', types)).toBe('');
+  });
+
   it('labels a fenced code block that names no language as TypeScript', () => {
     expect(renderMdxProse('```\nconst x = 1;\n```', new Map())).toBe('```ts\nconst x = 1;\n```');
     expect(renderMdxProse('```js\nconst x = 1;\n```', new Map())).toBe('```js\nconst x = 1;\n```');

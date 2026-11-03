@@ -191,10 +191,19 @@ export function memberHref(memberSlugString: string, inheritedFrom: string, allT
     // Own (non-inherited) member — `generateMemberPages` always emits its page on this same page.
     return `./${memberSlugString}/`;
   }
-  const parentInfo = findType(allTypes, inheritedFrom, currentNamespace);
+  let parentInfo = findType(allTypes, inheritedFrom, currentNamespace);
+  const visited = new Set<TypeInfo>();
+  while (parentInfo && !doesMemberPageExist(parentInfo.namespace, parentInfo.name, memberSlugString)) {
+    if (visited.has(parentInfo)) {
+      return '';
+    }
+    visited.add(parentInfo);
+    const member = parentInfo.properties.find((property) => memberRouteSegment(property.name) === memberSlugString)
+      ?? parentInfo.methods.find((method) => overloadRouteSegment(method.overloadKey) === memberSlugString);
+    parentInfo = member?.inheritedFrom ? findType(allTypes, member.inheritedFrom, parentInfo.namespace) : undefined;
+  }
   if (!parentInfo || !doesMemberPageExist(parentInfo.namespace, parentInfo.name, memberSlugString)) {
-    // The declaring parent has no generated page for this member (it inherited the member too, or is
-    // undocumented). Return no href so the caller renders plain text instead of a broken link.
+    // An undocumented or ambiguous ancestor has no safe member destination.
     return '';
   }
   const parentNsDirectory = getNamespaceDirectory(parentInfo.namespace);

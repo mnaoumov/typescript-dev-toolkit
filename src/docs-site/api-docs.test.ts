@@ -124,6 +124,9 @@ const FIXTURE_FILES: Readonly<Partial<Record<string, string>>> = {
       public area = 0;
     }
 
+    /** A third inheritance level. */
+    export class Grandchild extends Derived {}
+
     /** A shape. */
     export interface Shape {
       /** The area. */
@@ -437,6 +440,11 @@ describe('generateApiDocs', () => {
     expect(page).toContain('**Extends:**');
     expect(page).toContain('**Implements:**');
     expect(page).toContain('inheritedFrom: ');
+    const grandchild = readPage(fixture, 'alpha/grandchild/index.mdx');
+    expect(grandchild).toContain('/api/alpha/Base/shared/');
+    expect(grandchild).toContain('/api/alpha/Base/getRemote/');
+    expect(existsSync(join(fixture.settings.outputDirectory, 'alpha/base/shared.mdx'))).toBe(true);
+    expect(existsSync(join(fixture.settings.outputDirectory, 'alpha/base/getremote.mdx'))).toBe(true);
   });
 
   it('documents functions, type aliases, enums and variables', () => {
