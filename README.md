@@ -34,6 +34,22 @@ The default npm release order is unchanged. `shouldRelease: false` keeps all wor
 
 It is one of five packages that replace [`obsidian-dev-utils`](https://github.com/mnaoumov/obsidian-dev-utils): [`@mnaoumov/typescript-lib`](https://github.com/mnaoumov/typescript-lib), [`@mnaoumov/typescript-test-toolkit`](https://github.com/mnaoumov/typescript-test-toolkit), [`@mnaoumov/typescript-dev-toolkit`](https://github.com/mnaoumov/typescript-dev-toolkit), [`@mnaoumov/obsidian-lib`](https://github.com/mnaoumov/obsidian-lib) and [`@mnaoumov/obsidian-dev-toolkit`](https://github.com/mnaoumov/obsidian-dev-toolkit). It depends on [`@mnaoumov/typescript-lib`](https://github.com/mnaoumov/typescript-lib). It moved here from that repository with its history.
 
+## See also
+
+<!-- cspell:words TSDX -->
+
+[My other Obsidian resources](https://mnaoumov.dev/obsidian/)
+
+| Tool | Features | How `@mnaoumov/typescript-dev-toolkit` differs |
+| --- | --- | --- |
+| [`@mnaoumov/obsidian-dev-toolkit`](https://github.com/mnaoumov/obsidian-dev-toolkit) (my tool) | Obsidian plugin builds; demo vaults; plugin releases; plugin-specific lint and test setup | Generic foundation of `@mnaoumov/obsidian-dev-toolkit`; usable outside Obsidian; leaves plugin packaging and demo vaults to that extension |
+| [`gts`](https://github.com/google/gts) | TypeScript style guide; ESLint and Prettier configuration; project setup and compilation | Overlaps with `gts` in shared lint and format tooling; adds ESM/CommonJS packaging, test runners, spellcheck, documentation sites and release orchestration; uses its own conventions rather than Google's style guide |
+| [`tsdown`](https://tsdown.dev/) | Rolldown-based library builds; declaration generation; Rollup and unplugin plugin support | Overlaps with `tsdown` in library builds; adds lint, format, test and release tooling; uses esbuild rather than the Rolldown plugin ecosystem |
+| [`TSDX`](https://tsdx.io/docs) | Package scaffolding; ESM and CommonJS builds; Vitest tests; oxlint and oxfmt commands | Same goal as `TSDX` for TypeScript package development; exposes composable script APIs and shared configurations; adds spellcheck and documentation-site generation; leaves project scaffolding to other tools |
+| [`tsup`](https://github.com/egoist/tsup) | esbuild-based library bundling; multiple entry points; watch mode | Overlaps with `tsup` in esbuild-based builds; adds shared lint, format, test, gate and release tooling; does not implement the tsup CLI or its configuration API |
+
+Last searched for similar tools on 2026-11-03.
+
 ## Filing an issue (for AI agents and humans)
 
 Open issues through the [issue forms](https://github.com/mnaoumov/typescript-dev-toolkit/issues/new/choose), not as blank issues.
