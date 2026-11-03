@@ -27,6 +27,7 @@ import {
   writeFile
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { basename } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { parseArgs } from 'node:util';
 import {
@@ -109,6 +110,14 @@ export interface PublishGitHubReleaseOptions {
    * @default `true`
    */
   readonly shouldCloseReleasedIssues?: boolean;
+
+  /**
+   * Whether to require every asset to exist, require an existing remote tag, and verify the published
+   * non-draft release and its uploaded assets before closing issues.
+   *
+   * @default `false`
+   */
+  readonly shouldVerifyRelease?: boolean;
 }
 
 /**
@@ -197,6 +206,17 @@ export interface UpdateVersionOptions {
    * @default `true`
    */
   readonly shouldEditChangelog?: boolean;
+
+  /**
+   * Whether to publish and verify the GitHub release before pushing the version commit to the branch.
+   * Preparation and asset validation happen before any push. Only the release tag is pushed first;
+   * a failed preparation, publication or verification leaves the remote branch unchanged.
+   * Uses the `origin` remote and pushes the verified commit to the original branch without force.
+   * Ignored when {@link shouldRelease} is `false`.
+   *
+   * @default `false`
+   */
+  readonly shouldPublishBeforePush?: boolean;
 
   /**
    * Whether to publish the release. When `false`, all local steps are executed (version bump,
@@ -738,6 +758,42 @@ export const VERSION_ARGUMENT_OPTIONS = {
 export type VersionArgumentValues = ReturnType<typeof parseArgs<VersionArgumentParseConfig>>['values'];
 
 /**
+ * An uploaded asset returned by GitHub CLI for publication verification.
+ */
+interface GitHubReleaseAssetMetadata {
+  /**
+   * The downloadable file name.
+   */
+  readonly name: string;
+  /**
+   * GitHub's upload state.
+   */
+  readonly state: string;
+}
+
+/**
+ * The release fields returned by GitHub CLI for publication verification.
+ */
+interface GitHubReleaseMetadata {
+  /**
+   * Uploaded assets.
+   */
+  readonly assets: readonly GitHubReleaseAssetMetadata[];
+  /**
+   * Whether the release remains private as a draft.
+   */
+  readonly isDraft: boolean;
+  /**
+   * Whether GitHub marks it as a pre-release.
+   */
+  readonly isPrerelease: boolean;
+  /**
+   * The exact tag users will download.
+   */
+  readonly tagName: string;
+}
+
+/**
  * One issue reference a commit body names, as {@link parseIssueReferenceLine} reads it.
  */
 interface IssueReference {
@@ -770,7 +826,6 @@ interface VersionArgumentParseConfig {
 export function isPreRelease(version: string): boolean {
   return prerelease(version) !== null;
 }
-
 /**
  * Parses the command-line arguments for a version update into a version update type and
  * {@link UpdateVersionOptions}.
@@ -802,6 +857,7 @@ export function parseVersionArguments($arguments: string[]): ParsedVersionArgume
     versionUpdateType: positionals[0]
   };
 }
+
 /**
  * Publishes a GitHub release for the new version.
  *
@@ -816,9 +872,8 @@ export function parseVersionArguments($arguments: string[]): ParsedVersionArgume
  * @returns A {@link Promise} that resolves when the release has been published.
  */
 export async function publishGitHubRelease(newVersion: string, options: PublishGitHubReleaseOptions = {}): Promise<void> {
-  const { getReleaseAssetPaths = getNpmPackReleaseAssetPaths, shouldCloseReleasedIssues = true } = options;
-  let filePaths = await getReleaseAssetPaths();
-  filePaths = filePaths.filter((filePath) => existsSync(resolvePathFromRootSafe({ path: filePath })));
+  const { getReleaseAssetPaths = getNpmPackReleaseAssetPaths, shouldCloseReleasedIssues = true, shouldVerifyRelease = false } = options;
+  const filePaths = await resolveReleaseAssetPaths(getReleaseAssetPaths, shouldVerifyRelease);
 
   await execFromRoot([
     'gh',
@@ -828,6 +883,7 @@ export async function publishGitHubRelease(newVersion: string, options: PublishG
     ...filePaths,
     '--title',
     `v${newVersion}`,
+    ...(shouldVerifyRelease ? ['--verify-tag'] : []),
     ...(isPreRelease(newVersion) ? ['--prerelease'] : []),
     '--notes-file',
     '-'
@@ -836,15 +892,15 @@ export async function publishGitHubRelease(newVersion: string, options: PublishG
     stdin: await getReleaseNotes(newVersion)
   });
 
+  if (shouldVerifyRelease) {
+    await verifyGitHubRelease(newVersion, filePaths);
+  }
+
   if (!shouldCloseReleasedIssues) {
     return;
   }
 
-  try {
-    await closeReleasedIssues({ newVersion });
-  } catch (error) {
-    console.warn(`The ${newVersion} release is published, but closing the issues it carries failed: ${errorToString(error)}`);
-  }
+  await closeReleasedIssuesSafely(newVersion, true);
 }
 
 /**
@@ -902,6 +958,9 @@ export async function updateChangelog(newVersion: string, options: UpdateChangel
  * 11. Prepares and publishes a GitHub release.
  * 12. Closes the issues the release carries, with a link to it.
  *
+ * With {@link UpdateVersionOptions.shouldPublishBeforePush}, preparation and asset validation precede
+ * the tag push. Publication and verification then precede the branch push, and issue closing remains last.
+ *
  * @param versionUpdateType - The type of version update to perform (major, minor, patch, premajor, preminor, prepatch, prerelease, or x.y.z[-suffix]).
  * @param options - The {@link UpdateVersionOptions} controlling the release behavior.
  * @returns A {@link Promise} that resolves when the version update is complete.
@@ -909,11 +968,12 @@ export async function updateChangelog(newVersion: string, options: UpdateChangel
 export async function updateVersion(versionUpdateType?: string, options: UpdateVersionOptions = {}): Promise<void> {
   const {
     changelogFilePath,
-    getReleaseAssetPaths,
+    getReleaseAssetPaths = getNpmPackReleaseAssetPaths,
     prepareGitHubRelease,
     shouldBuild = true,
     shouldCloseReleasedIssues = true,
     shouldEditChangelog = true,
+    shouldPublishBeforePush = false,
     shouldRelease = true,
     shouldRunChecks = true,
     shouldVerifyCommit = true,
@@ -986,6 +1046,26 @@ export async function updateVersion(versionUpdateType?: string, options: UpdateV
 
   if (!shouldRelease) {
     getLibDebugger('Version')('Skipping git push and GitHub release (--no-release). The version bump, changelog, commit, and tag have been created locally.');
+    return;
+  }
+
+  if (shouldPublishBeforePush) {
+    await prepareGitHubRelease?.(newVersion);
+    const filePaths = await resolveReleaseAssetPaths(getReleaseAssetPaths, true);
+    await assertReleaseCommitLanded(newVersion, startHead, 'pushing');
+    const tagCommitSha = await execFromRoot(['git', 'rev-parse', `refs/tags/${newVersion}^{}`], { isQuiet: true });
+    if (tagCommitSha !== releaseCommitSha) {
+      throw new Error(`Refusing to push ${newVersion}: its tag no longer names the verified release commit.`);
+    }
+    await execFromRoot(['git', 'push', 'origin', `refs/tags/${newVersion}:refs/tags/${newVersion}`], { isQuiet: true });
+    await publishGitHubRelease(newVersion, {
+      getReleaseAssetPaths: () => Promise.resolve(filePaths),
+      shouldCloseReleasedIssues: false,
+      shouldVerifyRelease: true
+    });
+    await assertReleaseCommitLanded(newVersion, startHead, 'pushing');
+    await execFromRoot(['git', 'push', 'origin', `${releaseCommitSha}:refs/heads/${startHead.branch}`], { isQuiet: true });
+    await closeReleasedIssuesSafely(newVersion, shouldCloseReleasedIssues);
     return;
   }
 
@@ -1219,6 +1299,23 @@ async function assertVersionUpdateTypeMeetsBumpFloor(versionUpdateType: string):
 }
 
 /**
+ * Reports issue-closing failures without failing an already published release.
+ *
+ * @param newVersion - The published version whose issues should close.
+ * @param shouldClose - Whether to close the issues after successful delivery.
+ */
+async function closeReleasedIssuesSafely(newVersion: string, shouldClose: boolean): Promise<void> {
+  if (!shouldClose) {
+    return;
+  }
+  try {
+    await closeReleasedIssues({ newVersion });
+  } catch (error) {
+    console.warn(`The ${newVersion} release is published, but closing the issues it carries failed: ${errorToString(error)}`);
+  }
+}
+
+/**
  * Composes the new `CHANGELOG.md` content — the new section from the commits since the last tag, or from the
  * prepared notes, above the previous sections — without reviewing, checking or writing it.
  *
@@ -1298,7 +1395,6 @@ async function composeChangelogNobodyReviews(newVersion: string, changelogFilePa
 function describeBranch(branch: string): string {
   return branch ? `branch '${branch}'` : 'a detached HEAD';
 }
-
 /**
  * Extracts the body of one version's `CHANGELOG.md` section — everything between its `## <version>` heading
  * and whichever comes first, the next `## ` heading or the end of the file.
@@ -1325,6 +1421,7 @@ function extractChangelogSection(changelogContent: string, version: string): str
   const bodyEndIndex = nextHeadingOffset === -1 ? lines.length : bodyStartIndex + nextHeadingOffset;
   return lines.slice(bodyStartIndex, bodyEndIndex).join('\n').trim();
 }
+
 /**
  * Derives the lowest bump a commit range may be published under, from the Conventional-Commits markers the
  * commits in it carry.
@@ -1658,6 +1755,24 @@ async function resolveLastReleasedTag(previousChangelogLines: string[]): Promise
 }
 
 /**
+ * Resolves assets once preparation has finished, refusing missing files in the guarded mode.
+ *
+ * @param getPaths - The callback naming the prepared assets.
+ * @param shouldRequireAssets - Whether a missing requested asset fails the release.
+ * @returns The existing paths to attach.
+ */
+async function resolveReleaseAssetPaths(getPaths: () => Promise<string[]>, shouldRequireAssets: boolean): Promise<string[]> {
+  const paths = await getPaths();
+  return paths.filter((path) => {
+    const isExists = existsSync(resolvePathFromRootSafe({ path }));
+    if (!isExists && shouldRequireAssets) {
+      throw new Error(`Release asset does not exist: ${path}`);
+    }
+    return isExists;
+  });
+}
+
+/**
  * Hands the composed changelog to the user for review on a scratch copy outside the repository, and
  * returns whatever they left behind. The scratch folder is removed even when the review fails.
  *
@@ -1924,6 +2039,31 @@ function toHighestBumpLevel(forcingCommits: readonly ForcingCommit[]): BumpLevel
   }
 
   return forcingCommits.length > 0 ? VersionUpdateType.Minor : VersionUpdateType.Patch;
+}
+
+/**
+ * Verifies public release metadata and completed uploads before exposing its version on the branch.
+ *
+ * @param newVersion - The exact version tag expected on the release.
+ * @param filePaths - The files whose uploads must be complete.
+ */
+async function verifyGitHubRelease(newVersion: string, filePaths: readonly string[]): Promise<void> {
+  const release = JSON.parse(
+    await execFromRoot([
+      'gh',
+      'release',
+      'view',
+      newVersion,
+      '--json',
+      'isDraft,isPrerelease,tagName,assets'
+    ], { isQuiet: true })
+  ) as GitHubReleaseMetadata;
+  if (
+    release.isDraft || release.tagName !== newVersion || release.isPrerelease !== isPreRelease(newVersion)
+    || filePaths.some((path) => release.assets.every((asset) => !(asset.name === basename(path) && asset.state === 'uploaded')))
+  ) {
+    throw new Error(`Could not verify the public ${newVersion} release and its uploaded assets; the remote branch was not advanced.`);
+  }
 }
 
 /**

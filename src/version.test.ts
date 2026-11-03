@@ -1695,6 +1695,213 @@ describe('updateVersion', () => {
     expect(prepareRelease).toHaveBeenCalledWith('1.0.1');
   });
 
+  describe('publication before branch push', () => {
+    interface SetupPublicationMocksOptions {
+      readonly failure?: string;
+      readonly metadata?: object;
+    }
+
+    function getPublicationStep(text: string): string | undefined {
+      if (text.startsWith('git push origin refs/tags/')) {
+        return 'tag';
+      }
+      if (text.startsWith('git push')) {
+        return 'branch';
+      }
+      if (text.startsWith('gh release create')) {
+        return 'publish';
+      }
+      return text.startsWith('gh release view') ? 'verify' : undefined;
+    }
+
+    function setupPublicationMocks(options: SetupPublicationMocksOptions = {}): string[] {
+      setupFullMocks();
+      const steps: string[] = [];
+      const original = mockExecFromRoot.getMockImplementation() as ExecImplementation;
+      mockExistsSync.mockImplementation((path) => path.endsWith('/main.js'));
+      mockExecFromRoot.mockImplementation(implementation);
+      return steps;
+
+      async function implementation(command: string | string[]): Promise<unknown> {
+        const text = Array.isArray(command) ? command.join(' ') : command;
+        if (text.startsWith('git rev-parse refs/tags/')) {
+          return RELEASE_SHA;
+        }
+        const step = getPublicationStep(text);
+        if (step) {
+          steps.push(step);
+          if (options.failure === step) {
+            throw new Error(`failed ${step}`);
+          }
+        }
+        return step === 'verify'
+          ? JSON.stringify(
+            options.metadata ?? {
+              assets: [{ name: 'main.js', state: 'uploaded' }],
+              isDraft: false,
+              isPrerelease: false,
+              tagName: '1.0.1'
+            }
+          )
+          : original(command);
+      }
+    }
+
+    it('should prepare, publish and verify the exact version tag before advancing the branch', async () => {
+      const steps = setupPublicationMocks();
+      let stableManifestVersion = '1.0.0';
+      await updateVersion('patch', {
+        getReleaseAssetPaths: () => {
+          steps.push('assets');
+          return Promise.resolve(['dist/main.js']);
+        },
+        prepareGitHubRelease: (version) => {
+          steps.push('prepare');
+          expect(stableManifestVersion).toBe(version);
+          return noopAsync();
+        },
+        shouldPublishBeforePush: true,
+        updateVersionInExtraFiles: (version) => {
+          stableManifestVersion = version;
+          return noopAsync();
+        }
+      });
+      expect(steps).toEqual(['prepare', 'assets', 'tag', 'publish', 'verify', 'branch']);
+      expect(mockExecFromRoot).toHaveBeenCalledWith(['git', 'push', 'origin', 'refs/tags/1.0.1:refs/tags/1.0.1'], { isQuiet: true });
+      expect(mockExecFromRoot).toHaveBeenCalledWith(['git', 'push', 'origin', `${RELEASE_SHA}:refs/heads/main`], { isQuiet: true });
+      expect(mockExecFromRoot).not.toHaveBeenCalledWith('git push --follow-tags --force', expect.anything());
+      expect(mockCloseReleasedIssues.mock.invocationCallOrder[0]).toBeGreaterThan(
+        mockExecFromRoot.mock.invocationCallOrder[mockExecFromRoot.mock.calls.findIndex(([command]) => Array.isArray(command) && command.includes(`${RELEASE_SHA}:refs/heads/main`))] ?? 0
+      );
+    });
+
+    it('should leave all remote refs untouched when preparation fails', async () => {
+      const steps = setupPublicationMocks();
+      await expect(updateVersion('patch', {
+        prepareGitHubRelease: () => Promise.reject(new Error('preparation failed')),
+        shouldPublishBeforePush: true
+      })).rejects.toThrow('preparation failed');
+      expect(steps).toEqual([]);
+      expect(mockCloseReleasedIssues).not.toHaveBeenCalled();
+    });
+
+    it('should refuse missing assets before pushing the tag', async () => {
+      const steps = setupPublicationMocks();
+      await expect(updateVersion('patch', {
+        getReleaseAssetPaths: () => Promise.resolve(['dist/missing.js']),
+        shouldPublishBeforePush: true
+      })).rejects.toThrow('missing.js');
+      expect(steps).toEqual([]);
+    });
+
+    it.each(['tag', 'publish', 'verify'])('should leave the remote branch unchanged when %s fails', async (failure) => {
+      const steps = setupPublicationMocks({ failure });
+      await expect(updateVersion('patch', {
+        getReleaseAssetPaths: () => Promise.resolve(['dist/main.js']),
+        shouldPublishBeforePush: true
+      })).rejects.toThrow(`failed ${failure}`);
+      expect(steps).not.toContain('branch');
+      expect(mockCloseReleasedIssues).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      { assets: [{ name: 'main.js', state: 'uploaded' }], isDraft: true, isPrerelease: false, tagName: '1.0.1' },
+      { assets: [], isDraft: false, isPrerelease: false, tagName: '1.0.1' },
+      { assets: [{ name: 'main.js', state: 'new' }], isDraft: false, isPrerelease: false, tagName: '1.0.1' },
+      { assets: [{ name: 'main.js', state: 'uploaded' }], isDraft: false, isPrerelease: false, tagName: '1.0.0' },
+      { assets: [{ name: 'main.js', state: 'uploaded' }], isDraft: false, isPrerelease: true, tagName: '1.0.1' }
+    ])('should not advance the branch for an incomplete or mismatched release: %j', async (metadata) => {
+      const steps = setupPublicationMocks({ metadata });
+      await expect(updateVersion('patch', {
+        getReleaseAssetPaths: () => Promise.resolve(['dist/main.js']),
+        shouldPublishBeforePush: true
+      })).rejects.toThrow('verify');
+      expect(steps).not.toContain('branch');
+      expect(mockCloseReleasedIssues).not.toHaveBeenCalled();
+    });
+
+    it('should retain prerelease metadata in the publication-first mode', async () => {
+      const steps = setupPublicationMocks({
+        metadata: {
+          assets: [{ name: 'main.js', state: 'uploaded' }],
+          isDraft: false,
+          isPrerelease: true,
+          tagName: '1.0.1-beta.0'
+        }
+      });
+      await updateVersion('prepatch', {
+        getReleaseAssetPaths: () => Promise.resolve(['dist/main.js']),
+        shouldCloseReleasedIssues: false,
+        shouldPublishBeforePush: true
+      });
+      expect(steps).toEqual(['tag', 'publish', 'verify', 'branch']);
+      expect(mockExecFromRoot).toHaveBeenCalledWith(expect.arrayContaining(['--prerelease']), expect.anything());
+      expect(mockCloseReleasedIssues).not.toHaveBeenCalled();
+    });
+
+    it('should keep publication-first releases local when shouldRelease is false', async () => {
+      const steps = setupPublicationMocks();
+      const prepare = vi.fn(noopAsync);
+      await updateVersion('patch', { prepareGitHubRelease: prepare, shouldPublishBeforePush: true, shouldRelease: false });
+      expect(steps).toEqual([]);
+      expect(prepare).not.toHaveBeenCalled();
+    });
+
+    it('should refuse to push the branch when preparation switches HEAD', async () => {
+      const steps = setupPublicationMocks();
+      await expect(updateVersion('patch', {
+        getReleaseAssetPaths: () => Promise.resolve(['dist/main.js']),
+        prepareGitHubRelease: () => {
+          const original = mockExecFromRoot.getMockImplementation() as ExecImplementation;
+          mockExecFromRoot.mockImplementation((command: string | string[]) => Array.isArray(command) && command.join(' ') === 'git branch --show-current' ? Promise.resolve('other') : original(command));
+          return noopAsync();
+        },
+        shouldPublishBeforePush: true
+      })).rejects.toThrow('Refusing to continue before pushing');
+      expect(steps).toEqual([]);
+    });
+
+    it('should refuse a tag changed by preparation', async () => {
+      const steps = setupPublicationMocks();
+      const original = mockExecFromRoot.getMockImplementation() as ExecImplementation;
+      mockExecFromRoot.mockImplementation((command: string | string[]) => Array.isArray(command) && command[1] === 'rev-parse' && command[2]?.startsWith('refs/tags/') ? Promise.resolve(SIDE_BRANCH_SHA) : original(command));
+      await expect(updateVersion('patch', {
+        getReleaseAssetPaths: () => Promise.resolve(['dist/main.js']),
+        shouldPublishBeforePush: true
+      })).rejects.toThrow('tag no longer names');
+      expect(steps).toEqual([]);
+    });
+
+    it('should refuse to advance the branch if HEAD moves during publication', async () => {
+      const steps = setupPublicationMocks();
+      const original = mockExecFromRoot.getMockImplementation() as ExecImplementation;
+      let hasPublished = false;
+      mockExecFromRoot.mockImplementation(implementation);
+      await expect(updateVersion('patch', {
+        getReleaseAssetPaths: () => Promise.resolve(['dist/main.js']),
+        shouldPublishBeforePush: true
+      })).rejects.toThrow('Refusing to continue before pushing');
+      expect(steps).toEqual(['tag', 'publish', 'verify']);
+      expect(mockCloseReleasedIssues).not.toHaveBeenCalled();
+
+      async function implementation(command: string | string[]): Promise<unknown> {
+        const text = Array.isArray(command) ? command.join(' ') : command;
+        if (hasPublished && text === 'git log -1 --format=%H%n%P%n%s') {
+          return `${SIDE_BRANCH_SHA}\n${RELEASE_SHA}\nfeat: another change`;
+        }
+        const result = await original(command);
+        hasPublished ||= text.startsWith('gh release create');
+        return result;
+      }
+    });
+
+    it('should support a release with no assets', async () => {
+      const steps = setupPublicationMocks();
+      await updateVersion('patch', { getReleaseAssetPaths: () => Promise.resolve([]), shouldPublishBeforePush: true });
+      expect(steps).toEqual(['tag', 'publish', 'verify', 'branch']);
+    });
+  });
+
   it('should close the released issues by default', async () => {
     setupFullMocks();
     await updateVersion('patch');

@@ -12,6 +12,24 @@ npm install --save-dev @mnaoumov/typescript-dev-toolkit
 
 The guides and the API reference are at <https://mnaoumov.dev/typescript-dev-toolkit/>.
 
+## Publish release assets before the version bump
+
+For a project whose updater reads a version file on its default branch and then downloads matching GitHub release assets, opt into publication before the branch push:
+
+```typescript
+import { updateVersion } from '@mnaoumov/typescript-dev-toolkit/version';
+
+await updateVersion('patch', {
+  getReleaseAssetPaths: () => Promise.resolve(['dist/main.js']),
+  shouldEditChangelog: false,
+  shouldPublishBeforePush: true
+});
+```
+
+Use `updateVersionInExtraFiles` to update project-specific version files and `prepareGitHubRelease` to prepare assets. Preparation and asset validation finish before any push. The release tag is pushed to `origin` first, then the release is published and checked for its exact tag, non-draft status and completed asset uploads. Only then is the verified version commit pushed to the original branch, followed by issue closing. Missing assets or a failed publication or verification leave the remote branch unchanged. Local commits and tags, and any remote tag or release already created, remain for recovery; this mode does not roll them back.
+
+The default npm release order is unchanged. `shouldRelease: false` keeps all work local with either order.
+
 ## Where it fits
 
 It is one of five packages that replace [`obsidian-dev-utils`](https://github.com/mnaoumov/obsidian-dev-utils): [`@mnaoumov/typescript-lib`](https://github.com/mnaoumov/typescript-lib), [`@mnaoumov/typescript-test-toolkit`](https://github.com/mnaoumov/typescript-test-toolkit), [`@mnaoumov/typescript-dev-toolkit`](https://github.com/mnaoumov/typescript-dev-toolkit), [`@mnaoumov/obsidian-lib`](https://github.com/mnaoumov/obsidian-lib) and [`@mnaoumov/obsidian-dev-toolkit`](https://github.com/mnaoumov/obsidian-dev-toolkit). It depends on [`@mnaoumov/typescript-lib`](https://github.com/mnaoumov/typescript-lib). It moved here from that repository with its history.
