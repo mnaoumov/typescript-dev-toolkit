@@ -38,8 +38,6 @@ It is one of five packages that replace [`obsidian-dev-utils`](https://github.co
 
 <!-- cspell:words TSDX -->
 
-[My other Obsidian resources](https://mnaoumov.dev/obsidian/)
-
 | Tool | Features | How `@mnaoumov/typescript-dev-toolkit` differs |
 | --- | --- | --- |
 | [`@mnaoumov/obsidian-dev-toolkit`](https://github.com/mnaoumov/obsidian-dev-toolkit) (my tool) | Obsidian plugin builds; demo vaults; plugin releases; plugin-specific lint and test setup | Generic foundation of `@mnaoumov/obsidian-dev-toolkit`; usable outside Obsidian; leaves plugin packaging and demo vaults to that extension |
