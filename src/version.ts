@@ -36,8 +36,16 @@ import {
   prerelease
 } from 'semver';
 
+import type {
+  ChangelogCommitEntry,
+  ChangelogStyle
+} from './changelog-grouping.ts';
 import type { PackageLockJson } from './npm.ts';
 
+import {
+  CHANGELOG_STYLES,
+  renderGroupedChangelogSection
+} from './changelog-grouping.ts';
 import {
   findForbiddenPatternMatches,
   FORBIDDEN_PATTERNS_FILE_ENV_VARIABLE,
@@ -137,6 +145,17 @@ export interface UpdateChangelogOptions {
   readonly changelogFilePath?: string | undefined;
 
   /**
+   * How the section generated from the commit messages is laid out: `grouped` sorts the entries under plain-language
+   * headings and counts the maintenance commits instead of listing them, `commits` writes one bullet per first-parent
+   * commit. See {@link ChangelogStyle}.
+   *
+   * Ignored when {@link changelogFilePath} is set.
+   *
+   * @default `'grouped'`
+   */
+  readonly changelogStyle?: ChangelogStyle | undefined;
+
+  /**
    * Whether to open the generated changelog in the editor for an interactive review. When `false`,
    * the changelog is still generated from commit messages, but it is not opened in the editor for
    * manual review.
@@ -163,6 +182,13 @@ export interface UpdateVersionOptions {
    * @default the first-parent commit subjects since the previous version
    */
   readonly changelogFilePath?: string | undefined;
+
+  /**
+   * How the section generated from the commit messages is laid out. See {@link UpdateChangelogOptions.changelogStyle}.
+   *
+   * @default `'grouped'`
+   */
+  readonly changelogStyle?: ChangelogStyle | undefined;
 
   /**
    * Returns the files to attach to the GitHub release. See {@link PublishGitHubReleaseOptions.getReleaseAssetPaths}.
@@ -744,6 +770,7 @@ export async function readGitHeadState(): Promise<GitHeadState> {
  */
 export const VERSION_ARGUMENT_OPTIONS = {
   'changelog-file': { type: 'string' },
+  'changelog-style': { type: 'string' },
   'no-build': { type: 'boolean' },
   'no-changelog-editing': { type: 'boolean' },
   'no-checks': { type: 'boolean' },
@@ -834,6 +861,7 @@ export function isPreRelease(version: string): boolean {
  * value instead and has no default. Recognized flags:
  * - `--changelog-file=<path>` — use this file's contents as the new version's changelog section instead of
  *   the commit-derived bullets, and skip the interactive review entirely.
+ * - `--changelog-style=<grouped|commits>` — how the commit-derived section is laid out (default `grouped`).
  * - `--no-build` — skip the build step (only safe when the build output already matches the current code).
  * - `--no-changelog-editing` — generate the changelog without opening it for manual review.
  * - `--no-checks` — skip the clean-repo check, format, spellcheck, lint, over-exposure analysis, and tests (the build still runs).
@@ -912,6 +940,7 @@ export async function publishGitHubRelease(newVersion: string, options: PublishG
 export function toUpdateVersionOptions(values: VersionArgumentValues): UpdateVersionOptions {
   return {
     changelogFilePath: values['changelog-file'],
+    changelogStyle: toChangelogStyle(values['changelog-style']),
     shouldBuild: !(values['no-build'] ?? false),
     shouldCloseReleasedIssues: !(values['no-issue-closing'] ?? false),
     shouldEditChangelog: !(values['no-changelog-editing'] ?? false),
@@ -968,6 +997,7 @@ export async function updateChangelog(newVersion: string, options: UpdateChangel
 export async function updateVersion(versionUpdateType?: string, options: UpdateVersionOptions = {}): Promise<void> {
   const {
     changelogFilePath,
+    changelogStyle,
     getReleaseAssetPaths = getNpmPackReleaseAssetPaths,
     prepareGitHubRelease,
     shouldBuild = true,
@@ -1006,7 +1036,7 @@ export async function updateVersion(versionUpdateType?: string, options: UpdateV
   await assertVersionUpdateTypeMeetsBumpFloor(versionUpdateType);
   // Same placement, same reason: a changelog section nobody will review is fully known before the gate, and a subject it
   // fails on is already pushed, so learning that after the preflight only costs the preflight.
-  await assertNonInteractiveChangelogIsPublishable(versionUpdateType, changelogFilePath, shouldEditChangelog);
+  await assertNonInteractiveChangelogIsPublishable(versionUpdateType, { changelogFilePath, changelogStyle, shouldEditChangelog });
 
   if (shouldRunChecks) {
     await assertGitRepoClean();
@@ -1032,6 +1062,7 @@ export async function updateVersion(versionUpdateType?: string, options: UpdateV
   // instead of stranding a bumped-but-uncommitted tree that `assertGitRepoClean` then refuses to re-release.
   const newChangeLog = await prepareChangelog(newVersion, {
     changelogFilePath,
+    changelogStyle,
     shouldEditChangelog
   });
 
@@ -1215,21 +1246,17 @@ function assertChangelogStepIsNonBlocking(changelogFilePath: string | undefined,
  * a finding in the editor.
  *
  * @param versionUpdateType - The requested version update type.
- * @param changelogFilePath - The prepared notes, when the release was given them.
- * @param shouldEditChangelog - Whether the interactive review was asked for.
+ * @param options - Where the section body comes from and whether the interactive review was asked for.
  * @returns A {@link Promise} that resolves when the section would pass, and rejects naming what it fails on.
  */
-async function assertNonInteractiveChangelogIsPublishable(
-  versionUpdateType: string,
-  changelogFilePath: string | undefined,
-  shouldEditChangelog: boolean
-): Promise<void> {
+async function assertNonInteractiveChangelogIsPublishable(versionUpdateType: string, options: UpdateChangelogOptions): Promise<void> {
+  const { changelogFilePath, changelogStyle, shouldEditChangelog = true } = options;
   if (isChangelogReviewDue(changelogFilePath, shouldEditChangelog)) {
     return;
   }
 
   const newVersion = await getNewVersion(versionUpdateType);
-  const changelog = await composeChangelogNobodyReviews(newVersion, changelogFilePath);
+  const changelog = await composeChangelogNobodyReviews(newVersion, changelogFilePath, changelogStyle);
   const findings = await getChangelogSectionFindings(changelog, newVersion);
   if (findings.length > 0) {
     throw toChangelogFindingsError(findings, newVersion);
@@ -1321,9 +1348,10 @@ async function closeReleasedIssuesSafely(newVersion: string, shouldClose: boolea
  *
  * @param newVersion - The new version number the changelog section is written for.
  * @param changelogFilePath - The prepared notes, when the release was given them.
+ * @param changelogStyle - How a section generated from the commit messages is laid out.
  * @returns A {@link Promise} that resolves to the composed content.
  */
-async function composeChangelog(newVersion: string, changelogFilePath: string | undefined): Promise<string> {
+async function composeChangelog(newVersion: string, changelogFilePath: string | undefined, changelogStyle: ChangelogStyle = 'grouped'): Promise<string> {
   const previousChangelogLines = await readPreviousChangelogLines();
 
   let newChangeLog = `# CHANGELOG\n\n## ${newVersion}\n\n`;
@@ -1332,10 +1360,14 @@ async function composeChangelog(newVersion: string, changelogFilePath: string | 
     const lastTag = await resolveLastReleasedTag(previousChangelogLines);
     const commitRange = lastTag ? `${lastTag}..HEAD` : 'HEAD';
     const commitMessagesString = await execFromRoot(`git log ${commitRange} --format=%B --first-parent -z`, { isQuiet: true });
-    const commitMessages = commitMessagesString.split('\0').filter(Boolean).map((commitMessage) => toChangelogEntry(commitMessage));
+    const commitMessages = commitMessagesString.split('\0').filter(Boolean);
 
-    for (const message of commitMessages) {
-      newChangeLog += `- ${autolinkBareUrls(message)}\n`;
+    if (changelogStyle === 'grouped') {
+      newChangeLog += `${renderGroupedChangelogSection(commitMessages.map((commitMessage) => toChangelogCommitEntry(commitMessage)))}\n`;
+    } else {
+      for (const commitMessage of commitMessages) {
+        newChangeLog += `- ${autolinkBareUrls(toChangelogEntry(commitMessage))}\n`;
+      }
     }
   } else {
     const preparedNotes = await readFile(changelogFilePath, 'utf-8');
@@ -1365,10 +1397,15 @@ async function composeChangelog(newVersion: string, changelogFilePath: string | 
  *
  * @param newVersion - The new version number the changelog section is written for.
  * @param changelogFilePath - The prepared notes, when the release was given them.
+ * @param changelogStyle - How a section generated from the commit messages is laid out.
  * @returns A {@link Promise} that resolves to the composed content.
  */
-async function composeChangelogNobodyReviews(newVersion: string, changelogFilePath: string | undefined): Promise<string> {
-  const changelog = await composeChangelog(newVersion, changelogFilePath);
+async function composeChangelogNobodyReviews(
+  newVersion: string,
+  changelogFilePath: string | undefined,
+  changelogStyle: ChangelogStyle | undefined
+): Promise<string> {
+  const changelog = await composeChangelog(newVersion, changelogFilePath, changelogStyle);
   if (changelogFilePath !== undefined) {
     return changelog;
   }
@@ -1650,12 +1687,13 @@ function parseNpmPackOutput(output: string): NpmPackResult {
 async function prepareChangelog(newVersion: string, options: UpdateChangelogOptions): Promise<string> {
   const {
     changelogFilePath,
+    changelogStyle,
     shouldEditChangelog = true
   } = options;
   const isReviewDue = isChangelogReviewDue(changelogFilePath, shouldEditChangelog);
   const newChangeLog = isReviewDue
-    ? await composeChangelog(newVersion, changelogFilePath)
-    : await composeChangelogNobodyReviews(newVersion, changelogFilePath);
+    ? await composeChangelog(newVersion, changelogFilePath, changelogStyle)
+    : await composeChangelogNobodyReviews(newVersion, changelogFilePath, changelogStyle);
   let settledChangeLog = newChangeLog;
   let findings: ChangelogFinding[] = [];
 
@@ -1850,6 +1888,35 @@ function toBumpFloorError(bumpFloor: BumpFloor, context: BumpFloorRefusalContext
 }
 
 /**
+ * Reads one first-parent commit into the parts both changelog styles render: the line {@link toChangelogEntry}
+ * describes, the issue references it does not already show, and what else the body says.
+ *
+ * @param commitMessage - The full commit message.
+ * @returns The parts, with bare URLs in the entry and the detail lines autolinked.
+ */
+function toChangelogCommitEntry(commitMessage: string): ChangelogCommitEntry {
+  const lines = commitMessage.split(/\r?\n/).filter(Boolean);
+  const subject = lines[0] ?? '';
+  const bodyLines = lines.slice(1);
+  const liftedLine = MERGE_SUBJECT_REG_EXP.test(subject) ? bodyLines.find((line) => !parseIssueReferenceLine(line)) : undefined;
+  const entry = liftedLine ?? subject;
+  const references = new Set<string>();
+  for (const reference of bodyLines.flatMap((line) => parseIssueReferenceLine(line) ?? [])) {
+    if (reference.spellings.every((spelling) => !new RegExp(String.raw`(?<![\w/])${escapeRegExp(spelling)}(?!\d)`).test(entry))) {
+      references.add(reference.rendered);
+    }
+  }
+
+  const detailLines = bodyLines.filter((line) => line !== liftedLine && !parseIssueReferenceLine(line) && !BREAKING_CHANGE_FOOTER_REG_EXP.test(line));
+  return {
+    detailLines: detailLines.map((line) => autolinkBareUrls(line.trim())),
+    entry: autolinkBareUrls(entry),
+    hasBreakingFooter: BREAKING_CHANGE_FOOTER_REG_EXP.test(commitMessage),
+    references: [...references]
+  };
+}
+
+/**
  * Turns one full commit message (`git log --format=%B`) into the changelog line it should contribute.
  *
  * Normally that is the subject. The exception is a merge whose subject git wrote itself: for a non-ff merge
@@ -1867,17 +1934,8 @@ function toBumpFloorError(bumpFloor: BumpFloor, context: BumpFloorRefusalContext
  * @returns The changelog line for that commit.
  */
 function toChangelogEntry(commitMessage: string): string {
-  const lines = commitMessage.split(/\r?\n/).filter(Boolean);
-  const subject = lines[0] ?? '';
-  const bodyLines = lines.slice(1);
-  const entry = MERGE_SUBJECT_REG_EXP.test(subject) ? bodyLines.find((line) => !parseIssueReferenceLine(line)) ?? subject : subject;
-  const references = new Set<string>();
-  for (const reference of bodyLines.flatMap((line) => parseIssueReferenceLine(line) ?? [])) {
-    if (reference.spellings.every((spelling) => !new RegExp(String.raw`(?<![\w/])${escapeRegExp(spelling)}(?!\d)`).test(entry))) {
-      references.add(reference.rendered);
-    }
-  }
-  return references.size === 0 ? entry : `${entry} (${[...references].join(', ')})`;
+  const { entry, references } = toChangelogCommitEntry(commitMessage);
+  return references.length === 0 ? entry : `${entry} (${references.join(', ')})`;
 }
 
 /**
@@ -1922,6 +1980,26 @@ function toChangelogSectionDocument(changelogContent: string, version: string): 
   // An empty section is a real shape — a release with no commits to describe, or prepared notes that are an
   // empty file — and appending a blank body to the heading would report a defect this release did not commit.
   return section === '' ? `${heading}\n` : `${heading}\n\n${section}\n`;
+}
+
+/**
+ * Validates the `--changelog-style` value.
+ *
+ * @param value - The flag's value, or `undefined` when it was not passed.
+ * @returns The style, or `undefined` for the default.
+ * @throws If the value names no {@link ChangelogStyle}.
+ */
+function toChangelogStyle(value: string | undefined): ChangelogStyle | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const style = CHANGELOG_STYLES.find((candidate) => candidate === value);
+  if (!style) {
+    throw new Error(`Unknown --changelog-style '${value}'. Use one of: ${CHANGELOG_STYLES.join(', ')}.`);
+  }
+
+  return style;
 }
 
 /**
