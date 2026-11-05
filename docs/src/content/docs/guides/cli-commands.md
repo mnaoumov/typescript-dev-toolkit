@@ -364,6 +364,22 @@ import { assertNoOutdatedReferences } from '@mnaoumov/typescript-dev-toolkit/doc
 
 Fails on a reference that sends a reader to the retired `obsidian-dev-utils` package: one of its module paths, a link into its repository, an import of it, or its legacy `__obsidianDevUtils.sharedAbortController` console recipe. The bare name is not flagged, because it is still a wire name. It scans `README.md`, the guides (not the `api` folder), and every non-test `.ts` file under `src/` and `scripts/`, skipping whichever is missing. A line that names an old address on purpose carries `outdated-reference-ok`.
 
+### Rewrite changelog
+
+```bash
+npx -p @mnaoumov/typescript-dev-toolkit rewrite-changelog [--write] [--releases] [--overwrite-edited-releases] [--path=<file>]
+```
+
+Rewrites the published sections of `CHANGELOG.md` into the grouped layout that `npm run version` writes for a new release, so the project's history reads the same way as its next release. Run it from the repository root. Without `--write` it only reports what it would do.
+
+- **A section is rewritten only if it is still a flat list of commit subjects.** Its bullets are matched back to the first-parent commits between its tag and the previous section's tag. That recovers the issue title an issue-closing `re #<n>` merge carries in its body, and the `BREAKING CHANGE:` footer. A bullet that no commit matches is grouped from its own text.
+- **Any other section was written or edited by a person, so it is kept as it is.** That covers prose, sub-headings and an already grouped section, so a second run changes nothing.
+- **Every heading is kept verbatim**, dates included.
+- **`--releases` also rewrites the GitHub release of each rewritten section.** It edits the release notes and does not re-release. A release is rewritten only if its notes, above the `**Full Changelog**` compare link, are still the section as it was, so notes edited after publishing are left alone. The compare link is kept. All the releases are read in one paginated `gh api` call.
+- **`--overwrite-edited-releases` rewrites those edited releases too**, from the changelog. Use it when the changelog was corrected after the release, for example to remove text that must not be public, so the release still carries the old text.
+
+Lint the result before committing it (`npm run lint:md` and `npm run spellcheck`): an issue title is user-written text.
+
 ### Sync upstreams
 
 ```bash
