@@ -932,6 +932,34 @@ export async function publishGitHubRelease(newVersion: string, options: PublishG
 }
 
 /**
+ * Reads one first-parent commit into the parts both changelog styles render: the line {@link toChangelogEntry}
+ * describes, the issue references it does not already show, and what else the body says.
+ *
+ * @param commitMessage - The full commit message.
+ * @returns The parts, with bare URLs in the entry and the detail lines autolinked.
+ */
+export function toChangelogCommitEntry(commitMessage: string): ChangelogCommitEntry {
+  const lines = commitMessage.split(/\r?\n/).filter(Boolean);
+  const subject = lines[0] ?? '';
+  const bodyLines = lines.slice(1);
+  const liftedLine = MERGE_SUBJECT_REG_EXP.test(subject) ? bodyLines.find((line) => !parseIssueReferenceLine(line)) : undefined;
+  const entry = liftedLine ?? subject;
+  const references = new Set<string>();
+  for (const reference of bodyLines.flatMap((line) => parseIssueReferenceLine(line) ?? [])) {
+    if (reference.spellings.every((spelling) => !new RegExp(String.raw`(?<![\w/])${escapeRegExp(spelling)}(?!\d)`).test(entry))) {
+      references.add(reference.rendered);
+    }
+  }
+
+  const detailLines = bodyLines.filter((line) => line !== liftedLine && !parseIssueReferenceLine(line) && !BREAKING_CHANGE_FOOTER_REG_EXP.test(line));
+  return {
+    detailLines: detailLines.map((line) => autolinkBareUrls(line.trim())),
+    entry: autolinkBareUrls(entry),
+    hasBreakingFooter: BREAKING_CHANGE_FOOTER_REG_EXP.test(commitMessage),
+    references: [...references]
+  };
+}
+/**
  * Maps the values `parseArgs` reports for {@link VERSION_ARGUMENT_OPTIONS} onto {@link UpdateVersionOptions}.
  *
  * @param values - The parsed values.
@@ -949,6 +977,7 @@ export function toUpdateVersionOptions(values: VersionArgumentValues): UpdateVer
     shouldVerifyCommit: !(values['no-commit-verification'] ?? false)
   };
 }
+
 /**
  * Updates the changelog file with new version information and commit messages.
  *
@@ -1428,10 +1457,10 @@ async function composeChangelogNobodyReviews(
   const heading = `## ${newVersion}\n\n`;
   return changelog.replace(`${heading}${section}`, () => `${heading}${extractChangelogSection(content, newVersion)}`);
 }
-
 function describeBranch(branch: string): string {
   return branch ? `branch '${branch}'` : 'a detached HEAD';
 }
+
 /**
  * Extracts the body of one version's `CHANGELOG.md` section — everything between its `## <version>` heading
  * and whichever comes first, the next `## ` heading or the end of the file.
@@ -1885,35 +1914,6 @@ function toBumpFloorError(bumpFloor: BumpFloor, context: BumpFloorRefusalContext
       + ' bump has to answer for all of them. Re-run the release with a'
       + ` ${bumpFloor.level} bump — a higher one is always accepted, and nothing has been written yet.`
   );
-}
-
-/**
- * Reads one first-parent commit into the parts both changelog styles render: the line {@link toChangelogEntry}
- * describes, the issue references it does not already show, and what else the body says.
- *
- * @param commitMessage - The full commit message.
- * @returns The parts, with bare URLs in the entry and the detail lines autolinked.
- */
-function toChangelogCommitEntry(commitMessage: string): ChangelogCommitEntry {
-  const lines = commitMessage.split(/\r?\n/).filter(Boolean);
-  const subject = lines[0] ?? '';
-  const bodyLines = lines.slice(1);
-  const liftedLine = MERGE_SUBJECT_REG_EXP.test(subject) ? bodyLines.find((line) => !parseIssueReferenceLine(line)) : undefined;
-  const entry = liftedLine ?? subject;
-  const references = new Set<string>();
-  for (const reference of bodyLines.flatMap((line) => parseIssueReferenceLine(line) ?? [])) {
-    if (reference.spellings.every((spelling) => !new RegExp(String.raw`(?<![\w/])${escapeRegExp(spelling)}(?!\d)`).test(entry))) {
-      references.add(reference.rendered);
-    }
-  }
-
-  const detailLines = bodyLines.filter((line) => line !== liftedLine && !parseIssueReferenceLine(line) && !BREAKING_CHANGE_FOOTER_REG_EXP.test(line));
-  return {
-    detailLines: detailLines.map((line) => autolinkBareUrls(line.trim())),
-    entry: autolinkBareUrls(entry),
-    hasBreakingFooter: BREAKING_CHANGE_FOOTER_REG_EXP.test(commitMessage),
-    references: [...references]
-  };
 }
 
 /**

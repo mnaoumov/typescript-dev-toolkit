@@ -238,6 +238,7 @@
     }
   },
   "bin": {
+    "rewrite-changelog": "bin/rewrite-changelog.mjs",
     "sync-upstreams": "bin/sync-upstreams.mjs"
   },
   "files": [
