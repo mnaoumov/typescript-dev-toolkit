@@ -14,11 +14,8 @@ import {
 } from '../src/docs-site/outdated-references.ts';
 import { DOCS_SNIPPETS_PARAMS } from './docs-snippets-config.ts';
 
-// Compiling every guide snippet builds one program over `src/`, which takes tens of seconds.
-const FULL_CHECK_TIMEOUT_IN_MILLISECONDS = 180_000;
-
 describe('this package', () => {
-  it('should compile every snippet of its guides', { timeout: FULL_CHECK_TIMEOUT_IN_MILLISECONDS }, async () => {
+  it('should compile every snippet of its guides', async () => {
     expect(formatDocsSnippetProblems(await findDocsSnippetProblems(DOCS_SNIPPETS_PARAMS))).toBe('');
   });
 

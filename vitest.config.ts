@@ -82,10 +82,12 @@ export default defineLibraryVitestConfig({
       test: {
         environment: 'node',
         exclude: [...DEFAULT_VITEST_TEST_EXCLUDE],
-        // This package's own documentation checks; outside `src/`, so outside the coverage gate.
+        // This package's own documentation checks; outside `src/`, so outside the coverage gate. They build programs over
+        // the whole package and scan every guide, so they get the loaded-machine budget the slow project has.
         include: ['scripts/**/*.test.ts'],
         name: 'unit-tests:scripts',
-        setupFiles: []
+        setupFiles: [],
+        testTimeout: LOADED_MACHINE_TIMEOUT_IN_MILLISECONDS
       }
     }
   ]
