@@ -1,5 +1,23 @@
 # CHANGELOG
 
+## 6.2.0
+
+This release has 1 new feature, 1 fix and 3 documentation changes. 1 maintenance commit (tests, build, CI, refactoring, dependencies) is not listed.
+
+### New
+
+- **version:** group the generated changelog section for readers
+
+### Fixed
+
+- **eslint:** preserve typed-array slice copies
+
+### Documentation
+
+- drop the Obsidian resources link from See also
+- **readme:** link the changelog
+- **readme:** compare related TypeScript development tools
+
 ## 6.1.0
 
 - feat(version): publish releases before pushing version bumps
