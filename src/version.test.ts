@@ -888,6 +888,28 @@ describe('autolinkBareUrls', () => {
 });
 
 describe('updateChangelog', () => {
+  it('should group the generated section by default', async () => {
+    mockExistsSync.mockReturnValue(false);
+    mockExecFromRoot
+      .mockResolvedValueOnce([
+        'fix: re #12\n\nThe pad closes on https://example.com\0',
+        'feat(api)!: drop the old entry point\0',
+        'chore(deps): bump everything\0',
+        'Merge branch \'T1\'\n\nRefs owner/consumer#5\nfeat: add the thing\0'
+      ].join(''))
+      .mockResolvedValueOnce('');
+    await updateChangelog('1.0.0', { shouldEditChangelog: false });
+    expect(mockWriteFile).toHaveBeenCalledWith(
+      '/root/CHANGELOG.md',
+      '# CHANGELOG\n\n## 1.0.0\n\n'
+        + 'This release has 1 breaking change, 1 new feature and 1 fix. 1 maintenance commit (tests, build, CI, refactoring, dependencies) is not listed.\n\n'
+        + '### Breaking changes\n\n- **api:** drop the old entry point\n\n'
+        + '### New\n\n- add the thing (<https://github.com/owner/consumer/issues/5>)\n\n'
+        + '### Fixed\n\n- The pad closes on <https://example.com> (#12)\n',
+      'utf-8'
+    );
+  });
+
   it('should autolink bare URLs in the generated bullets', async () => {
     mockExistsSync.mockReturnValue(false);
     stubPassThroughReview();
@@ -897,7 +919,7 @@ describe('updateChangelog', () => {
     mockCreateInterface.mockReturnValue({
       question: vi.fn().mockResolvedValue(undefined)
     });
-    await updateChangelog('1.0.0');
+    await updateChangelog('1.0.0', { changelogStyle: 'commits' });
     expect(mockWriteFile).toHaveBeenCalledWith(
       expect.any(String),
       expect.stringContaining('- fix: re <https://github.com/user/repo/issues/146>\n'),
@@ -1060,7 +1082,7 @@ describe('updateChangelog', () => {
     mockCreateInterface.mockReturnValue({
       question: vi.fn().mockResolvedValue(undefined)
     });
-    await updateChangelog('1.0.0');
+    await updateChangelog('1.0.0', { changelogStyle: 'commits' });
     expect(mockWriteFile).toHaveBeenCalledWith(
       '/root/CHANGELOG.md',
       expect.stringContaining('- fix(plugin): store the gate component before adding it\n'),
@@ -1082,7 +1104,7 @@ describe('updateChangelog', () => {
     mockCreateInterface.mockReturnValue({
       question: vi.fn().mockResolvedValue(undefined)
     });
-    await updateChangelog('1.0.0');
+    await updateChangelog('1.0.0', { changelogStyle: 'commits' });
     expect(mockWriteFile).toHaveBeenCalledWith(
       '/root/CHANGELOG.md',
       expect.stringContaining('- feat: add a shiny new feature\n'),
@@ -1145,7 +1167,7 @@ describe('updateChangelog', () => {
     mockExistsSync.mockReturnValue(false);
     mockReadForbiddenPatterns.mockResolvedValue([/\bSECRET-\d+\b/]);
     mockExecFromRoot.mockResolvedValueOnce('fix: close the gap noted in SECRET-42\0feat: add a shiny new feature\0');
-    const promise = updateChangelog('1.0.0', { shouldEditChangelog: false });
+    const promise = updateChangelog('1.0.0', { changelogStyle: 'commits', shouldEditChangelog: false });
     await expect(promise).rejects.toThrow('matches a pattern from the file FORBIDDEN_PATTERNS_FILE names');
     await expect(promise).rejects.toThrow('- fix: close the gap noted in SECRET-42    <- SECRET-42');
     expect(mockWriteFile).not.toHaveBeenCalled();
@@ -1175,7 +1197,7 @@ describe('updateChangelog', () => {
     mockCreateInterface.mockReturnValue({
       question: vi.fn().mockResolvedValue(undefined)
     });
-    await updateChangelog('1.0.0');
+    await updateChangelog('1.0.0', { changelogStyle: 'commits' });
     expect(mockWriteFile).toHaveBeenCalledWith('/root/CHANGELOG.md', '# CHANGELOG\n\n## 1.0.0\n\n- \n', 'utf-8');
   });
 
@@ -1212,7 +1234,7 @@ describe('updateChangelog', () => {
     mockExecFromRoot
       .mockResolvedValueOnce(message)
       .mockResolvedValueOnce('');
-    await updateChangelog('1.0.0', { shouldEditChangelog: false });
+    await updateChangelog('1.0.0', { changelogStyle: 'commits', shouldEditChangelog: false });
     expect(mockWriteFile).toHaveBeenCalledWith('/root/CHANGELOG.md', expect.stringContaining(expected), 'utf-8');
   });
 
@@ -1291,7 +1313,7 @@ describe('updateChangelog', () => {
     mockCreateInterface.mockReturnValue({
       question: vi.fn().mockResolvedValue(undefined)
     });
-    await updateChangelog('1.0.0');
+    await updateChangelog('1.0.0', { changelogStyle: 'commits' });
 
     // The minimal document: the heading context the list and heading rules need, and nothing anybody else
     // shipped. Its line numbers are the written file's own, because a section is prepended.
@@ -1337,7 +1359,7 @@ describe('updateChangelog', () => {
       fixCount: 1
     });
 
-    await updateChangelog('1.0.0', { shouldEditChangelog: false });
+    await updateChangelog('1.0.0', { changelogStyle: 'commits', shouldEditChangelog: false });
 
     expect(mockFixMarkdownContent).toHaveBeenCalledWith({
       content: '# CHANGELOG\n\n## 1.0.0\n\n- fix: keep one My Plugin minVersion\n',
@@ -1575,12 +1597,22 @@ describe('parseVersionArguments', () => {
   it('should reject a flag it does not know', () => {
     expect(() => parseVersionArguments(['patch', '--no-demo-vault'])).toThrow();
   });
+
+  it('should parse the changelog style with --changelog-style', () => {
+    expect(parseVersionArguments(['patch', '--changelog-style=commits']).options.changelogStyle).toBe('commits');
+    expect(parseVersionArguments(['patch', '--changelog-style=grouped']).options.changelogStyle).toBe('grouped');
+  });
+
+  it('should reject a changelog style it does not know', () => {
+    expect(() => parseVersionArguments(['patch', '--changelog-style=prose'])).toThrow('Unknown --changelog-style \'prose\'. Use one of: grouped, commits.');
+  });
 });
 
 describe('VERSION_ARGUMENT_OPTIONS', () => {
   it('should declare every flag parseVersionArguments recognizes', () => {
     expect(Object.keys(VERSION_ARGUMENT_OPTIONS).sort()).toEqual([
       'changelog-file',
+      'changelog-style',
       'no-build',
       'no-changelog-editing',
       'no-checks',

@@ -295,6 +295,8 @@ import { updateVersion } from '@mnaoumov/typescript-dev-toolkit/version';
 
 Runs the gate, bumps the version, writes `CHANGELOG.md`, commits, tags, pushes and creates the GitHub release. It refuses a bump lower than the commits since the last release require, a changelog section that fails `lint:md` or `spellcheck`, and a run without a terminal unless it is given `--changelog-file <path>` or `--no-changelog-editing`.
 
+The changelog section it generates from the commits is grouped for readers: a one-line summary, then `### Breaking changes`, `### New`, `### Fixed`, `### Improved`, `### Documentation` and `### Other changes`, sorted by each commit's Conventional-Commits type. Commits of type `build`, `chore`, `ci`, `refactor`, `style` and `test` are counted in the summary rather than listed, unless they are marked breaking. Identical entries are merged, and an issue-closing `re #<n>` subject is replaced by the issue title on its body's first line. `--changelog-style commits` writes the older one-bullet-per-commit list instead, and `--changelog-file <path>` replaces the generated section with prepared notes.
+
 ### Publish
 
 ```typescript
