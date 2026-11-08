@@ -131,6 +131,16 @@ describe('lint', () => {
     expect(mockExecFromRoot.mock.calls[1]?.[0]).not.toContain('--retry');
   });
 
+  // GitHub answering 504 for every repository failed releases and CI with nothing wrong in them.
+  it('should only warn on a gateway failure that outlasts the retries, and keep a 500 an error', async () => {
+    mockExistsSync.mockReturnValue(true);
+    await lint();
+    expect(mockExecFromRoot).toHaveBeenCalledWith(
+      expect.arrayContaining(['linkinator', '--status-code', '502:warn', '--status-code', '503:warn', '--status-code', '504:warn'])
+    );
+    expect(mockExecFromRoot.mock.calls[1]?.[0]).not.toContain('500:warn');
+  });
+
   it.each([[undefined, '100'], ['2', '2'], ['bad', '100'], ['200', '100']])('caps linkinator concurrency for budget %s', async (budget, expected) => {
     vi.stubEnv('BULK_CORES', budget);
     mockExistsSync.mockReturnValue(true);
