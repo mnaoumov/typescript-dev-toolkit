@@ -277,7 +277,7 @@ function matchBullets(bodyLines: readonly string[], commitMessages: readonly str
     }
 
     matchedCount++;
-    entries.push(...unused.splice(index, 1));
+    entries.push(...unused.splice(index, 1).map((entry) => withPublishedText(entry, bullet)));
   }
 
   return { entries, matchedCount };
@@ -323,4 +323,18 @@ function toTag(version: string, tags: ReadonlySet<string>): string | undefined {
 function trimTrailingBlankLines(lines: readonly string[]): readonly string[] {
   const lastIndex = findLastIndex(lines, (line) => line.trim() !== '');
   return lines.slice(0, lastIndex + 1);
+}
+
+/**
+ * Puts a matched bullet's own text on its commit's entry. A bullet matches with formatting ignored, and `lint:md:fix`
+ * may have added code spans and bracket escapes the commit subject never had, which the section needs to stay valid.
+ *
+ * @param entry - The commit's entry.
+ * @param bullet - The matched bullet, without its marker.
+ * @returns The entry with the bullet's text, or as it was when the bullet's references are formatted differently.
+ */
+function withPublishedText(entry: ChangelogCommitEntry, bullet: string): ChangelogCommitEntry {
+  const referencesSuffix = ` (${entry.references.join(', ')})`;
+  const text = bullet.endsWith(referencesSuffix) ? bullet.slice(0, -referencesSuffix.length) : bullet;
+  return toComparable(text) === toComparable(entry.entry) ? { ...entry, entry: text } : entry;
 }
