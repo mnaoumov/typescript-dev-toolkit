@@ -76,6 +76,26 @@ export interface KeptChangelogSection {
 }
 
 /**
+ * A section of a `CHANGELOG.md` as it now stands, whatever its layout.
+ */
+export interface PublishedChangelogSection {
+  /**
+   * The section body, without its heading.
+   */
+  readonly body: string;
+
+  /**
+   * The tag the version was released under, when the repository has one.
+   */
+  readonly tag: string | undefined;
+
+  /**
+   * The version its heading names.
+   */
+  readonly version: string;
+}
+
+/**
  * A section {@link rewriteChangelog} rewrote.
  */
 export interface RewrittenChangelogSection {
@@ -120,6 +140,23 @@ interface MatchedBullets {
 const BULLET_PREFIX = '- ';
 const FULL_CHANGELOG_PREFIX = '**Full Changelog**:';
 const SECTION_HEADING_PREFIX = '## ';
+
+/**
+ * Reads every non-empty section of a `CHANGELOG.md` as it now stands, which is what release notes are synced from.
+ *
+ * @param changelog - The current `CHANGELOG.md` content.
+ * @param tags - The repository's tags.
+ * @returns The sections, in file order.
+ */
+export function readPublishedChangelogSections(changelog: string, tags: readonly string[]): PublishedChangelogSection[] {
+  const lines = changelog.replaceAll('\r\n', '\n').split('\n');
+  const firstHeadingIndex = lines.findIndex((line) => line.startsWith(SECTION_HEADING_PREFIX));
+  const sections = firstHeadingIndex === -1 ? [] : splitSections(lines.slice(firstHeadingIndex));
+  const tagSet = new Set(tags);
+  return sections
+    .map((section) => ({ body: section.rawLines.slice(1).join('\n').trim(), tag: toTag(section.version, tagSet), version: section.version }))
+    .filter((section) => section.body !== '');
+}
 
 /**
  * Rewrites every released section of a `CHANGELOG.md` that is still a flat list of commit subjects into the `grouped`
@@ -181,12 +218,17 @@ export async function rewriteChangelog(changelog: string, source: ChangelogRewri
  * after publishing is not overwritten unless asked. The compare link is kept as it is.
  *
  * @param releaseBody - The release's current notes.
- * @param section - The rewritten section.
+ * @param section - The section as it was and as it is to be. Passing the current body as both syncs the notes with it,
+ *   which replaces only notes that differ from it by formatting alone.
  * @param shouldOverwriteEdited - Whether notes that are no longer the section as it was are rewritten anyway. That is
  *   right where the changelog was corrected after the release, for example to remove text that must not be public.
  * @returns The new notes, or `null` when the release was edited and has to be left alone.
  */
-export function rewriteReleaseNotes(releaseBody: string, section: RewrittenChangelogSection, shouldOverwriteEdited = false): null | string {
+export function rewriteReleaseNotes(
+  releaseBody: string,
+  section: Pick<RewrittenChangelogSection, 'newBody' | 'oldBody'>,
+  shouldOverwriteEdited = false
+): null | string {
   const lines = releaseBody.replaceAll('\r\n', '\n').trim().split('\n');
   const linkIndex = findLastIndex(lines, (line) => line.startsWith(FULL_CHANGELOG_PREFIX));
   const noteLines = linkIndex === -1 ? lines : lines.slice(0, linkIndex);

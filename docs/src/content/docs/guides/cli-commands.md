@@ -367,7 +367,7 @@ Fails on a reference that sends a reader to the retired `obsidian-dev-utils` pac
 ### Rewrite changelog
 
 ```bash
-npx -p @mnaoumov/typescript-dev-toolkit rewrite-changelog [--write] [--releases] [--overwrite-edited-releases] [--path=<file>]
+npx -p @mnaoumov/typescript-dev-toolkit rewrite-changelog [--write] [--releases | --sync-releases] [--overwrite-edited-releases] [--only=<versions>] [--path=<file>]
 ```
 
 Rewrites the published sections of `CHANGELOG.md` into the grouped layout that `npm run version` writes for a new release, so the project's history reads the same way as its next release. Run it from the repository root. Without `--write` it only reports what it would do.
@@ -377,8 +377,11 @@ Rewrites the published sections of `CHANGELOG.md` into the grouped layout that `
 - **Every heading is kept verbatim**, dates included.
 - **`--releases` also rewrites the GitHub release of each rewritten section.** It edits the release notes and does not re-release. A release is rewritten only if its notes, above the `**Full Changelog**` compare link, are still the section as it was, so notes edited after publishing are left alone. The compare link is kept. All the releases are read in one paginated `gh api` call.
 - **`--overwrite-edited-releases` rewrites those edited releases too**, from the changelog. Use it when the changelog was corrected after the release, for example to remove text that must not be public, so the release still carries the old text.
+- **`--only=<versions>` narrows the GitHub releases edited** to a comma-separated list, each with or without a leading `v`. It leaves the changelog handling as it is, and a version that names no section is refused before anything is written.
+- **`--sync-releases` sets the release notes from the changelog as it stands and leaves the changelog alone**, whatever layout a section has. It needs `--write` to change anything. On its own it replaces only notes that differ from their section by formatting, such as the code marks `lint:md:fix` adds. With `--overwrite-edited-releases` it replaces any that differ, so `--only` picks the few that should.
+- **A failed release edit is tried three times.** Any that still fail are listed at the end with the `--sync-releases` command that finishes them, and the command exits with `1`. A plain re-run would not retry them, because their sections are already rewritten.
 
-Lint the result before committing it (`npm run lint:md` and `npm run spellcheck`): an issue title is user-written text.
+Lint the result before committing it (`npm run lint:md` and `npm run spellcheck`): an issue title is user-written text. Then run `--sync-releases --write`, so the releases carry whatever `npm run lint:md:fix` changed.
 
 ### Sync upstreams
 
