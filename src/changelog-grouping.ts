@@ -29,8 +29,9 @@ export const CHANGELOG_STYLES: readonly ChangelogStyle[] = ['grouped', 'commits'
  */
 export interface ChangelogCommitEntry {
   /**
-   * The body lines that are neither the entry itself nor an issue reference line nor a breaking-change footer, in
-   * order. The first of them is the issue title an issue-closing `re #<n>` merge carries.
+   * The body paragraphs left once the entry itself, the issue reference lines and the breaking-change footers are
+   * removed, in order, each unwrapped onto one line. The first of them is the issue title an issue-closing `re #<n>`
+   * merge carries, which an older merge may have hard-wrapped.
    */
   readonly detailLines: readonly string[];
 
