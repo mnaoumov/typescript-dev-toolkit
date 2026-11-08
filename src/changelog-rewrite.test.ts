@@ -151,6 +151,37 @@ describe('rewriteChangelog', () => {
     `);
   });
 
+  it('should keep a section whose bullets match no commit and are all prose', async () => {
+    const changelog = '# CHANGELOG\n\n## 2.0.0\n\n- Reworded by hand\n- fix: two\n\n## 1.0.0\n\n- Initial release as a standalone repository\n';
+    const repo = source(['1.0.0', '2.0.0'], { '..1.0.0': ['chore: initial commit\n'] });
+
+    const result = await rewriteChangelog(changelog, repo);
+
+    expect(result.kept).toEqual([
+      { reason: 'no bullet matched a commit or is a Conventional Commits subject, so a person wrote it', version: '1.0.0' }
+    ]);
+    expect(result.rewritten.map(({ matchedCount, version }) => ({ matchedCount, version }))).toEqual([{ matchedCount: 0, version: '2.0.0' }]);
+    expect(result.content).toBe(dedent`
+      # CHANGELOG
+
+      ## 2.0.0
+
+      This release has 1 fix and 1 other change.
+
+      ### Fixed
+
+      - two
+
+      ### Other changes
+
+      - Reworded by hand
+
+      ## 1.0.0
+
+      - Initial release as a standalone repository\n
+    `);
+  });
+
   it('should group from the bullets alone when the tag range is unknown', async () => {
     const repo = source(['2.0.0']);
 
