@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 6.3.0
+
+This release has 1 new feature and 1 fix.
+
+### New
+
+- **changelog:** add a rewrite-changelog command that regroups published sections
+
+### Fixed
+
+- **changelog:** escape the brackets of an issue title lifted into a grouped entry
+
 ## 6.2.0
 
 This release has 1 new feature, 1 fix and 3 documentation changes. 1 maintenance commit (tests, build, CI, refactoring, dependencies) is not listed.
