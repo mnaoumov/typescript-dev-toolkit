@@ -75,9 +75,117 @@ describe('renderGroupedChangelogSection', () => {
     );
   });
 
-  it('should escape the brackets of a bug-form issue title so it is not read as a reference link', () => {
-    expect(renderGroupedChangelogSection([entry('fix: re #10', { detailLines: ['[BUG] Image links in the Canvas break on renaming'] })])).toBe(
-      'This release has 1 fix.\n\n### Fixed\n\n- \\[BUG\\] Image links in the Canvas break on renaming (#10)'
+  it('should escape the brackets of an issue title so they are not read as a reference link', () => {
+    expect(renderGroupedChangelogSection([entry('fix: re #10', { detailLines: ['Image [links] in the Canvas break on renaming'] })])).toBe(
+      'This release has 1 fix.\n\n### Fixed\n\n- Image \\[links\\] in the Canvas break on renaming (#10)'
+    );
+  });
+
+  it.each([
+    ['[BUG] Links break', 'Links break'],
+    ['[FR] Add a toggle', 'Add a toggle'],
+    ['[fr]Add a toggle', 'Add a toggle'],
+    ['[BUG]', '\\[BUG\\]'],
+    ['Links [BUG] break', 'Links \\[BUG\\] break'],
+    ['[Docs] Add a page', '\\[Docs\\] Add a page']
+  ])('should strip only a leading issue-form prefix from %s', (title, expected) => {
+    expect(renderGroupedChangelogSection([entry('fix: re #10', { detailLines: [title] })])).toBe(`This release has 1 fix.\n\n### Fixed\n\n- ${expected} (#10)`);
+  });
+
+  it('should not strip the prefix from a subject the author wrote', () => {
+    expect(renderGroupedChangelogSection([entry('fix: [BUG] marker in the parser')])).toBe('This release has 1 fix.\n\n### Fixed\n\n- [BUG] marker in the parser');
+  });
+
+  it('should list an issue once, in the earliest section, with every reference', () => {
+    expect(renderGroupedChangelogSection([
+      entry('fix: re #99', { detailLines: ['[FR] Configurable folder'], references: ['#7'] }),
+      entry('feat: re #99', { detailLines: ['[FR] Configurable folder'], references: ['#8'] }),
+      entry('fix: re #102', { detailLines: ['[BUG] Sync warnings'] })
+    ])).toBe('This release has 1 new feature and 1 fix.\n\n### New\n\n- Configurable folder (#99, #8, #7)\n\n### Fixed\n\n- Sync warnings (#102)');
+  });
+
+  it('should list an issue once when two commits in one section give it different scopes', () => {
+    expect(renderGroupedChangelogSection([
+      entry('fix(a): re #5', { detailLines: ['Title'] }),
+      entry('fix(b): re #5', { detailLines: ['Title'] })
+    ])).toBe('This release has 1 fix.\n\n### Fixed\n\n- **a:** Title (#5)');
+  });
+
+  it('should keep a differently worded entry that merely references a listed issue', () => {
+    expect(renderGroupedChangelogSection([
+      entry('feat: re #5', { detailLines: ['Title'] }),
+      entry('fix: tidy the parser', { references: ['#5'] })
+    ])).toBe('This release has 1 new feature and 1 fix.\n\n### New\n\n- Title (#5)\n\n### Fixed\n\n- tidy the parser (#5)');
+  });
+
+  it('should keep an issue-only subject with no title apart from the same issue with one', () => {
+    expect(renderGroupedChangelogSection([
+      entry('feat: re #5', { detailLines: ['Title'] }),
+      entry('fix: re #5')
+    ])).toBe('This release has 1 new feature and 1 fix.\n\n### New\n\n- Title (#5)\n\n### Fixed\n\n- re #5');
+  });
+
+  it.each([
+    'clear the glob cancellation advisory',
+    'raise solid-js past two advisories',
+    'clear dependency audit findings',
+    'patch vulnerable transitive dependencies',
+    'override glob to clear GHSA-3g3m-2fjr-6pw4',
+    'bump a package past CVE-2026-1234'
+  ])('should count a deps commit that only clears an advisory: %s', (description) => {
+    expect(renderGroupedChangelogSection([entry(`fix(deps): ${description}`), entry('fix: real')])).toBe(
+      'This release has 1 fix. 1 maintenance commit (tests, build, CI, refactoring, dependencies) is not listed.\n\n### Fixed\n\n- real'
+    );
+  });
+
+  it('should list a deps commit a user notices', () => {
+    expect(renderGroupedChangelogSection([entry('fix(deps): load at Obsidian startup again')])).toBe(
+      'This release has 1 fix.\n\n### Fixed\n\n- **deps:** load at Obsidian startup again'
+    );
+  });
+
+  it('should list an advisory fix outside the deps scope', () => {
+    expect(renderGroupedChangelogSection([entry('fix(parser): handle the advisory block')])).toBe(
+      'This release has 1 fix.\n\n### Fixed\n\n- **parser:** handle the advisory block'
+    );
+  });
+
+  it('should list a breaking deps commit even when it clears an advisory', () => {
+    expect(renderGroupedChangelogSection([entry('fix(deps)!: clear the advisory by raising the Node floor')])).toBe(
+      'This release has 1 breaking change.\n\n### Breaking changes\n\n- **deps:** clear the advisory by raising the Node floor'
+    );
+  });
+
+  it('should list an issue-closing deps commit, whose subject names no advisory', () => {
+    expect(renderGroupedChangelogSection([entry('fix(deps): re #3', { detailLines: ['Security advisory in a package'] })])).toBe(
+      'This release has 1 fix.\n\n### Fixed\n\n- **deps:** Security advisory in a package (#3)'
+    );
+  });
+
+  it('should gather api changes under For developers, in order', () => {
+    expect(renderGroupedChangelogSection([
+      entry('docs: guide'),
+      entry('feat(api): publish moveMany'),
+      entry('fix(API-Contract): report the vendor'),
+      entry('fix: other')
+    ])).toBe([
+      'This release has 1 fix, 2 developer changes and 1 documentation change.',
+      '### Fixed',
+      '- other',
+      '### For developers',
+      '- **api:** publish moveMany\n- **API-Contract:** report the vendor',
+      '### Documentation',
+      '- guide'
+    ].join('\n\n'));
+  });
+
+  it('should count one api change in the singular', () => {
+    expect(renderGroupedChangelogSection([entry('feat(api): one')])).toBe('This release has 1 developer change.\n\n### For developers\n\n- **api:** one');
+  });
+
+  it('should keep a breaking api change under breaking changes and count an api refactor as maintenance', () => {
+    expect(renderGroupedChangelogSection([entry('feat(api)!: drop a member'), entry('refactor(api): split')])).toBe(
+      'This release has 1 breaking change. 1 maintenance commit (tests, build, CI, refactoring, dependencies) is not listed.\n\n### Breaking changes\n\n- **api:** drop a member'
     );
   });
 
