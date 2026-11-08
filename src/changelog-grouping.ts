@@ -6,15 +6,16 @@
  *
  * The input is still the first-parent commit history, so this is a deterministic transformation of what the author
  * already wrote: it sorts entries by their Conventional-Commits type, leaves out the commit types that do not change
- * what a user gets, merges entries that say the same thing, and swaps a `re #<n>` subject for the issue title its body
- * carries. Prose a human (or an agent) writes still goes in through `--changelog-file`.
+ * what a user gets, merges entries that say the same thing or close the same issue, and swaps a `re #<n>` subject for
+ * the issue title its body carries. Prose a human (or an agent) writes still goes in through `--changelog-file`.
  */
 
 /**
  * How the generated changelog section of a release is laid out.
  *
  * - `grouped` — a one-line summary, then the entries under `### Breaking changes`, `### New`, `### Fixed`,
- *   `### Improved`, `### Documentation` and `### Other changes`, with maintenance commits counted rather than listed.
+ *   `### Improved`, `### For developers`, `### Documentation` and `### Other changes`, with maintenance commits counted
+ *   rather than listed.
  * - `commits` — one bullet per first-parent commit, in history order, as every release wrote before `grouped` existed.
  */
 export type ChangelogStyle = 'commits' | 'grouped';
@@ -59,6 +60,7 @@ export interface ChangelogCommitEntry {
 export const MAINTENANCE_COMMIT_TYPES: ReadonlySet<string> = new Set(['build', 'chore', 'ci', 'refactor', 'style', 'test']);
 
 interface ClassifiedEntry {
+  readonly issue: string | undefined;
   readonly references: readonly string[];
   readonly section: SectionDefinition;
   readonly text: string;
@@ -71,6 +73,7 @@ interface SectionDefinition {
 }
 
 interface SectionEntry {
+  readonly issue: string | undefined;
   // eslint-disable-next-line typescript-dev-toolkit/readonly-interface-members -- Merged entries collect references in place.
   references: string[];
   readonly text: string;
@@ -80,13 +83,29 @@ const BREAKING_SECTION: SectionDefinition = { heading: 'Breaking changes', plura
 const NEW_SECTION: SectionDefinition = { heading: 'New', plural: 'new features', singular: 'new feature' };
 const FIXED_SECTION: SectionDefinition = { heading: 'Fixed', plural: 'fixes', singular: 'fix' };
 const IMPROVED_SECTION: SectionDefinition = { heading: 'Improved', plural: 'improvements', singular: 'improvement' };
+const DEVELOPER_SECTION: SectionDefinition = { heading: 'For developers', plural: 'developer changes', singular: 'developer change' };
 const DOCUMENTATION_SECTION: SectionDefinition = { heading: 'Documentation', plural: 'documentation changes', singular: 'documentation change' };
 const OTHER_SECTION: SectionDefinition = { heading: 'Other changes', plural: 'other changes', singular: 'other change' };
 
 /**
- * The sections, in the order they are rendered and summarized.
+ * The sections, in the order they are rendered and summarized. An issue two sections would list stays in the earlier.
  */
-const SECTIONS: readonly SectionDefinition[] = [BREAKING_SECTION, NEW_SECTION, FIXED_SECTION, IMPROVED_SECTION, DOCUMENTATION_SECTION, OTHER_SECTION];
+const SECTIONS: readonly SectionDefinition[] = [
+  BREAKING_SECTION,
+  NEW_SECTION,
+  FIXED_SECTION,
+  IMPROVED_SECTION,
+  DEVELOPER_SECTION,
+  DOCUMENTATION_SECTION,
+  OTHER_SECTION
+];
+
+/**
+ * The commit scopes that mark a change to the API other developers call rather than to what a user of the release sees.
+ */
+const DEVELOPER_SCOPES: ReadonlySet<string> = new Set(['api', 'api-contract']);
+
+const DEPENDENCIES_SCOPE = 'deps';
 
 const SECTIONS_BY_TYPE = new Map<string, SectionDefinition>([
   ['docs', DOCUMENTATION_SECTION],
@@ -101,6 +120,17 @@ const CONVENTIONAL_ENTRY_REG_EXP = /^(?<type>[a-z]+)(?:\((?<scope>[^()]*)\))?(?<
  * An issue-closing merge subject, whose readable half is the issue title on the body's first line.
  */
 const ISSUE_ONLY_DESCRIPTION_REG_EXP = /^re (?<issue>#\d+)$/i;
+
+/**
+ * The prefix the bug and feature-request issue forms put on a title. The section heading already says which it is.
+ */
+const ISSUE_FORM_PREFIX_REG_EXP = /^\[(?:BUG|FR)\]\s*(?=\S)/i;
+
+/**
+ * The words of a `deps` commit that only clears a security advisory, which a user of the release does not notice. A
+ * `deps` commit saying anything else (such as restoring startup) describes something a user does notice.
+ */
+const ADVISORY_ONLY_DESCRIPTION_REG_EXP = /\b(?:advisory|advisories|audit|vulnerable|vulnerability|vulnerabilities)\b|\bGHSA-|\bCVE-\d/i;
 
 /**
  * A code span: a backtick run, the shortest text up to a backtick run of the same length.
@@ -166,12 +196,14 @@ export function renderGroupedChangelogSection(entries: readonly ChangelogCommitE
     sectionEntries.set(classified.section, list);
     const existing = list.find((sectionEntry) => sectionEntry.text === classified.text);
     if (!existing) {
-      list.push({ references: [...classified.references], text: classified.text });
+      list.push({ issue: classified.issue, references: [...classified.references], text: classified.text });
       continue;
     }
 
     existing.references = [...new Set([...existing.references, ...classified.references])];
   }
+
+  mergeRepeatedIssues(sectionEntries);
 
   const blocks = [toSummaryLine(sectionEntries, maintenanceCount)];
   for (const section of SECTIONS) {
@@ -189,25 +221,26 @@ export function renderGroupedChangelogSection(entries: readonly ChangelogCommitE
 function classifyEntry(entry: ChangelogCommitEntry): ClassifiedEntry | null {
   const groups = CONVENTIONAL_ENTRY_REG_EXP.exec(entry.entry)?.groups;
   if (!groups) {
-    return { references: entry.references, section: entry.hasBreakingFooter ? BREAKING_SECTION : OTHER_SECTION, text: entry.entry };
+    return { issue: undefined, references: entry.references, section: entry.hasBreakingFooter ? BREAKING_SECTION : OTHER_SECTION, text: entry.entry };
   }
 
   // The regular expression's `type` and `description` groups are not optional, so a match always fills them.
   const type = String(groups['type']).toLowerCase();
+  const description = String(groups['description']);
+  const scope = groups['scope'];
   const isBreaking = groups['breaking'] !== undefined || entry.hasBreakingFooter;
-  const section = isBreaking ? BREAKING_SECTION : toTypeSection(type);
+  const section = isBreaking ? BREAKING_SECTION : toNonBreakingSection(type, (scope ?? '').toLowerCase(), description);
   if (!section) {
     return null;
   }
 
-  const description = String(groups['description']);
   const issue = ISSUE_ONLY_DESCRIPTION_REG_EXP.exec(description)?.groups?.['issue'];
   const issueTitle = entry.detailLines[0];
   const isIssueTitleUsed = issue !== undefined && issueTitle !== undefined;
-  const text = isIssueTitleUsed ? escapeLinkBrackets(issueTitle) : description;
+  const text = isIssueTitleUsed ? escapeLinkBrackets(issueTitle.replace(ISSUE_FORM_PREFIX_REG_EXP, '')) : description;
   const references = isIssueTitleUsed ? [issue, ...entry.references] : entry.references;
-  const scope = groups['scope'];
   return {
+    issue: isIssueTitleUsed ? issue : undefined,
     references,
     section,
     text: scope ? `**${scope}:** ${text}` : text
@@ -232,8 +265,50 @@ function joinPhrases(phrases: readonly string[]): string {
   return phrases.length === 1 ? last : `${phrases.slice(0, -1).join(', ')} and ${last}`;
 }
 
+/**
+ * Lists an issue once: several commits can close one issue under different types or scopes, and each would otherwise
+ * repeat its title. The entry in the earliest section stays and takes the references of the others.
+ *
+ * @param sectionEntries - The entries by section, updated in place. A section left with no entries is removed.
+ */
+function mergeRepeatedIssues(sectionEntries: Map<SectionDefinition, SectionEntry[]>): void {
+  const firstEntries = new Map<string, SectionEntry>();
+  for (const section of SECTIONS) {
+    const list = sectionEntries.get(section) ?? [];
+    const kept = list.filter((sectionEntry) => {
+      if (sectionEntry.issue === undefined) {
+        return true;
+      }
+
+      const firstEntry = firstEntries.get(sectionEntry.issue);
+      if (!firstEntry) {
+        firstEntries.set(sectionEntry.issue, sectionEntry);
+        return true;
+      }
+
+      firstEntry.references = [...new Set([...firstEntry.references, ...sectionEntry.references])];
+      return false;
+    });
+
+    if (kept.length === 0) {
+      sectionEntries.delete(section);
+    } else {
+      sectionEntries.set(section, kept);
+    }
+  }
+}
+
 function toEntryLine(sectionEntry: SectionEntry): string {
   return sectionEntry.references.length === 0 ? sectionEntry.text : `${sectionEntry.text} (${sectionEntry.references.join(', ')})`;
+}
+
+function toNonBreakingSection(type: string, scope: string, description: string): null | SectionDefinition {
+  if (scope === DEPENDENCIES_SCOPE && ADVISORY_ONLY_DESCRIPTION_REG_EXP.test(description)) {
+    return null;
+  }
+
+  const section = toTypeSection(type);
+  return section && DEVELOPER_SCOPES.has(scope) ? DEVELOPER_SECTION : section;
 }
 
 function toSummaryLine(sectionEntries: ReadonlyMap<SectionDefinition, readonly SectionEntry[]>, maintenanceCount: number): string {
