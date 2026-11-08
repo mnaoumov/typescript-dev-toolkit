@@ -939,7 +939,8 @@ export async function publishGitHubRelease(newVersion: string, options: PublishG
  * @returns The parts, with bare URLs in the entry and the detail lines autolinked.
  */
 export function toChangelogCommitEntry(commitMessage: string): ChangelogCommitEntry {
-  const lines = commitMessage.split(/\r?\n/).filter(Boolean);
+  const messageLines = commitMessage.split(/\r?\n/);
+  const lines = messageLines.filter(Boolean);
   const subject = lines[0] ?? '';
   const bodyLines = lines.slice(1);
   const liftedLine = MERGE_SUBJECT_REG_EXP.test(subject) ? bodyLines.find((line) => !parseIssueReferenceLine(line)) : undefined;
@@ -951,9 +952,14 @@ export function toChangelogCommitEntry(commitMessage: string): ChangelogCommitEn
     }
   }
 
-  const detailLines = bodyLines.filter((line) => line !== liftedLine && !parseIssueReferenceLine(line) && !BREAKING_CHANGE_FOOTER_REG_EXP.test(line));
+  // A reference line or a footer ends the paragraph it follows, exactly as a blank line does.
+  const detailText = messageLines
+    .slice(messageLines.indexOf(subject) + 1)
+    .map((line) => line === liftedLine || parseIssueReferenceLine(line) || BREAKING_CHANGE_FOOTER_REG_EXP.test(line) ? '' : line.trim())
+    .join('\n');
+  const detailLines = detailText.split(/\n{2,}/).map((paragraph) => paragraph.trim().replaceAll('\n', ' ')).filter(Boolean);
   return {
-    detailLines: detailLines.map((line) => autolinkBareUrls(line.trim())),
+    detailLines: detailLines.map((line) => autolinkBareUrls(line)),
     entry: autolinkBareUrls(entry),
     hasBreakingFooter: BREAKING_CHANGE_FOOTER_REG_EXP.test(commitMessage),
     references: [...references]

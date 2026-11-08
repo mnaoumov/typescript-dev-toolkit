@@ -28,6 +28,21 @@ function source(tags: readonly string[], commits: Record<string, readonly string
 }
 
 describe('rewriteChangelog', () => {
+  it('should unwrap a hard-wrapped issue title, stopping at its paragraph and at a reference line', async () => {
+    const changelog = '# CHANGELOG\n\n## 1.0.0\n\n- feat: re #5\n- feat: re #6\n';
+    const repo = source(['1.0.0'], {
+      '..1.0.0': [
+        'feat: re #5\r\n\r\nAdd options to strip special characters\r\nthat break link functionality\r\n\r\nA later paragraph.\r\n',
+        'feat: re #6\n\nControl the file name\nthrough the settings\nRefs owner/repo#1\nNot part of the title\n'
+      ]
+    });
+
+    const result = await rewriteChangelog(changelog, repo);
+
+    expect(result.content).toContain('- Add options to strip special characters that break link functionality (#5)\n');
+    expect(result.content).toContain('- Control the file name through the settings (#6, <https://github.com/owner/repo/issues/1>)\n');
+  });
+
   it('should regroup a flat section, recovering issue titles and breaking footers from its tag range', async () => {
     const changelog = dedent`
       # CHANGELOG\r
