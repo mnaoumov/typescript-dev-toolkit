@@ -1,3 +1,4 @@
+import { noopAsync } from '@mnaoumov/typescript-lib/function';
 import {
   mkdtempSync,
   readFileSync,
@@ -38,11 +39,13 @@ const CHANGELOG = '# CHANGELOG\n\n## 3.0.0\n\n- fix: three\n\n## 2.0.0\n\n- fix:
 
 interface FakeDependencies extends RewriteChangelogDependencies {
   readonly lines: string[];
+  readonly sleeps: number[];
   readonly written: Map<string, string>;
 }
 
 interface FakeOptions {
   readonly editExitCode?: number;
+  readonly editExitCodes?: readonly number[];
   readonly logExitCode?: number;
   readonly releaseBodies?: Record<string, string>;
   readonly releasesExitCode?: number;
@@ -52,6 +55,8 @@ interface FakeOptions {
 function fake(options: FakeOptions = {}): FakeDependencies {
   const lines: string[] = [];
   const written = new Map<string, string>();
+  const sleeps: number[] = [];
+  const editExitCodes = [...options.editExitCodes ?? []];
   const releaseBodies = options.releaseBodies ?? {};
   return {
     exec(file, arguments_, input): RewriteChangelogCommandResult {
@@ -70,7 +75,7 @@ function fake(options: FakeOptions = {}): FakeDependencies {
         return { exitCode: options.releasesExitCode ?? 0, stderr: 'HTTP 404\n', stdout };
       }
       lines.push(`${command} <<< ${String(input)}`);
-      return { exitCode: options.editExitCode ?? 0, stderr: 'HTTP 403\n', stdout: '' };
+      return { exitCode: editExitCodes.shift() ?? options.editExitCode ?? 0, stderr: 'HTTP 403\n', stdout: '' };
     },
     lines,
     log(text): void {
@@ -79,6 +84,11 @@ function fake(options: FakeOptions = {}): FakeDependencies {
     readFile(): string {
       return CHANGELOG;
     },
+    async sleep(milliseconds): Promise<void> {
+      await noopAsync();
+      sleeps.push(milliseconds);
+    },
+    sleeps,
     writeFile(path, content): void {
       written.set(path, content);
     },
@@ -93,23 +103,40 @@ afterEach(() => {
 
 describe('parseRewriteChangelogArguments', () => {
   it('should default to a dry run of ./CHANGELOG.md', () => {
-    expect(parseRewriteChangelogArguments([])).toEqual({ changelogPath: 'CHANGELOG.md', shouldOverwriteEditedReleases: false, shouldRewriteReleases: false, shouldWrite: false });
-    expect(parseRewriteChangelogArguments(['--path='])).toEqual({ changelogPath: 'CHANGELOG.md', shouldOverwriteEditedReleases: false, shouldRewriteReleases: false, shouldWrite: false });
+    const defaults = {
+      changelogPath: 'CHANGELOG.md',
+      onlyReleases: [],
+      shouldOverwriteEditedReleases: false,
+      shouldRewriteReleases: false,
+      shouldSyncReleases: false,
+      shouldWrite: false
+    };
+    expect(parseRewriteChangelogArguments([])).toEqual(defaults);
+    expect(parseRewriteChangelogArguments(['--path='])).toEqual(defaults);
   });
 
   it('should read every option', () => {
-    expect(parseRewriteChangelogArguments(['--write', '--releases', '--overwrite-edited-releases', '--path=docs/CHANGELOG.md'])).toEqual({
+    expect(parseRewriteChangelogArguments(['--write', '--releases', '--overwrite-edited-releases', '--only=1.0.0, v2.0.0,', '--path=docs/CHANGELOG.md'])).toEqual({
       changelogPath: 'docs/CHANGELOG.md',
+      onlyReleases: ['1.0.0', 'v2.0.0'],
       shouldOverwriteEditedReleases: true,
       shouldRewriteReleases: true,
+      shouldSyncReleases: false,
       shouldWrite: true
     });
+    expect(parseRewriteChangelogArguments(['--sync-releases', '--only=1.0.0'])).toMatchObject({ onlyReleases: ['1.0.0'], shouldSyncReleases: true });
   });
 
   it('should refuse an unknown argument', () => {
     expect(() => parseRewriteChangelogArguments(['--dry-run', '-w'])).toThrow(
-      'rewrite-changelog: unknown argument "--dry-run", "-w". Known: --write, --releases, --overwrite-edited-releases, --path=.'
+      'rewrite-changelog: unknown argument "--dry-run", "-w". Known: --write, --releases, --sync-releases, --overwrite-edited-releases, --only=, --path=.'
     );
+  });
+
+  it('should refuse the combinations that could not do what they say', () => {
+    expect(() => parseRewriteChangelogArguments(['--releases', '--sync-releases'])).toThrow('cannot be combined');
+    expect(() => parseRewriteChangelogArguments(['--only=1.0.0'])).toThrow('--only needs');
+    expect(() => parseRewriteChangelogArguments(['--releases', '--only=,'])).toThrow('--only needs');
   });
 });
 
@@ -174,11 +201,124 @@ describe('runRewriteChangelogCli', () => {
   it('should fail when a release edit fails, and leave the releases alone without --releases', async () => {
     const failing = fake({ editExitCode: 1, releaseBodies: { '0.1.0': '- feat: start' } });
     expect(await runRewriteChangelogCli(['--write', '--releases'], failing)).toBe(1);
-    expect(failing.lines.at(-1)).toBe('release 0.1.0: the edit FAILED: HTTP 403');
+    expect(failing.sleeps).toEqual([2000, 4000]);
+    expect(failing.lines.slice(-5)).toEqual([
+      'release 0.1.0: attempt 2 of 3 failed, retrying: HTTP 403',
+      'gh release edit 0.1.0 --notes-file - <<< This release has 1 new feature.\n\n### New\n\n- start (#1)',
+      'release 0.1.0: the edit FAILED: HTTP 403',
+      '1 release edit(s) FAILED after 3 attempts each: 0.1.0',
+      'To finish them: rewrite-changelog --sync-releases --overwrite-edited-releases --write --only=0.1.0'
+    ]);
 
     const withoutReleases = fake({ releaseBodies: { '0.1.0': '- feat: start' } });
     expect(await runRewriteChangelogCli(['--write'], withoutReleases)).toBe(0);
     expect(withoutReleases.lines.some((line) => line.startsWith('release '))).toBe(false);
+  });
+
+  it('should succeed when a retry of a failed edit does', async () => {
+    const dependencies = fake({ editExitCodes: [1], releaseBodies: { '0.1.0': '- feat: start' } });
+
+    expect(await runRewriteChangelogCli(['--write', '--releases'], dependencies)).toBe(0);
+
+    expect(dependencies.sleeps).toEqual([2000]);
+    expect(dependencies.lines.at(-1)).toBe('release 0.1.0: rewritten');
+  });
+
+  it('should name the changelog in the recovery command when it is not the default one', async () => {
+    const dependencies = fake({ editExitCode: 1, releaseBodies: { '0.1.0': '- feat: start' } });
+
+    expect(await runRewriteChangelogCli(['--write', '--releases', '--path=docs/CHANGELOG.md'], dependencies)).toBe(1);
+
+    expect(dependencies.lines.at(-1)).toBe(
+      'To finish them: rewrite-changelog --sync-releases --overwrite-edited-releases --write --only=0.1.0 --path=docs/CHANGELOG.md'
+    );
+  });
+
+  it('should edit only the releases --only names', async () => {
+    const dependencies = fake({ releaseBodies: { '0.1.0': '- feat: start', '2.0.0': '- fix: two' } });
+
+    expect(await runRewriteChangelogCli(['--write', '--releases', '--only=v0.1.0'], dependencies)).toBe(0);
+
+    expect(dependencies.lines.filter((line) => line.startsWith('release '))).toEqual(['release 0.1.0: rewritten']);
+  });
+
+  it('should refuse an --only naming no section before writing anything', async () => {
+    const stderrTexts: string[] = [];
+    vi.spyOn(process.stderr, 'write').mockImplementation((text) => {
+      stderrTexts.push(String(text));
+      return true;
+    });
+    const dependencies = fake();
+
+    expect(await runRewriteChangelogCli(['--write', '--releases', '--only=9.9.9'], dependencies)).toBe(1);
+    expect(await runRewriteChangelogCli(['--write', '--sync-releases', '--only=9.9.9'], dependencies)).toBe(1);
+
+    expect(dependencies.written.size).toBe(0);
+    expect(stderrTexts).toEqual(Array.from({ length: 2 }, () => 'rewrite-changelog: --only names no section of CHANGELOG.md: 9.9.9.\n'));
+  });
+
+  describe('--sync-releases', () => {
+    const GROUPED_LINT_FIXED = '## 2.0.0\n\nThis release has 1 fix.\n\n### Fixed\n\n- use `tool`\n\n## 0.1.0\n\n- feat: start\n\n## 0.0.1\n\n## 0.0.0\n\nNo tag.\n';
+    const syncTags = 'git tag --list';
+
+    function fakeSync(options: FakeOptions): FakeDependencies {
+      const base = fake(options);
+      return {
+        ...base,
+        exec(file, arguments_, input): RewriteChangelogCommandResult {
+          return [file, ...arguments_].join(' ') === syncTags
+            ? { exitCode: 0, stderr: '', stdout: '0.1.0\n2.0.0\n' }
+            : base.exec(file, arguments_, input);
+        },
+        readFile: (): string => GROUPED_LINT_FIXED
+      };
+    }
+
+    it('should update notes differing by formatting alone, leave edited ones and not touch the changelog', async () => {
+      const dependencies = fakeSync({
+        releaseBodies: {
+          '0.1.0': '- feat: start, explained later',
+          '2.0.0': 'This release has 1 fix.\n\n### Fixed\n\n- use tool\n\n**Full Changelog**: https://example.com/compare'
+        }
+      });
+
+      expect(await runRewriteChangelogCli(['--write', '--sync-releases'], dependencies)).toBe(0);
+
+      expect(dependencies.written.size).toBe(0);
+      expect(dependencies.lines).toEqual([
+        '0.0.0: left alone, the repository has no tag for it',
+        'gh release edit 2.0.0 --notes-file - <<< This release has 1 fix.\n\n### Fixed\n\n- use `tool`\n\n**Full Changelog**: https://example.com/compare',
+        'release 2.0.0: rewritten',
+        'release 0.1.0: left alone, its notes are not the changelog section as it was (--overwrite-edited-releases rewrites it)'
+      ]);
+    });
+
+    it('should have nothing to do for a changelog without sections', async () => {
+      const dependencies = { ...fakeSync({}), readFile: (): string => '# CHANGELOG\n' };
+
+      expect(await runRewriteChangelogCli(['--write', '--sync-releases'], dependencies)).toBe(0);
+
+      expect(dependencies.lines).toEqual([]);
+    });
+
+    it('should replace edited notes of the named release when asked, and skip one already in step', async () => {
+      const dependencies = fakeSync({
+        releaseBodies: {
+          '0.1.0': '- feat: start, explained later',
+          '2.0.0': 'This release has 1 fix.\r\n\r\n### Fixed\r\n\r\n- use `tool`\r\n'
+        }
+      });
+
+      expect(await runRewriteChangelogCli(['--write', '--sync-releases', '--overwrite-edited-releases', '--only=0.1.0'], dependencies)).toBe(0);
+      expect(dependencies.lines.slice(1)).toEqual([
+        'gh release edit 0.1.0 --notes-file - <<< - feat: start',
+        'release 0.1.0: rewritten'
+      ]);
+
+      const inStep = fakeSync({ releaseBodies: { '2.0.0': 'This release has 1 fix.\r\n\r\n### Fixed\r\n\r\n- use `tool`\r\n' } });
+      expect(await runRewriteChangelogCli(['--sync-releases', '--only=2.0.0'], inStep)).toBe(0);
+      expect(inStep.lines.at(-1)).toBe('release 2.0.0: already up to date');
+    });
   });
 
   it('should report a git failure or a wrong argument as a message and exit 1', async () => {
@@ -205,7 +345,7 @@ describe('runRewriteChangelogCli', () => {
       'rewrite-changelog: git tag --list failed: not a git repository\n',
       'rewrite-changelog: git log --format=%B --first-parent -z 0.1.0 failed: bad revision\n',
       'rewrite-changelog: gh api --paginate repos/{owner}/{repo}/releases?per_page=100 --jq .[] | {tag: .tag_name, body: (.body // "")} failed: HTTP 404\n',
-      'rewrite-changelog: unknown argument "--bogus". Known: --write, --releases, --overwrite-edited-releases, --path=.\n',
+      'rewrite-changelog: unknown argument "--bogus". Known: --write, --releases, --sync-releases, --overwrite-edited-releases, --only=, --path=.\n',
       'unreadable\n'
     ]);
   });
@@ -226,7 +366,7 @@ describe('createNodeRewriteChangelogDependencies', () => {
     expect(dependencies.exec('gh', [])).toEqual({ exitCode: 1, stderr: 'spawn gh ENOENT', stdout: '' });
   });
 
-  it('should read and write files and log to stdout', () => {
+  it('should read and write files, log to stdout and sleep', async () => {
     const stdoutTexts: string[] = [];
     vi.spyOn(process.stdout, 'write').mockImplementation((text) => {
       stdoutTexts.push(String(text));
@@ -241,6 +381,7 @@ describe('createNodeRewriteChangelogDependencies', () => {
       expect(dependencies.readFile(path)).toBe('# CHANGELOG\n');
       dependencies.log('line');
       expect(stdoutTexts).toEqual(['line\n']);
+      await expect(dependencies.sleep(0)).resolves.toBeUndefined();
     } finally {
       rmSync(directory, { force: true, recursive: true });
     }

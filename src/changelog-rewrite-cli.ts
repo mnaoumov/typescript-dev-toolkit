@@ -15,10 +15,12 @@ import {
   writeFileSync
 } from 'node:fs';
 import process from 'node:process';
+import { setTimeout as delay } from 'node:timers/promises';
 
 import type { RewrittenChangelogSection } from './changelog-rewrite.ts';
 
 import {
+  readPublishedChangelogSections,
   rewriteChangelog,
   rewriteReleaseNotes
 } from './changelog-rewrite.ts';
@@ -73,6 +75,13 @@ export interface RewriteChangelogDependencies {
   readonly readFile: (path: string) => string;
 
   /**
+   * Waits before a retry.
+   *
+   * @param milliseconds - How long to wait.
+   */
+  readonly sleep: (milliseconds: number) => Promise<void>;
+
+  /**
    * Writes a text file.
    *
    * @param path - The path.
@@ -91,6 +100,11 @@ export interface RewriteChangelogOptions {
   readonly changelogPath: string;
 
   /**
+   * The versions whose GitHub releases may be edited, with or without a leading `v`. Empty means all of them.
+   */
+  readonly onlyReleases: readonly string[];
+
+  /**
    * Whether a GitHub release whose notes are no longer its changelog section as it was is rewritten too.
    */
   readonly shouldOverwriteEditedReleases: boolean;
@@ -101,9 +115,18 @@ export interface RewriteChangelogOptions {
   readonly shouldRewriteReleases: boolean;
 
   /**
+   * Whether the GitHub releases are synced with the changelog as it now stands, instead of the changelog being rewritten.
+   */
+  readonly shouldSyncReleases: boolean;
+
+  /**
    * Whether anything is changed. Without it the command only reports.
    */
   readonly shouldWrite: boolean;
+}
+
+interface ReleaseNotesUpdate extends Pick<RewrittenChangelogSection, 'newBody' | 'oldBody'> {
+  readonly tag: string;
 }
 
 interface ReleaseRecord {
@@ -113,13 +136,13 @@ interface ReleaseRecord {
 
 type ReleaseRewriteOutcome = 'failed' | 'ok';
 
-interface TaggedRewrittenSection extends RewrittenChangelogSection {
-  readonly tag: string;
-}
-
 const DEFAULT_CHANGELOG_PATH = 'CHANGELOG.md';
 
-const KNOWN_ARGUMENTS = ['--write', '--releases', '--overwrite-edited-releases', '--path='];
+const KNOWN_ARGUMENTS = ['--write', '--releases', '--sync-releases', '--overwrite-edited-releases', '--only=', '--path='];
+
+const RELEASE_EDIT_ATTEMPTS = 3;
+
+const RELEASE_EDIT_RETRY_DELAY_IN_MILLISECONDS = 2000;
 
 /**
  * Creates the command's outside world: commands run with `spawnSync`, files read and written with `node:fs`, the
@@ -138,6 +161,9 @@ export function createNodeRewriteChangelogDependencies(): RewriteChangelogDepend
     readFile(path): string {
       return readFileSync(path, 'utf-8');
     },
+    async sleep(milliseconds): Promise<void> {
+      await delay(milliseconds);
+    },
     writeFile(path, content): void {
       writeFileSync(path, content, 'utf-8');
     }
@@ -146,8 +172,10 @@ export function createNodeRewriteChangelogDependencies(): RewriteChangelogDepend
 
 /**
  * Builds the command's options from the command line: `--write` applies the changes, `--releases` adds the GitHub
- * releases to them, `--overwrite-edited-releases` includes the releases whose notes were edited after publishing, and
- * `--path=<file>` names the changelog (`CHANGELOG.md` by default).
+ * releases to them, `--sync-releases` syncs the releases with the changelog as it stands and leaves the changelog alone,
+ * `--overwrite-edited-releases` includes the releases whose notes were edited after publishing, `--only=<versions>`
+ * narrows the releases edited to a comma-separated list, and `--path=<file>` names the changelog (`CHANGELOG.md` by
+ * default).
  *
  * @param cliArguments - The arguments after the command name.
  * @returns The options.
@@ -160,11 +188,25 @@ export function parseRewriteChangelogArguments(cliArguments: readonly string[]):
     );
   }
 
+  const shouldRewriteReleases = cliArguments.includes('--releases');
+  const shouldSyncReleases = cliArguments.includes('--sync-releases');
+  if (shouldRewriteReleases && shouldSyncReleases) {
+    throw new Error('rewrite-changelog: --releases and --sync-releases cannot be combined.');
+  }
+
+  const only = cliArguments.find((argument) => argument.startsWith('--only='))?.slice('--only='.length);
+  const onlyReleases = only?.split(',').map((version) => version.trim()).filter(Boolean) ?? [];
+  if (only !== undefined && (onlyReleases.length === 0 || (!shouldRewriteReleases && !shouldSyncReleases))) {
+    throw new Error('rewrite-changelog: --only needs at least one version, and --releases or --sync-releases.');
+  }
+
   const path = cliArguments.find((argument) => argument.startsWith('--path='))?.slice('--path='.length);
   return {
     changelogPath: path === undefined || path === '' ? DEFAULT_CHANGELOG_PATH : path,
+    onlyReleases,
     shouldOverwriteEditedReleases: cliArguments.includes('--overwrite-edited-releases'),
-    shouldRewriteReleases: cliArguments.includes('--releases'),
+    shouldRewriteReleases,
+    shouldSyncReleases,
     shouldWrite: cliArguments.includes('--write')
   };
 }
@@ -187,6 +229,26 @@ export async function runRewriteChangelogCli(
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
     return 1;
   }
+}
+
+function assertOnlyReleasesExist(options: RewriteChangelogOptions, versions: readonly string[]): void {
+  const known = new Set(versions.map((version) => toBareVersion(version)));
+  const unknown = options.onlyReleases.filter((version) => !known.has(toBareVersion(version)));
+  if (unknown.length > 0) {
+    throw new Error(`rewrite-changelog: --only names no section of ${options.changelogPath}: ${unknown.join(', ')}.`);
+  }
+}
+
+async function editReleaseNotes(tag: string, notes: string, dependencies: RewriteChangelogDependencies): Promise<RewriteChangelogCommandResult> {
+  let edit = dependencies.exec('gh', ['release', 'edit', tag, '--notes-file', '-'], notes);
+  for (let attempt = 1; edit.exitCode !== 0 && attempt < RELEASE_EDIT_ATTEMPTS; attempt++) {
+    dependencies.log(`release ${tag}: attempt ${String(attempt)} of ${String(RELEASE_EDIT_ATTEMPTS)} failed, retrying: ${edit.stderr.trim()}`);
+
+    await dependencies.sleep(RELEASE_EDIT_RETRY_DELAY_IN_MILLISECONDS * attempt);
+    edit = dependencies.exec('gh', ['release', 'edit', tag, '--notes-file', '-'], notes);
+  }
+
+  return edit;
 }
 
 function execOrThrow(dependencies: RewriteChangelogDependencies, file: string, arguments_: readonly string[]): string {
@@ -226,12 +288,12 @@ function readReleaseNotes(dependencies: RewriteChangelogDependencies): Map<strin
   return notesByTag;
 }
 
-function rewriteRelease(
-  section: TaggedRewrittenSection,
+async function rewriteRelease(
+  section: ReleaseNotesUpdate,
   releaseNotes: string | undefined,
   options: RewriteChangelogOptions,
   dependencies: RewriteChangelogDependencies
-): ReleaseRewriteOutcome {
+): Promise<ReleaseRewriteOutcome> {
   if (releaseNotes === undefined) {
     dependencies.log(`release ${section.tag}: left alone, the repository has no GitHub release for it`);
     return 'ok';
@@ -243,12 +305,17 @@ function rewriteRelease(
     return 'ok';
   }
 
+  if (notes === releaseNotes.replaceAll('\r\n', '\n').trim()) {
+    dependencies.log(`release ${section.tag}: already up to date`);
+    return 'ok';
+  }
+
   if (!options.shouldWrite) {
     dependencies.log(`release ${section.tag}: would be rewritten`);
     return 'ok';
   }
 
-  const edit = dependencies.exec('gh', ['release', 'edit', section.tag, '--notes-file', '-'], notes);
+  const edit = await editReleaseNotes(section.tag, notes, dependencies);
   if (edit.exitCode !== 0) {
     dependencies.log(`release ${section.tag}: the edit FAILED: ${edit.stderr.trim()}`);
     return 'failed';
@@ -258,9 +325,39 @@ function rewriteRelease(
   return 'ok';
 }
 
+async function rewriteReleases(
+  updates: readonly ReleaseNotesUpdate[],
+  options: RewriteChangelogOptions,
+  dependencies: RewriteChangelogDependencies
+): Promise<number> {
+  const only = new Set(options.onlyReleases.map((version) => toBareVersion(version)));
+  const selected = only.size === 0 ? updates : updates.filter((update) => only.has(toBareVersion(update.tag)));
+  const notesByTag = readReleaseNotes(dependencies);
+  const failedTags: string[] = [];
+  for (const update of selected) {
+    if (await rewriteRelease(update, notesByTag.get(update.tag), options, dependencies) === 'failed') {
+      failedTags.push(update.tag);
+    }
+  }
+
+  if (failedTags.length === 0) {
+    return 0;
+  }
+
+  // A plain re-run finds those sections already rewritten and skips them, so the summary names the command that does not.
+  const pathArgument = options.changelogPath === DEFAULT_CHANGELOG_PATH ? '' : ` --path=${options.changelogPath}`;
+  dependencies.log(`${String(failedTags.length)} release edit(s) FAILED after ${String(RELEASE_EDIT_ATTEMPTS)} attempts each: ${failedTags.join(', ')}`);
+  dependencies.log(`To finish them: rewrite-changelog --sync-releases --overwrite-edited-releases --write --only=${failedTags.join(',')}${pathArgument}`);
+  return 1;
+}
+
 async function runRewriteChangelog(options: RewriteChangelogOptions, dependencies: RewriteChangelogDependencies): Promise<number> {
   const changelog = dependencies.readFile(options.changelogPath);
   const tags = execOrThrow(dependencies, 'git', ['tag', '--list']).split(/\r?\n/).filter(Boolean);
+  if (options.shouldSyncReleases) {
+    return await syncReleases(changelog, tags, options, dependencies);
+  }
+
   const result = await rewriteChangelog(changelog, {
     getCommitMessages: (fromTag, toTag) =>
       Promise.resolve(
@@ -270,6 +367,8 @@ async function runRewriteChangelog(options: RewriteChangelogOptions, dependencie
       ),
     tags
   });
+
+  assertOnlyReleasesExist(options, [...result.rewritten, ...result.kept].map((section) => section.version));
 
   for (const section of result.rewritten) {
     const tagNote = section.tag === undefined ? ', no tag, so grouped from the bullets alone' : '';
@@ -287,17 +386,38 @@ async function runRewriteChangelog(options: RewriteChangelogOptions, dependencie
     dependencies.log(`${options.changelogPath}: dry run, nothing written (pass --write to apply)`);
   }
 
-  let isSuccess = true;
-  if (options.shouldRewriteReleases) {
-    const notesByTag = readReleaseNotes(dependencies);
-    for (const section of result.rewritten) {
-      if (section.tag !== undefined) {
-        isSuccess = rewriteRelease({ ...section, tag: section.tag }, notesByTag.get(section.tag), options, dependencies) === 'ok' && isSuccess;
-      }
+  return options.shouldRewriteReleases
+    ? (await rewriteReleases(
+      result.rewritten.flatMap((section) => section.tag === undefined ? [] : { newBody: section.newBody, oldBody: section.oldBody, tag: section.tag }),
+      options,
+      dependencies
+    ))
+    : 0;
+}
+
+async function syncReleases(
+  changelog: string,
+  tags: readonly string[],
+  options: RewriteChangelogOptions,
+  dependencies: RewriteChangelogDependencies
+): Promise<number> {
+  const sections = readPublishedChangelogSections(changelog, tags);
+  assertOnlyReleasesExist(options, sections.map((section) => section.version));
+
+  const updates: ReleaseNotesUpdate[] = [];
+  for (const section of sections) {
+    if (section.tag === undefined) {
+      dependencies.log(`${section.version}: left alone, the repository has no tag for it`);
+    } else {
+      updates.push({ newBody: section.body, oldBody: section.body, tag: section.tag });
     }
   }
 
-  return isSuccess ? 0 : 1;
+  return await rewriteReleases(updates, options, dependencies);
+}
+
+function toBareVersion(version: string): string {
+  return version.replace(/^v/, '');
 }
 
 function toResult(result: SpawnSyncReturns<string>): RewriteChangelogCommandResult {
