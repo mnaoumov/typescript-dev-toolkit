@@ -182,6 +182,9 @@ async function runLinkinator(linkCheckFiles: string[], skipConfigFolder: null | 
   // of seconds on a 429 we already accept as a warning. Request timeouts remain errors and keep their retries.
   // A 408 is the server's own timeout (shields.io answers it when its upstream is slow); --retry-errors never retries
   // it, so it is a warning like a 429 rather than a gate failure that says nothing about whether the link exists.
+  // A 502, 503 or 504 is a gateway failing, not the link: --retry-errors retries it first, and only one that outlasts
+  // the retries warns, because GitHub answering 504 for every repository failed releases with nothing wrong in them.
+  // A 500 stays an error, since it is the target's own application failing and can be permanent.
   await execFromRoot([
     ...resolveToolCommand({ tool: 'linkinator' }),
     '--server-root',
@@ -199,6 +202,12 @@ async function runLinkinator(linkCheckFiles: string[], skipConfigFolder: null | 
     '429:warn',
     '--status-code',
     '408:warn',
+    '--status-code',
+    '502:warn',
+    '--status-code',
+    '503:warn',
+    '--status-code',
+    '504:warn',
     '--url-rewrite-search',
     String.raw`https://www\.npmjs\.com/package/`,
     '--url-rewrite-replace',
