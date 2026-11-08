@@ -134,6 +134,17 @@ export function escapeLinkBrackets(text: string): string {
 }
 
 /**
+ * Checks whether a changelog entry is a Conventional Commits subject (`<type>[(<scope>)][!]: <description>`), which the
+ * `grouped` layout files by its type. Any other entry goes to `### Other changes`.
+ *
+ * @param entry - The entry text, without its bullet.
+ * @returns Whether the entry is a Conventional Commits subject.
+ */
+export function isConventionalChangelogEntry(entry: string): boolean {
+  return CONVENTIONAL_ENTRY_REG_EXP.test(entry);
+}
+
+/**
  * Renders the body of a new changelog section in the {@link ChangelogStyle} `grouped` layout.
  *
  * @param entries - The first-parent commits since the previous release, in `git log` order.

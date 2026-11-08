@@ -8,12 +8,17 @@
  * matched back to the first-parent commits of the section's tag range, which brings back what the bullet alone lost:
  * the issue title an issue-closing `re #<n>` merge carries in its body, and the `BREAKING CHANGE:` footer. A bullet no
  * commit matches (the history was rewritten, or the bullet was edited by hand) is grouped from its own text. A section
- * that is anything other than a bullet list was written or edited by a person, so it is kept as it is.
+ * that is anything other than a bullet list was written or edited by a person, so it is kept as it is. So is a bullet
+ * list none of whose bullets matched a commit or is a Conventional Commits subject: it is hand-written prose, which the
+ * grouped layout would only wrap in a count line and an `### Other changes` heading.
  */
 
 import type { ChangelogCommitEntry } from './changelog-grouping.ts';
 
-import { renderGroupedChangelogSection } from './changelog-grouping.ts';
+import {
+  isConventionalChangelogEntry,
+  renderGroupedChangelogSection
+} from './changelog-grouping.ts';
 import { toChangelogCommitEntry } from './version.ts';
 
 /**
@@ -149,6 +154,12 @@ export async function rewriteChangelog(changelog: string, source: ChangelogRewri
     const isRangeKnown = tag !== undefined && (previousSection === undefined || previousTag !== undefined);
     const commitMessages = isRangeKnown ? await source.getCommitMessages(previousTag, tag) : [];
     const { entries, matchedCount } = matchBullets(section.bodyLines, commitMessages);
+    if (matchedCount === 0 && entries.every((entry) => !isConventionalChangelogEntry(entry.entry))) {
+      kept.push({ reason: 'no bullet matched a commit or is a Conventional Commits subject, so a person wrote it', version: section.version });
+      outputBlocks.push(trimTrailingBlankLines(section.rawLines).join('\n'));
+      continue;
+    }
+
     const oldBody = section.bodyLines.join('\n');
     const newBody = renderGroupedChangelogSection(entries);
     rewritten.push({ matchedCount, newBody, oldBody, tag, version: section.version });
