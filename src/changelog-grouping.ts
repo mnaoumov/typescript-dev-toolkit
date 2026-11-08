@@ -102,6 +102,38 @@ const CONVENTIONAL_ENTRY_REG_EXP = /^(?<type>[a-z]+)(?:\((?<scope>[^()]*)\))?(?<
 const ISSUE_ONLY_DESCRIPTION_REG_EXP = /^re (?<issue>#\d+)$/i;
 
 /**
+ * A code span: a backtick run, the shortest text up to a backtick run of the same length.
+ */
+const CODE_SPAN_REG_EXP = /(?<!`)(?<fence>`+)(?!`)[\s\S]*?(?<!`)\k<fence>(?!`)/g;
+
+/**
+ * A square bracket and the backslashes right before it.
+ */
+const BRACKET_REG_EXP = /\\*[[\]]/g;
+
+/**
+ * Escapes the square brackets of an issue title outside its code spans, so a title such as `[BUG] Links break` is
+ * published as text rather than read as a reference link with no definition (markdownlint's MD052).
+ *
+ * An issue title is written by whoever opened the issue, and no commit hook ever checks it, so it is the one part of a
+ * generated entry that can carry Markdown the author never meant. A bracket already escaped is left as it is.
+ *
+ * @param text - The issue title.
+ * @returns The title with every unescaped `[` and `]` outside a code span preceded by a backslash.
+ */
+export function escapeLinkBrackets(text: string): string {
+  const parts: string[] = [];
+  let lastIndex = 0;
+  for (const match of text.matchAll(CODE_SPAN_REG_EXP)) {
+    parts.push(escapeBracketsInPlainText(text.slice(lastIndex, match.index)), match[0]);
+    lastIndex = match.index + match[0].length;
+  }
+
+  parts.push(escapeBracketsInPlainText(text.slice(lastIndex)));
+  return parts.join('');
+}
+
+/**
  * Renders the body of a new changelog section in the {@link ChangelogStyle} `grouped` layout.
  *
  * @param entries - The first-parent commits since the previous release, in `git log` order.
@@ -160,7 +192,7 @@ function classifyEntry(entry: ChangelogCommitEntry): ClassifiedEntry | null {
   const issue = ISSUE_ONLY_DESCRIPTION_REG_EXP.exec(description)?.groups?.['issue'];
   const issueTitle = entry.detailLines[0];
   const isIssueTitleUsed = issue !== undefined && issueTitle !== undefined;
-  const text = isIssueTitleUsed ? issueTitle : description;
+  const text = isIssueTitleUsed ? escapeLinkBrackets(issueTitle) : description;
   const references = isIssueTitleUsed ? [issue, ...entry.references] : entry.references;
   const scope = groups['scope'];
   return {
@@ -172,6 +204,15 @@ function classifyEntry(entry: ChangelogCommitEntry): ClassifiedEntry | null {
 
 function countPhrase(count: number, section: SectionDefinition): string {
   return `${String(count)} ${count === 1 ? section.singular : section.plural}`;
+}
+
+function escapeBracketsInPlainText(text: string): string {
+  return text.replaceAll(BRACKET_REG_EXP, (match: string) => {
+    const backslashes = match.slice(0, -1);
+    // An odd run of backslashes escapes the bracket; an even one is escaped backslashes only.
+    const isEscaped = backslashes.replaceAll('\\\\', '') === '\\';
+    return isEscaped ? match : `${backslashes}\\${match.slice(-1)}`;
+  });
 }
 
 function joinPhrases(phrases: readonly string[]): string {

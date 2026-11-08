@@ -6,7 +6,10 @@ import {
 
 import type { ChangelogCommitEntry } from './changelog-grouping.ts';
 
-import { renderGroupedChangelogSection } from './changelog-grouping.ts';
+import {
+  escapeLinkBrackets,
+  renderGroupedChangelogSection
+} from './changelog-grouping.ts';
 
 function entry(text: string, overrides: Partial<ChangelogCommitEntry> = {}): ChangelogCommitEntry {
   return { detailLines: [], entry: text, hasBreakingFooter: false, references: [], ...overrides };
@@ -70,5 +73,37 @@ describe('renderGroupedChangelogSection', () => {
     expect(renderGroupedChangelogSection([entry('feat(ui): re #4', { detailLines: ['Add a toggle'], references: ['#40'] })])).toBe(
       'This release has 1 new feature.\n\n### New\n\n- **ui:** Add a toggle (#4, #40)'
     );
+  });
+
+  it('should escape the brackets of a bug-form issue title so it is not read as a reference link', () => {
+    expect(renderGroupedChangelogSection([entry('fix: re #10', { detailLines: ['[BUG] Image links in the Canvas break on renaming'] })])).toBe(
+      'This release has 1 fix.\n\n### Fixed\n\n- \\[BUG\\] Image links in the Canvas break on renaming (#10)'
+    );
+  });
+
+  it('should not escape the brackets of a subject the author wrote', () => {
+    expect(renderGroupedChangelogSection([entry('fix: handle [x] items')])).toBe('This release has 1 fix.\n\n### Fixed\n\n- handle [x] items');
+  });
+});
+
+describe('escapeLinkBrackets', () => {
+  it('should escape every unescaped bracket', () => {
+    expect(escapeLinkBrackets('[FR] Add [a] toggle]')).toBe('\\[FR\\] Add \\[a\\] toggle\\]');
+  });
+
+  it('should leave a bracket that is already escaped', () => {
+    expect(escapeLinkBrackets('\\[BUG\\] and \\\\[x]')).toBe('\\[BUG\\] and \\\\\\[x\\]');
+  });
+
+  it('should leave the brackets inside code spans', () => {
+    expect(escapeLinkBrackets('[BUG] `a[0]` and ``b[`1`]`` [c]')).toBe('\\[BUG\\] `a[0]` and ``b[`1`]`` \\[c\\]');
+  });
+
+  it('should escape after an unmatched backtick', () => {
+    expect(escapeLinkBrackets('a ` [b]')).toBe('a ` \\[b\\]');
+  });
+
+  it('should return a title without brackets unchanged', () => {
+    expect(escapeLinkBrackets('Plain title')).toBe('Plain title');
   });
 });
