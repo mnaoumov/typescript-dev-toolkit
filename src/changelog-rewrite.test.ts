@@ -43,6 +43,33 @@ describe('rewriteChangelog', () => {
     expect(result.content).toContain('- Control the file name through the settings (#6, <https://github.com/owner/repo/issues/1>)\n');
   });
 
+  it('should keep the code spans and bracket escapes a matched bullet gained after its commit', async () => {
+    const changelog = dedent`
+      # CHANGELOG
+
+      ## 1.0.0
+
+      - feat(relations): label a link, as \`[[B]]%%:child%%\`
+      - fix: keep \[BUG\] titles (#7)
+      - docs: explain \`it\` (\`#8\`)
+    `;
+    const repo = source(['1.0.0'], {
+      '..1.0.0': [
+        'feat(relations): label a link, as [[B]]%%:child%%\n',
+        'fix: keep [BUG] titles\n\nRefs #7\n',
+        'docs: explain it\n\nRefs #8\n'
+      ]
+    });
+
+    const result = await rewriteChangelog(changelog, repo);
+
+    expect(result.rewritten[0]?.matchedCount).toBe(3);
+    expect(result.content).toContain('- **relations:** label a link, as `[[B]]%%:child%%`\n');
+    expect(result.content).toContain('- keep \\[BUG\\] titles (#7)\n');
+    // Text and references can no longer be told apart, so the commit's own text is used.
+    expect(result.content).toContain('- explain it (#8)\n');
+  });
+
   it('should regroup a flat section, recovering issue titles and breaking footers from its tag range', async () => {
     const changelog = dedent`
       # CHANGELOG\r
