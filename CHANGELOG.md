@@ -1,5 +1,23 @@
 # CHANGELOG
 
+## 6.4.0
+
+This release has 1 new feature, 3 fixes and 1 documentation change.
+
+### New
+
+- **rewrite-changelog:** sync releases from the linted changelog
+
+### Fixed
+
+- **markdownlint:** warn on a lasting 502, 503 or 504 in the link check
+- **changelog:** unwrap a hard-wrapped issue title from the commit body
+- **changelog:** keep a hand-written section that no commit matches
+
+### Documentation
+
+- **changelog:** regroup the published release notes for readers
+
 ## 6.3.0
 
 This release has 1 new feature and 1 fix.
