@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## 6.4.1
+
+This release has 1 fix.
+
+### Fixed
+
+- **rewrite-changelog:** keep the code spans of a matched bullet
+
 ## 6.4.0
 
 This release has 1 new feature, 3 fixes and 1 documentation change.
