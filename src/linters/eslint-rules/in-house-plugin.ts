@@ -11,6 +11,7 @@
 import type { ESLint } from 'eslint';
 
 import { noAsyncCallbackToUnsafeReturn } from './no-async-callback-to-unsafe-return.ts';
+import { noDirectDisposeCall } from './no-direct-dispose-call.ts';
 import { noKeywordIdentifiers } from './no-keyword-identifiers.ts';
 import { noUndefinedReturnType } from './no-undefined-return-type.ts';
 import { noUnresolvedJsdocLink } from './no-unresolved-jsdoc-link.ts';
@@ -36,6 +37,7 @@ export const IN_HOUSE_ESLINT_PLUGIN_NAME = 'typescript-dev-toolkit';
  */
 export const genericInHouseEslintRules: NonNullable<ESLint.Plugin['rules']> = {
   'no-async-callback-to-unsafe-return': noAsyncCallbackToUnsafeReturn,
+  'no-direct-dispose-call': noDirectDisposeCall,
   'no-keyword-identifiers': noKeywordIdentifiers,
   'no-undefined-return-type': noUndefinedReturnType,
   'no-unresolved-jsdoc-link': noUnresolvedJsdocLink,
