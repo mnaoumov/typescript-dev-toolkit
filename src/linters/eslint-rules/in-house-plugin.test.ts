@@ -19,6 +19,7 @@ describe('in-house plugin', () => {
     expect(Object.keys(genericInHouseEslintRules).sort()).toEqual([
       'no-async-callback-to-unsafe-return',
       'no-keyword-identifiers',
+      'no-undefined-return-type',
       'no-unresolved-jsdoc-link',
       'no-unused-params-members',
       'no-used-underscore-variables',
