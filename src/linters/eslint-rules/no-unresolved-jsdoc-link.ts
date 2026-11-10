@@ -247,7 +247,7 @@ function collectLocalDeclarationName(node: Node, localDeclarationNamesByName: Ma
   localDeclarationNamesByName.set(node.name.text, names);
 }
 
-function findModule(program: Program, checker: TypeChecker, specifier: string, containingFileName: string): TsSymbol | undefined {
+function findModule(program: Program, checker: TypeChecker, specifier: string, containingFileName: string): null | TsSymbol {
   const ambientModule = getProgramIndex(program, checker).modulesByPath.get(specifier);
   if (ambientModule) {
     return ambientModule;
@@ -259,7 +259,7 @@ function findModule(program: Program, checker: TypeChecker, specifier: string, c
   return resolvedModule ?? findModuleByPathSuffix(program, checker, specifier);
 }
 
-function findModuleByPathSuffix(program: Program, checker: TypeChecker, modulePath: string): TsSymbol | undefined {
+function findModuleByPathSuffix(program: Program, checker: TypeChecker, modulePath: string): null | TsSymbol {
   const normalizedPath = modulePath.replace(RELATIVE_PATH_PREFIX_REG_EXP, '').replace(SOURCE_FILE_EXTENSION_REG_EXP, '');
   const suffixes = [`/${normalizedPath}`, `/${normalizedPath}${INDEX_SUFFIX}`];
   for (const sourceFile of program.getSourceFiles()) {
@@ -272,14 +272,14 @@ function findModuleByPathSuffix(program: Program, checker: TypeChecker, modulePa
       return moduleSymbol;
     }
   }
-  return undefined;
+  return null;
 }
 
 function flattenName(name: EntityName | JSDocMemberName): string[] {
   return isIdentifier(name) ? [name.text] : [...flattenName(name.left), name.right.text];
 }
 
-function getMember(checker: TypeChecker, $symbol: TsSymbol, memberName: string): TsSymbol | undefined {
+function getMember(checker: TypeChecker, $symbol: TsSymbol, memberName: string): null | TsSymbol {
   const escapedName = escapeLeadingUnderscores(memberName);
   const target = resolveAlias(checker, $symbol);
   // eslint-disable-next-line no-bitwise -- Bitwise flag test is idiomatic for the TypeScript compiler API.
@@ -288,7 +288,8 @@ function getMember(checker: TypeChecker, $symbol: TsSymbol, memberName: string):
     ?? target.exports?.get(escapedName)
     ?? target.members?.get(escapedName)
     ?? checker.getPropertyOfType(checker.getDeclaredTypeOfSymbol(target), memberName)
-    ?? checker.getPropertyOfType(checker.getTypeOfSymbol(target), memberName);
+    ?? checker.getPropertyOfType(checker.getTypeOfSymbol(target), memberName)
+    ?? null;
 }
 
 function getProgramIndex(program: Program, checker: TypeChecker): ProgramIndex {
@@ -377,11 +378,11 @@ function resolveAlias(checker: TypeChecker, $symbol: TsSymbol): TsSymbol {
   return ($symbol.flags & SymbolFlags.Alias) === 0 ? $symbol : checker.getAliasedSymbol($symbol);
 }
 
-function resolveMemberPath(checker: TypeChecker, root: TsSymbol | undefined, memberNames: readonly string[]): TsSymbol | undefined {
-  let current: TsSymbol | undefined = root;
+function resolveMemberPath(checker: TypeChecker, root: null | TsSymbol | undefined, memberNames: readonly string[]): null | TsSymbol {
+  let current = root ?? null;
   for (const memberName of memberNames) {
     if (!current) {
-      return undefined;
+      return null;
     }
     current = getMember(checker, current, memberName);
   }

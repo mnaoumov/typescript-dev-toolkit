@@ -251,34 +251,34 @@ function getInterfaceName(node: Rule.Node): string {
   return record(id)['name'] as string;
 }
 
-function getParameterInfo(parameter: Rule.Node): ParameterInfo | undefined {
+function getParameterInfo(parameter: Rule.Node): null | ParameterInfo {
   const actualParameter = nodeType(parameter) === 'TSParameterProperty' ? record(parameter)['parameter'] as Rule.Node : parameter;
 
   const typeName = getTypeReferenceName(actualParameter);
   if (!typeName || !PARAMS_OPTIONS_SUFFIX_PATTERN.test(typeName)) {
-    return undefined;
+    return null;
   }
 
   if (actualParameter.type === 'Identifier') {
     return { binding: { name: record(actualParameter)['name'] as string, type: 'identifier' }, typeName };
   }
 
-  return actualParameter.type === 'ObjectPattern' ? { binding: { pattern: actualParameter, type: 'pattern' }, typeName } : undefined;
+  return actualParameter.type === 'ObjectPattern' ? { binding: { pattern: actualParameter, type: 'pattern' }, typeName } : null;
 }
 
-function getTypeReferenceName(parameter: Rule.Node): string | undefined {
+function getTypeReferenceName(parameter: Rule.Node): null | string {
   const annotation = record(parameter)['typeAnnotation'];
   if (!isNode(annotation)) {
-    return undefined;
+    return null;
   }
 
   const typeNode = record(annotation)['typeAnnotation'] as Rule.Node;
   if (nodeType(typeNode) !== 'TSTypeReference') {
-    return undefined;
+    return null;
   }
 
   const typeName = record(typeNode)['typeName'] as Rule.Node;
-  return typeName.type === 'Identifier' ? (record(typeName)['name'] as string) : undefined;
+  return typeName.type === 'Identifier' ? (record(typeName)['name'] as string) : null;
 }
 
 function isNode(value: unknown): value is Rule.Node {

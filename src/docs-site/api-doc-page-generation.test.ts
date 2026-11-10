@@ -112,7 +112,7 @@ describe('api-doc page generation', () => {
     expect(computeOverviewSignature('alpha', createTypeInfo({ kind: 'function', methods: [createMemberInfo({ returnType: 'Bravo', signature: 'alpha(value: Bravo)' })] }))).toBe('function alpha(value: Bravo): Bravo');
     expect(computeOverviewSignature('Alpha', createTypeInfo({ kind: 'type', name: 'Alpha', typeAliasText: 'Bravo' }))).toBe('type Alpha = Bravo');
     expect(computeOverviewSignature('alpha', createTypeInfo({ kind: 'variable', variableKeyword: 'const', variableType: 'Bravo' }))).toBe('const alpha: Bravo');
-    expect(computeOverviewSignature('Alpha', createTypeInfo())).toBeUndefined();
+    expect(computeOverviewSignature('Alpha', createTypeInfo())).toBeNull();
   });
 });
 
@@ -131,7 +131,7 @@ describe('api-doc page generation fallbacks', () => {
   });
 
   it('falls back when a declaration is missing its parts', () => {
-    expect(computeOverviewSignature('alpha', createTypeInfo({ kind: 'function' }))).toBeUndefined();
+    expect(computeOverviewSignature('alpha', createTypeInfo({ kind: 'function' }))).toBeNull();
     expect(computeOverviewSignature('Alpha', createTypeInfo({ kind: 'type', name: 'Alpha' }))).toBe('type Alpha = unknown');
     expect(computeOverviewSignature('alpha', createTypeInfo({ kind: 'variable' }))).toBe('let alpha: unknown');
 

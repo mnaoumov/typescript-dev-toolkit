@@ -68,7 +68,7 @@ describe('api-doc text utilities', () => {
     configureTestApiDocs({
       importStatement: ({ defaultImportStatement, isTypeOnly, kind, name, namespace }) => {
         if (namespace.startsWith('globals/')) {
-          return;
+          return null;
         }
         if (namespace.startsWith('obsidian/')) {
           return `${isTypeOnly ? 'import type' : 'import'} { ${name} } from 'obsidian-test-mocks/obsidian'; // ${kind}`;
@@ -78,7 +78,7 @@ describe('api-doc text utilities', () => {
     });
     expect(getImportStatement(createTypeInfo({ kind: 'class', name: 'App', namespace: 'obsidian/App' }))).toBe('import { App } from \'obsidian-test-mocks/obsidian\'; // class');
     expect(getImportStatement(createTypeInfo({ kind: 'interface', name: 'Alpha', namespace: 'obsidian/Alpha' }))).toBe('import type { Alpha } from \'obsidian-test-mocks/obsidian\'; // interface');
-    expect(getImportStatement(createTypeInfo({ kind: 'function', name: 'setup', namespace: 'globals/setup' }))).toBeUndefined();
+    expect(getImportStatement(createTypeInfo({ kind: 'function', name: 'setup', namespace: 'globals/setup' }))).toBeNull();
     expect(getImportStatement(createTypeInfo({ kind: 'function', name: 'bravo', namespace: 'bravo' }))).toBe('import { bravo } from \'@mnaoumov/typescript-lib/bravo\';');
   });
 
@@ -94,7 +94,7 @@ describe('api-doc text utilities', () => {
   });
 
   it('builds member routes with the site\'s hook where it returns a segment', () => {
-    configureTestApiDocs({ memberRouteSegment: (name) => (name.endsWith('__') ? `${name.slice(0, -'__'.length)}-mock` : undefined) });
+    configureTestApiDocs({ memberRouteSegment: (name) => (name.endsWith('__') ? `${name.slice(0, -'__'.length)}-mock` : null) });
     expect(memberRouteSegment('create__')).toBe('create-mock');
     expect(memberSlug('Create__')).toBe('create-mock');
     expect(overloadRouteSegment('create__')).toBe('create-mock');

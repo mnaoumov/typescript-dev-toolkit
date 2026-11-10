@@ -81,7 +81,7 @@ describe('api-doc link rendering', () => {
     registerRouteSegments(types);
 
     expect(findType(types, 'Alpha', 'local')).toBe(local);
-    expect(findType(types, 'Alpha')).toBeUndefined();
+    expect(findType(types, 'Alpha')).toBeNull();
     expect(renderTypeWithLinks('Alpha | Promise<string>', types, undefined, 'local')).toContain('[Alpha](/typescript-lib/api/local/Alpha/)');
     expect(renderTypeWithLinks('Alpha', types)).toBe('Alpha');
   });
@@ -185,8 +185,8 @@ describe('api-doc link rendering edge cases', () => {
     expect(resolveTsUtilityUrl('Iterable')).toBe('https://www.typescriptlang.org/docs/handbook/iterators-and-generators.html#iterable-interface');
     expect(resolveTsUtilityUrl('Capitalize')).toBe('https://www.typescriptlang.org/docs/handbook/2/template-literal-types.html#capitalizestringtype');
     expect(resolveTsUtilityUrl('Partial')).toBe('https://www.typescriptlang.org/docs/handbook/utility-types.html#partialtype');
-    expect(resolveTsUtilityUrl('Nope')).toBeUndefined();
-    expect(resolveWebApiUrl('Nope')).toBeUndefined();
+    expect(resolveTsUtilityUrl('Nope')).toBeNull();
+    expect(resolveWebApiUrl('Nope')).toBeNull();
     expect(renderTypeWithLinks('this', new Map(), 'Missing')).toBe('this');
   });
 
@@ -222,9 +222,9 @@ describe('api-doc Web API links', () => {
 
       expect(resolveWebApiUrl('Plain')).toBe('https://p');
       expect(resolveWebApiUrl('WithUrl')).toBe('https://w');
-      expect(resolveWebApiUrl('WithoutUrl')).toBeUndefined();
-      expect(resolveWebApiUrl('Null')).toBeUndefined();
-      expect(resolveWebApiUrl('Broken')).toBeUndefined();
+      expect(resolveWebApiUrl('WithoutUrl')).toBeNull();
+      expect(resolveWebApiUrl('Null')).toBeNull();
+      expect(resolveWebApiUrl('Broken')).toBeNull();
     } finally {
       rmSync(root, { force: true, recursive: true });
       vi.restoreAllMocks();

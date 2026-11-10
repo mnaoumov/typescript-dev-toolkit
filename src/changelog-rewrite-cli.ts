@@ -361,7 +361,7 @@ async function runRewriteChangelog(options: RewriteChangelogOptions, dependencie
   const result = await rewriteChangelog(changelog, {
     getCommitMessages: (fromTag, toTag) =>
       Promise.resolve(
-        execOrThrow(dependencies, 'git', ['log', '--format=%B', '--first-parent', '-z', fromTag === undefined ? toTag : `${fromTag}..${toTag}`])
+        execOrThrow(dependencies, 'git', ['log', '--format=%B', '--first-parent', '-z', fromTag === null ? toTag : `${fromTag}..${toTag}`])
           .split('\0')
           .filter((message) => message.trim() !== '')
       ),
@@ -371,7 +371,7 @@ async function runRewriteChangelog(options: RewriteChangelogOptions, dependencie
   assertOnlyReleasesExist(options, [...result.rewritten, ...result.kept].map((section) => section.version));
 
   for (const section of result.rewritten) {
-    const tagNote = section.tag === undefined ? ', no tag, so grouped from the bullets alone' : '';
+    const tagNote = section.tag === null ? ', no tag, so grouped from the bullets alone' : '';
     dependencies.log(`${section.version}: rewritten, ${String(section.matchedCount)} of ${String(section.oldBody.split('\n').length)} bullets matched to commits${tagNote}`);
   }
 
@@ -388,7 +388,7 @@ async function runRewriteChangelog(options: RewriteChangelogOptions, dependencie
 
   return options.shouldRewriteReleases
     ? (await rewriteReleases(
-      result.rewritten.flatMap((section) => section.tag === undefined ? [] : { newBody: section.newBody, oldBody: section.oldBody, tag: section.tag }),
+      result.rewritten.flatMap((section) => section.tag === null ? [] : { newBody: section.newBody, oldBody: section.oldBody, tag: section.tag }),
       options,
       dependencies
     ))
@@ -406,7 +406,7 @@ async function syncReleases(
 
   const updates: ReleaseNotesUpdate[] = [];
   for (const section of sections) {
-    if (section.tag === undefined) {
+    if (section.tag === null) {
       dependencies.log(`${section.version}: left alone, the repository has no tag for it`);
     } else {
       updates.push({ newBody: section.body, oldBody: section.body, tag: section.tag });

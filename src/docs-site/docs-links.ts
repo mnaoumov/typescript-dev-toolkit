@@ -141,7 +141,7 @@ async function fetchUrlStatus(url: string): Promise<ExternalLinkProbeResult> {
     // serialize, turning a ~3s run into minutes.
     await response.body?.cancel();
     return {
-      retryAfterInMilliseconds: parseRetryAfterInMilliseconds(response.headers.get('retry-after'), Date.now()),
+      retryAfterInMilliseconds: parseRetryAfterInMilliseconds(response.headers.get('retry-after'), Date.now()) ?? undefined,
       status: response.status
     };
   } catch {

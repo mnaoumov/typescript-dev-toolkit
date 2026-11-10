@@ -48,11 +48,11 @@ export interface ChangelogRewriteSource {
   /**
    * Reads the full messages of the first-parent commits in a range, in `git log` order.
    *
-   * @param fromTag - The tag the range starts after, or `undefined` for the whole history up to {@link toTag}.
+   * @param fromTag - The tag the range starts after, or `null` for the whole history up to {@link toTag}.
    * @param toTag - The tag the range ends at.
    * @returns The full commit messages.
    */
-  readonly getCommitMessages: (fromTag: string | undefined, toTag: string) => Promise<readonly string[]>;
+  readonly getCommitMessages: (fromTag: null | string, toTag: string) => Promise<readonly string[]>;
 
   /**
    * The repository's tags.
@@ -87,7 +87,7 @@ export interface PublishedChangelogSection {
   /**
    * The tag the version was released under, when the repository has one.
    */
-  readonly tag: string | undefined;
+  readonly tag: null | string;
 
   /**
    * The version its heading names.
@@ -117,7 +117,7 @@ export interface RewrittenChangelogSection {
   /**
    * The tag the version was released under, when the repository has one.
    */
-  readonly tag: string | undefined;
+  readonly tag: null | string;
 
   /**
    * The version its heading names.
@@ -187,8 +187,8 @@ export async function rewriteChangelog(changelog: string, source: ChangelogRewri
 
     const tag = toTag(section.version, tags);
     const previousSection = sections[index + 1];
-    const previousTag = previousSection ? toTag(previousSection.version, tags) : undefined;
-    const isRangeKnown = tag !== undefined && (previousSection === undefined || previousTag !== undefined);
+    const previousTag = previousSection ? toTag(previousSection.version, tags) : null;
+    const isRangeKnown = tag !== null && (previousSection === undefined || previousTag !== null);
     const commitMessages = isRangeKnown ? await source.getCommitMessages(previousTag, tag) : [];
     const { entries, matchedCount } = matchBullets(section.bodyLines, commitMessages);
     if (matchedCount === 0 && entries.every((entry) => !isConventionalChangelogEntry(entry.entry))) {
@@ -251,7 +251,7 @@ function findMatchingEntryIndex(entries: readonly ChangelogCommitEntry[], bullet
   return renderedIndex === -1 ? entries.findIndex((entry) => toComparable(entry.entry) === comparable) : renderedIndex;
 }
 
-function getKeptReason(section: ChangelogSection): string | undefined {
+function getKeptReason(section: ChangelogSection): null | string {
   if (section.bodyLines.length === 0) {
     return 'the section is empty';
   }
@@ -260,7 +260,7 @@ function getKeptReason(section: ChangelogSection): string | undefined {
     return 'the section is not a plain bullet list, so a person wrote or edited it';
   }
 
-  return undefined;
+  return null;
 }
 
 function matchBullets(bodyLines: readonly string[], commitMessages: readonly string[]): MatchedBullets {
@@ -316,8 +316,8 @@ function toSection(rawLines: readonly string[]): ChangelogSection {
   return { bodyLines, heading, rawLines, version };
 }
 
-function toTag(version: string, tags: ReadonlySet<string>): string | undefined {
-  return [version, `v${version}`].find((candidate) => tags.has(candidate));
+function toTag(version: string, tags: ReadonlySet<string>): null | string {
+  return [version, `v${version}`].find((candidate) => tags.has(candidate)) ?? null;
 }
 
 function trimTrailingBlankLines(lines: readonly string[]): readonly string[] {

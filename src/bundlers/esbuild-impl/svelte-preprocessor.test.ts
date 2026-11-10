@@ -55,10 +55,10 @@ describe('getBlockLanguage', () => {
     [{ type: 'Text/SCSS' }, 'scss'],
     [{ lang: 'scss', type: 'text/css' }, 'scss'],
     [{ lang: '', type: 'text/less' }, 'less'],
-    [{}, undefined],
-    [{ lang: true }, undefined],
-    [{ type: 'module' }, undefined],
-    [{ type: true }, undefined]
+    [{}, null],
+    [{ lang: true }, null],
+    [{ type: 'module' }, null],
+    [{ type: true }, null]
   ])('reads %j as %s', async (attributes: SvelteBlockAttributes, language) => {
     const { getBlockLanguage } = await importPreprocessor();
     expect(getBlockLanguage(attributes)).toBe(language);

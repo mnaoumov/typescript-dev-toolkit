@@ -22,7 +22,7 @@ function section(overrides: Partial<RewrittenChangelogSection> = {}): RewrittenC
 
 function source(tags: readonly string[], commits: Record<string, readonly string[]> = {}): ChangelogRewriteSource {
   return {
-    getCommitMessages: vi.fn((fromTag: string | undefined, toTag: string) => Promise.resolve(commits[`${fromTag ?? ''}..${toTag}`] ?? [])),
+    getCommitMessages: vi.fn((fromTag: null | string, toTag: string) => Promise.resolve(commits[`${fromTag ?? ''}..${toTag}`] ?? [])),
     tags
   };
 }
@@ -138,7 +138,7 @@ describe('rewriteChangelog', () => {
     ]);
     expect(result.rewritten[1]?.oldBody).toBe('- feat: first');
     expect(result.kept).toEqual([]);
-    expect(repo.getCommitMessages).toHaveBeenCalledWith(undefined, '1.0.0');
+    expect(repo.getCommitMessages).toHaveBeenCalledWith(null, '1.0.0');
   });
 
   it('should match a bullet an older toolkit wrote without its references', async () => {
@@ -230,9 +230,9 @@ describe('rewriteChangelog', () => {
     const result = await rewriteChangelog('## 3.0.0\n\n- fix: three\n\n## 2.0.0\n\n- fix: two\n\n## 1.0.0\n\n- fix: one\n', repo);
 
     expect(result.rewritten.map(({ tag, version }) => ({ tag, version }))).toEqual([
-      { tag: undefined, version: '3.0.0' },
+      { tag: null, version: '3.0.0' },
       { tag: '2.0.0', version: '2.0.0' },
-      { tag: undefined, version: '1.0.0' }
+      { tag: null, version: '1.0.0' }
     ]);
     expect(repo.getCommitMessages).not.toHaveBeenCalled();
     expect(result.content.startsWith('## 3.0.0\n\nThis release has 1 fix.')).toBe(true);

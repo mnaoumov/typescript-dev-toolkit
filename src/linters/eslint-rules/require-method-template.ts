@@ -133,9 +133,9 @@ interface ParseTypeParameterTagsParams {
  * Finds the JSDoc block comment from a list of comments.
  *
  * @param comments - The comments before the node.
- * @returns The JSDoc block comment, or `undefined` if none found.
+ * @returns The JSDoc block comment, or `null` if none found.
  */
-function findJsdocComment(comments: readonly Comment[]): Comment | undefined {
+function findJsdocComment(comments: readonly Comment[]): Comment | null {
   for (let index = comments.length - 1; index >= 0; index--) {
     const comment = comments[index];
     if (comment?.type === 'Block' && comment.value.startsWith('*')) {
@@ -143,7 +143,7 @@ function findJsdocComment(comments: readonly Comment[]): Comment | undefined {
     }
   }
 
-  return undefined;
+  return null;
 }
 
 /**

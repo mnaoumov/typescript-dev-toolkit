@@ -513,8 +513,8 @@ describe('generateApiDocs', () => {
     const settings: ApiDocSettings = {
       ...other.settings,
       excludedDirectories: ['nested'],
-      importStatement: ({ name, namespace }) => (namespace === 'mocks' ? `import { ${name} } from 'mocks';` : undefined),
-      memberRouteSegment: (name) => (name.endsWith('__') ? `${name.slice(0, -'__'.length)}-mock` : undefined)
+      importStatement: ({ name, namespace }) => (namespace === 'mocks' ? `import { ${name} } from 'mocks';` : null),
+      memberRouteSegment: (name) => (name.endsWith('__') ? `${name.slice(0, -'__'.length)}-mock` : null)
     };
     await generateApiDocs({ rootDirectory: other.root, settings, sourceDirectory: join(other.root, 'src') });
     expect(existsSync(join(settings.outputDirectory, 'nested'))).toBe(false);
@@ -531,7 +531,7 @@ describe('generateApiDocs', () => {
     const settings: ApiDocSettings = {
       ...other.settings,
       apiIndexIntro: 'The `mocks` modules are imported by name.',
-      importStatement: () => undefined,
+      importStatement: () => null,
       publicApiEntry: undefined
     };
     await generateApiDocs({ rootDirectory: other.root, settings, sourceDirectory: join(other.root, 'src') });

@@ -758,17 +758,17 @@ function getMaxCommandLength(): number {
 
 /**
  * Handles a command array that may contain an {@link ExecArgument}.
- * Returns a Promise if batching is needed, or `undefined` if the command
+ * Returns a Promise if batching is needed, or `null` if the command
  * has no ExecArg and should be processed normally.
  *
  * @param parts - The command parts.
  * @param options - The exec options.
- * @returns A Promise if batching is handled, or `undefined`.
+ * @returns A Promise if batching is handled, or `null`.
  */
-function handleBatchedCommand(parts: CommandPart[], options: ExecOptions): Promise<ExecResult | string> | undefined {
+function handleBatchedCommand(parts: CommandPart[], options: ExecOptions): null | Promise<ExecResult | string> {
   const execArguments = parts.filter(isExecArgument);
   if (execArguments.length === 0) {
-    return undefined;
+    return null;
   }
   if (execArguments.length > 1) {
     return Promise.reject(new Error('Only one ExecArg with batchedArguments is allowed per command'));

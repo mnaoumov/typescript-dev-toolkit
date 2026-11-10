@@ -96,16 +96,16 @@ export function doesMemberPageExist(namespace: string, typeName: string, routeSe
  * @param allTypes - Every documented type, keyed by `${namespace}#${name}`.
  * @param name - The type's name.
  * @param currentNamespace - The namespace of the referencing page, preferred when the name is ambiguous.
- * @returns The type, or `undefined` when no type or more than one has that name.
+ * @returns The type, or `null` when no type or more than one has that name.
  */
-export function findType(allTypes: Map<string, TypeInfo>, name: string, currentNamespace?: string): TypeInfo | undefined {
+export function findType(allTypes: Map<string, TypeInfo>, name: string, currentNamespace?: string): null | TypeInfo {
   if (currentNamespace !== undefined) {
     const qualified = allTypes.get(`${currentNamespace}#${name}`);
     if (qualified) {
       return qualified;
     }
   }
-  let found: TypeInfo | undefined;
+  let found: null | TypeInfo = null;
   let matchCount = 0;
   for (const info of allTypes.values()) {
     if (info.name !== name) {
@@ -115,10 +115,10 @@ export function findType(allTypes: Map<string, TypeInfo>, name: string, currentN
     found = info;
     matchCount++;
     if (matchCount > 1) {
-      return undefined;
+      return null;
     }
   }
-  return matchCount === 1 ? found : undefined;
+  return matchCount === 1 ? found : null;
 }
 
 /**
@@ -200,7 +200,7 @@ export function memberHref(memberSlugString: string, inheritedFrom: string, allT
     visited.add(parentInfo);
     const member = parentInfo.properties.find((property) => memberRouteSegment(property.name) === memberSlugString)
       ?? parentInfo.methods.find((method) => overloadRouteSegment(method.overloadKey) === memberSlugString);
-    parentInfo = member?.inheritedFrom ? findType(allTypes, member.inheritedFrom, parentInfo.namespace) : undefined;
+    parentInfo = member?.inheritedFrom ? findType(allTypes, member.inheritedFrom, parentInfo.namespace) : null;
   }
   if (!parentInfo || !doesMemberPageExist(parentInfo.namespace, parentInfo.name, memberSlugString)) {
     // An undocumented or ambiguous ancestor has no safe member destination.
@@ -397,10 +397,10 @@ export function renderTypeWithLinks(typeText: string, allTypes: Map<string, Type
  * entry of the site's own `externalTypeLinks` setting.
  *
  * @param name - The type's name.
- * @returns The URL, or `undefined` when neither knows the type.
+ * @returns The URL, or `null` when neither knows the type.
  */
-export function resolveExternalTypeUrl(name: string): string | undefined {
-  return getPackageTypeUrl(name) ?? getApiDocSettings().externalTypeLinks.get(name);
+export function resolveExternalTypeUrl(name: string): null | string {
+  return getPackageTypeUrl(name) ?? getApiDocSettings().externalTypeLinks.get(name) ?? null;
 }
 
 /**
@@ -443,9 +443,9 @@ export function resolveLinks(text: string, allTypes: Map<string, TypeInfo>, self
  * Resolves a TypeScript utility type to its handbook entry.
  *
  * @param name - The type's name.
- * @returns The handbook URL, or `undefined` when it is not a utility type.
+ * @returns The handbook URL, or `null` when it is not a utility type.
  */
-export function resolveTsUtilityUrl(name: string): string | undefined {
+export function resolveTsUtilityUrl(name: string): null | string {
   const hash = TS_UTILITY_TYPES.get(name);
   if (hash) {
     if (['Iterable'].includes(name)) {
@@ -454,18 +454,18 @@ export function resolveTsUtilityUrl(name: string): string | undefined {
     const handbookPage = ['Capitalize', 'Lowercase', 'Uncapitalize', 'Uppercase'].includes(name) ? '2/template-literal-types' : 'utility-types'; // Cspell:disable-line
     return `https://www.typescriptlang.org/docs/handbook/${handbookPage}.html#${hash}`;
   }
-  return undefined;
+  return null;
 }
 
 /**
  * Resolves a Web API type to its MDN page.
  *
  * @param name - The type's name.
- * @returns The MDN URL, or `undefined` when it is not a known Web API type.
+ * @returns The MDN URL, or `null` when it is not a known Web API type.
  */
-export function resolveWebApiUrl(name: string): string | undefined {
+export function resolveWebApiUrl(name: string): null | string {
   if (!Object.hasOwn(moduleState.webApiTypes, name)) {
-    return undefined;
+    return null;
   }
   const entry = moduleState.webApiTypes[name];
   if (typeof entry === 'string') {
@@ -475,7 +475,7 @@ export function resolveWebApiUrl(name: string): string | undefined {
     const typedEntry = entry as WebApiEntry;
     return typedEntry.url;
   }
-  return undefined;
+  return null;
 }
 
 /**

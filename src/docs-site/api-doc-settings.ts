@@ -43,7 +43,7 @@ export interface ApiDocSettings {
 
   /**
    * Builds each export's import statement, for a package whose exports are not imported from
-   * `<packageName>/<namespace>`, e.g. one publishing barrel entry points. Returning `undefined` shows no statement.
+   * `<packageName>/<namespace>`, e.g. one publishing barrel entry points. Returning `null` shows no statement.
    * Unset, every statement is the {@link ImportStatementContext.defaultImportStatement}.
    */
   readonly importStatement?: ImportStatementProvider | undefined;
@@ -121,18 +121,18 @@ export interface ImportStatementContext {
  * Builds the import statement of a documented export.
  *
  * @param context - The export.
- * @returns The statement, or `undefined` to show none.
+ * @returns The statement, or `null` to show none.
  */
-export type ImportStatementProvider = (context: ImportStatementContext) => string | undefined;
+export type ImportStatementProvider = (context: ImportStatementContext) => null | string;
 
 /**
  * Builds the case-preserved route segment of a member's page.
  *
  * @param name - A property's name, or a method's overload key: its name, or `on('changed')` for an event method
  * keyed by its first argument.
- * @returns The segment, or `undefined` for the generator's own.
+ * @returns The segment, or `null` for the generator's own.
  */
-export type MemberRouteSegmentProvider = (name: string) => string | undefined;
+export type MemberRouteSegmentProvider = (name: string) => null | string;
 
 interface ModuleState {
   // eslint-disable-next-line typescript-dev-toolkit/readonly-interface-members -- Configuration replaces the active settings between builds.

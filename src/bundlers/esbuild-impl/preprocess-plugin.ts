@@ -453,7 +453,7 @@ function getModuleShimNeeds(code: string): ModuleShimNeeds {
 
   function visit(node: Node): void {
     const specifier = getModuleSpecifier(node);
-    if (specifier !== undefined && !NON_BARE_SPECIFIER_REG_EXP.test(specifier)) {
+    if (specifier !== null && !NON_BARE_SPECIFIER_REG_EXP.test(specifier)) {
       isBareImportFound = true;
     }
 
@@ -492,7 +492,7 @@ function getModuleShimNeeds(code: string): ModuleShimNeeds {
   };
 }
 
-function getModuleSpecifier(node: Node): string | undefined {
+function getModuleSpecifier(node: Node): null | string {
   if ((isImportDeclaration(node) || isExportDeclaration(node)) && node.moduleSpecifier !== undefined && isStringLiteral(node.moduleSpecifier)) {
     return node.moduleSpecifier.text;
   }
@@ -505,7 +505,7 @@ function getModuleSpecifier(node: Node): string | undefined {
     }
   }
 
-  return undefined;
+  return null;
 }
 
 /* v8 ignore start -- Serialized into the emitted banner, see above. */

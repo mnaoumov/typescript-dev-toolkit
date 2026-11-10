@@ -200,7 +200,7 @@ async function parsePage(filePath: string, contentDocsDirectory: string): Promis
 
   const badge = data['sidebar'] as Partial<Record<string, Partial<Record<string, unknown>>>> | undefined;
   const params: OgCardContent = {
-    badge: toOptionalString(badge?.['badge']?.['text']),
+    badge: toOptionalString(badge?.['badge']?.['text']) ?? undefined,
     description: toOptionalString(data['description']) ?? '',
     signature: toOptionalString(data['signature']) ?? '',
     title
@@ -213,8 +213,8 @@ async function parsePage(filePath: string, contentDocsDirectory: string): Promis
   };
 }
 
-function toOptionalString(value: unknown): string | undefined {
-  return typeof value === 'string' ? value : undefined;
+function toOptionalString(value: unknown): null | string {
+  return typeof value === 'string' ? value : null;
 }
 
 async function walkDirectory(directory: string, contentDocsDirectory: string, pages: PageEntry[]): Promise<void> {

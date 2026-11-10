@@ -19,6 +19,7 @@ export type SvelteBlockAttributes = Record<string, boolean | string>;
 /**
  * A Svelte preprocessor for one kind of block.
  */
+// eslint-disable-next-line typescript-dev-toolkit/no-undefined-return-type -- Svelte's preprocessor contract: a `void` / `undefined` result means the block is left unchanged, and `svelte/compiler` rejects `null`.
 export type SvelteBlockPreprocessor = (params: SveltePreprocessorParams) => Promise<SveltePreprocessorResult | undefined>;
 
 /**
@@ -119,6 +120,7 @@ export function createSveltePreprocessor(): SveltePreprocessorGroup {
     return await fallbackPromise;
   }
 
+  // eslint-disable-next-line typescript-dev-toolkit/no-undefined-return-type -- Svelte's preprocessor contract: a `void` / `undefined` result means the block is left unchanged, and `svelte/compiler` rejects `null`.
   async function preprocessWithFallback(kind: BlockKind, language: string, params: SveltePreprocessorParams): Promise<SveltePreprocessorResult | undefined> {
     let fallback: FallbackPreprocessorGroup;
     try {
@@ -139,14 +141,14 @@ export function createSveltePreprocessor(): SveltePreprocessorGroup {
     name: 'typescript-dev-toolkit-svelte',
     async script(params): Promise<SveltePreprocessorResult | undefined> {
       const language = getBlockLanguage(params.attributes);
-      if (language === undefined || JAVASCRIPT_LANGUAGES.has(language)) {
+      if (language === null || JAVASCRIPT_LANGUAGES.has(language)) {
         return undefined;
       }
       return TYPESCRIPT_LANGUAGES.has(language) ? (await transpileTypeScript(params)) : (await preprocessWithFallback('script', language, params));
     },
     async style(params): Promise<SveltePreprocessorResult | undefined> {
       const language = getBlockLanguage(params.attributes);
-      return language === undefined || language === 'css' ? undefined : (await preprocessWithFallback('style', language, params));
+      return language === null || language === 'css' ? undefined : (await preprocessWithFallback('style', language, params));
     }
   };
 }
@@ -155,16 +157,16 @@ export function createSveltePreprocessor(): SveltePreprocessorGroup {
  * Gets the language of a `<script>` or `<style>` block from its `lang` attribute, or else its `type` attribute.
  *
  * @param attributes - The attributes of the block.
- * @returns The language, lowercased, or `undefined` when the block names none.
+ * @returns The language, lowercased, or `null` when the block names none.
  */
-export function getBlockLanguage(attributes: SvelteBlockAttributes): string | undefined {
+export function getBlockLanguage(attributes: SvelteBlockAttributes): null | string {
   const lang = attributes['lang'];
   if (typeof lang === 'string' && lang !== '') {
     return lang.toLowerCase();
   }
 
   const type = attributes['type'];
-  return typeof type === 'string' && type.toLowerCase().startsWith(TEXT_TYPE_PREFIX) ? type.slice(TEXT_TYPE_PREFIX.length).toLowerCase() : undefined;
+  return typeof type === 'string' && type.toLowerCase().startsWith(TEXT_TYPE_PREFIX) ? type.slice(TEXT_TYPE_PREFIX.length).toLowerCase() : null;
 }
 
 /**

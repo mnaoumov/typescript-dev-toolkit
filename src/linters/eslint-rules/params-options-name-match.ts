@@ -107,21 +107,21 @@ export const paramsOptionsNameMatch: Rule.RuleModule = {
   }
 };
 
-function getClassName(methodDefinition: Rule.Node): string | undefined {
+function getClassName(methodDefinition: Rule.Node): null | string {
   const classBody = methodDefinition.parent;
   const classNode = classBody?.parent;
   return classNode && ('id' in classNode) && classNode.id && typeof classNode.id === 'object' && ('name' in classNode.id)
       && typeof classNode.id.name === 'string'
     ? classNode.id.name
-    : undefined;
+    : null;
 }
 
-function getExpectedPrefix(node: Rule.Node): string | undefined {
+function getExpectedPrefix(node: Rule.Node): null | string {
   const methodPrefix = getMethodExpectedPrefix(node);
   return methodPrefix ?? getFunctionExpectedPrefix(node);
 }
 
-function getFunctionExpectedPrefix(node: Rule.Node): string | undefined {
+function getFunctionExpectedPrefix(node: Rule.Node): null | string {
   // Named function declaration: function fooBar(params: FooBarParams)
   if ('id' in node && node.id && typeof node.id === 'object' && 'name' in node.id && typeof node.id.name === 'string') {
     return toPascalCase(node.id.name);
@@ -131,37 +131,37 @@ function getFunctionExpectedPrefix(node: Rule.Node): string | undefined {
   return node.parent?.type === 'VariableDeclarator' && 'id' in node.parent && node.parent.id && typeof node.parent.id === 'object' && 'name' in node.parent.id
       && typeof node.parent.id.name === 'string'
     ? toPascalCase(node.parent.id.name)
-    : undefined;
+    : null;
 }
 
-function getMethodExpectedPrefix(node: Rule.Node): string | undefined {
+function getMethodExpectedPrefix(node: Rule.Node): null | string {
   const methodDefinition = node.parent;
   /* v8 ignore start -- The key checks are a defensive guard: ESLint AST MethodDefinition always has a named key. */
   if (
     methodDefinition?.type !== 'MethodDefinition'
     || !('key' in methodDefinition) || !methodDefinition.key || typeof methodDefinition.key !== 'object' || !('name' in methodDefinition.key) || typeof methodDefinition.key.name !== 'string'
   ) {
-    return undefined;
+    return null;
   }
   /* v8 ignore stop */
 
   const methodName = methodDefinition.key.name;
   const className = getClassName(methodDefinition);
   if (!className) {
-    return undefined;
+    return null;
   }
 
   return methodName === 'constructor' ? `${className}Constructor` : className + toPascalCase(methodName);
 }
 
-function getTypeAnnotationInfo(parameter: Rule.Node): TypeAnnotationInfo | undefined {
+function getTypeAnnotationInfo(parameter: Rule.Node): null | TypeAnnotationInfo {
   // Unwrap a defaulted parameter such as `options: FooOptions = {}`.
   // Its type annotation lives on the AssignmentPattern's left-hand binding.
   const target = parameter.type === 'AssignmentPattern' ? parameter.left : parameter;
 
   /* v8 ignore start -- Defensive guard: TypeScript-parsed params always have typeAnnotation when typed. */
   if (!('typeAnnotation' in target) || !target.typeAnnotation) {
-    return undefined;
+    return null;
   }
   /* v8 ignore stop */
 
@@ -169,7 +169,7 @@ function getTypeAnnotationInfo(parameter: Rule.Node): TypeAnnotationInfo | undef
   const typeNode = annotation['typeAnnotation'];
   /* v8 ignore start -- Defensive guard: the TypeScript parser always produces an AST node for typeAnnotation. */
   if (!typeNode || typeof typeNode !== 'object') {
-    return undefined;
+    return null;
   }
   /* v8 ignore stop */
 
@@ -185,7 +185,7 @@ function getTypeAnnotationInfo(parameter: Rule.Node): TypeAnnotationInfo | undef
     }
   }
 
-  return undefined;
+  return null;
 }
 
 function isInExportedScope(node: Rule.Node): boolean {

@@ -73,8 +73,8 @@ export const preferLogicalOperatorOverTernary: Rule.RuleModule = {
   }
 };
 
-function getBooleanLiteralValue(node: Node): boolean | undefined {
-  return node.type === 'Literal' && typeof node.value === 'boolean' ? node.value : undefined;
+function getBooleanLiteralValue(node: Node): boolean | null {
+  return node.type === 'Literal' && typeof node.value === 'boolean' ? node.value : null;
 }
 
 function getUnicornRule(): Rule.RuleModule {
@@ -152,14 +152,14 @@ function withLiteralBranchFix(descriptor: Rule.ReportDescriptor, sourceCode: Rul
   const literalValue = consequentValue ?? alternateValue;
 
   if (
-    literalValue === undefined
-    || (consequentValue !== undefined && alternateValue !== undefined)
+    literalValue === null
+    || (consequentValue !== null && alternateValue !== null)
     || sourceCode.getCommentsInside(conditionalExpression).length > 0
   ) {
     return descriptor;
   }
 
-  const isConsequentLiteral = consequentValue !== undefined;
+  const isConsequentLiteral = consequentValue !== null;
   const other = isConsequentLiteral ? alternate : consequent;
   const shouldNegateTest = isConsequentLiteral !== literalValue;
   const operator: LogicalOperator = literalValue ? '||' : '&&';

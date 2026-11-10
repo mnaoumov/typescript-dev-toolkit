@@ -46,9 +46,9 @@ describe('api-doc package sites', () => {
     registerPackageDeclaration('Other', '/repo/node_modules/other/dist/lib/esm/other.d.mts');
     registerPackageDeclaration('Own', '/repo/node_modules/@mnaoumov/typescript-lib/dist/lib/esm/own.d.mts');
 
-    expect(getPackageTypeUrl('Local')).toBeUndefined();
-    expect(getPackageTypeUrl('Other')).toBeUndefined();
-    expect(getPackageTypeUrl('Own')).toBeUndefined();
+    expect(getPackageTypeUrl('Local')).toBeNull();
+    expect(getPackageTypeUrl('Other')).toBeNull();
+    expect(getPackageTypeUrl('Own')).toBeNull();
   });
 
   it('ignores declarations in a module the owning site does not document', () => {
@@ -59,9 +59,9 @@ describe('api-doc package sites', () => {
     registerPackageDeclaration('SetupOptions', '/repo/node_modules/@mnaoumov/obsidian-lib/dist/lib/esm/test-runners/vitest-setup.d.mts');
     registerPackageDeclaration('Barrel', '/repo/node_modules/@mnaoumov/obsidian-lib/dist/lib/esm/modals/index.d.mts');
 
-    expect(getPackageTypeUrl('MarkdownlintCli2ConfigurationSchema')).toBeUndefined();
-    expect(getPackageTypeUrl('SetupOptions')).toBeUndefined();
-    expect(getPackageTypeUrl('Barrel')).toBeUndefined();
+    expect(getPackageTypeUrl('MarkdownlintCli2ConfigurationSchema')).toBeNull();
+    expect(getPackageTypeUrl('SetupOptions')).toBeNull();
+    expect(getPackageTypeUrl('Barrel')).toBeNull();
   });
 
   it('never links a name two packages declare', () => {
@@ -71,6 +71,6 @@ describe('api-doc package sites', () => {
     expect(getPackageTypeUrl('Twice')).toBe('https://a/api/x/Twice/');
 
     registerPackageDeclaration('Twice', '/r/node_modules/@mnaoumov/b/dist/lib/esm/x.d.mts');
-    expect(getPackageTypeUrl('Twice')).toBeUndefined();
+    expect(getPackageTypeUrl('Twice')).toBeNull();
   });
 });

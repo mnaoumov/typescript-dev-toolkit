@@ -162,17 +162,17 @@ export function buildSidebarTree(types: Map<string, TypeInfo>): SidebarTreeNode 
  *
  * @param name - The type's name.
  * @param info - The documented type.
- * @returns The signature, or `undefined` for a kind that renders member tables instead.
+ * @returns The signature, or `null` for a kind that renders member tables instead.
  */
-export function computeOverviewSignature(name: string, info: TypeInfo): string | undefined {
+export function computeOverviewSignature(name: string, info: TypeInfo): null | string {
   if (info.kind === 'function') {
     const $function = info.methods[0];
-    return $function ? `function ${$function.signature}: ${$function.returnType}` : undefined;
+    return $function ? `function ${$function.signature}: ${$function.returnType}` : null;
   }
   if (info.kind === 'type') {
     return `type ${getDisplayName(info.name, info)} = ${info.typeAliasText ?? 'unknown'}`;
   }
-  return info.kind === 'variable' ? `${info.variableKeyword ?? 'let'} ${name}: ${info.variableType ?? 'unknown'}` : undefined;
+  return info.kind === 'variable' ? `${info.variableKeyword ?? 'let'} ${name}: ${info.variableType ?? 'unknown'}` : null;
 }
 
 /**
@@ -357,7 +357,7 @@ export async function generateOverviewPage(name: string, info: TypeInfo, allType
   const lines: string[] = renderFrontMatter({
     description: info.description,
     sidebarLabel: displayName,
-    signature: computeOverviewSignature(name, info),
+    signature: computeOverviewSignature(name, info) ?? undefined,
     slug: `api/${nsDirectory}/${typeRouteSlug}`,
     title: displayName
   });
@@ -378,7 +378,7 @@ export async function generateOverviewPage(name: string, info: TypeInfo, allType
 
   // Import statement
   const importStatement = getImportStatement(info);
-  if (importStatement !== undefined) {
+  if (importStatement !== null) {
     lines.push(`<ImportStatement text="${escapeJsxAttribute(importStatement)}" />`, '');
   }
 

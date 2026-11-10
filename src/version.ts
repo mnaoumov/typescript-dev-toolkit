@@ -974,7 +974,7 @@ export function toChangelogCommitEntry(commitMessage: string): ChangelogCommitEn
 export function toUpdateVersionOptions(values: VersionArgumentValues): UpdateVersionOptions {
   return {
     changelogFilePath: values['changelog-file'],
-    changelogStyle: toChangelogStyle(values['changelog-style']),
+    changelogStyle: toChangelogStyle(values['changelog-style']) ?? undefined,
     shouldBuild: !(values['no-build'] ?? false),
     shouldCloseReleasedIssues: !(values['no-issue-closing'] ?? false),
     shouldEditChangelog: !(values['no-changelog-editing'] ?? false),
@@ -1992,12 +1992,12 @@ function toChangelogSectionDocument(changelogContent: string, version: string): 
  * Validates the `--changelog-style` value.
  *
  * @param value - The flag's value, or `undefined` when it was not passed.
- * @returns The style, or `undefined` for the default.
+ * @returns The style, or `null` for the default.
  * @throws If the value names no {@link ChangelogStyle}.
  */
-function toChangelogStyle(value: string | undefined): ChangelogStyle | undefined {
+function toChangelogStyle(value: string | undefined): ChangelogStyle | null {
   if (value === undefined) {
-    return undefined;
+    return null;
   }
 
   const style = CHANGELOG_STYLES.find((candidate) => candidate === value);

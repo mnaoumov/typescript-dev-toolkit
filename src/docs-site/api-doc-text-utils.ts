@@ -189,9 +189,9 @@ export function getDisplayName(name: string, info: TypeInfo): string {
  * variables with a value `import`. A site's `importStatement` setting replaces that statement.
  *
  * @param info - The documented type.
- * @returns The import statement, or `undefined` when the site's `importStatement` shows none.
+ * @returns The import statement, or `null` when the site's `importStatement` shows none.
  */
-export function getImportStatement(info: TypeInfo): string | undefined {
+export function getImportStatement(info: TypeInfo): null | string {
   const isTypeOnly = ['enum', 'interface', 'type'].includes(info.kind);
   const importKeyword = isTypeOnly ? 'import type' : 'import';
   const settings = getApiDocSettings();
@@ -358,8 +358,8 @@ function avoidIndexSlug(slug: string): string {
   return slug === 'index' ? 'index-member' : slug;
 }
 
-function getCustomMemberRouteSegment(nameOrOverloadKey: string): string | undefined {
-  return getApiDocSettings().memberRouteSegment?.(nameOrOverloadKey);
+function getCustomMemberRouteSegment(nameOrOverloadKey: string): null | string {
+  return getApiDocSettings().memberRouteSegment?.(nameOrOverloadKey) ?? null;
 }
 
 /**

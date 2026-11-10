@@ -94,6 +94,7 @@ function mockContext(parents = new Map<unknown, Parents>()): MockContext {
   const properties: RecordedProperty[] = [];
   const replacements: unknown[] = [];
   const value = castTo<MdastVisitorContext>({
+    // eslint-disable-next-line typescript-dev-toolkit/no-undefined-return-type -- Mirrors the visitor context's `parent`, which returns `undefined` for the root.
     parent: (node: unknown): Parents | undefined => parents.get(node),
     replaceNode: (_node: unknown, newNode: unknown): void => {
       replacements.push(newNode);
