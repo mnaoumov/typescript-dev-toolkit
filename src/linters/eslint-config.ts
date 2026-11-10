@@ -523,6 +523,7 @@ function getInHousePluginConfigs(context: EslintConfigContext): Linter.Config[] 
       },
       rules: {
         'typescript-dev-toolkit/no-async-callback-to-unsafe-return': 'error',
+        'typescript-dev-toolkit/no-direct-dispose-call': 'error',
         'typescript-dev-toolkit/no-keyword-identifiers': 'error',
         /*
          * Off until the projects built on this config are migrated; a project opts in with `'error'`. Measured
