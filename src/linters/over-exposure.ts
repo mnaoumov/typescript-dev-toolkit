@@ -299,6 +299,7 @@ export interface OverExposureFileSystem {
    * @param path - File path.
    * @returns The file contents, or `undefined` when absent.
    */
+  // eslint-disable-next-line typescript-dev-toolkit/no-undefined-return-type -- Mirrors TypeScript's `ModuleResolutionHost.readFile`, which the host is passed as.
   readonly readFile: (path: string) => string | undefined;
 }
 
@@ -1002,11 +1003,11 @@ function applyOverExposureFixes(params: ApplyOverExposureFixesParams): OverExpos
   return findings;
 }
 
-function asClassMember(node: Node): ClassMemberDeclaration | undefined {
-  return isMethodDeclaration(node) || isPropertyDeclaration(node) || isGetAccessorDeclaration(node) || isSetAccessorDeclaration(node) ? node : undefined;
+function asClassMember(node: Node): ClassMemberDeclaration | null {
+  return isMethodDeclaration(node) || isPropertyDeclaration(node) || isGetAccessorDeclaration(node) || isSetAccessorDeclaration(node) ? node : null;
 }
 
-function asExportableDeclaration(node: Node): ExportableDeclaration | undefined {
+function asExportableDeclaration(node: Node): ExportableDeclaration | null {
   return isFunctionDeclaration(node)
       || isClassDeclaration(node)
       || isInterfaceDeclaration(node)
@@ -1014,7 +1015,7 @@ function asExportableDeclaration(node: Node): ExportableDeclaration | undefined 
       || isEnumDeclaration(node)
       || isVariableStatement(node)
     ? node
-    : undefined;
+    : null;
 }
 
 function buildFinding(params: BuildFindingParams): OverExposureFinding {
@@ -1177,9 +1178,9 @@ function determineSkipReason(params: DetermineSkipReasonParams): null | OverExpo
   return null;
 }
 
-function findNodeAtPosition(node: Node, position: number): Node | undefined {
+function findNodeAtPosition(node: Node, position: number): Node | null {
   if (position < node.getStart() || position >= node.getEnd()) {
-    return undefined;
+    return null;
   }
   let result: Node = node;
   node.forEachChild((child) => {
@@ -1222,7 +1223,7 @@ function formatSummary(findings: readonly OverExposureFinding[]): string {
   return fixedCount === 0 && skippedCount === 0 ? summary : `${summary} ${String(fixedCount)} fixed, ${String(skippedCount)} skipped.`;
 }
 
-function getClassAtPosition(params: GetClassAtPositionParams): ClassLikeDeclaration | undefined {
+function getClassAtPosition(params: GetClassAtPositionParams): ClassLikeDeclaration | null {
   const { fileName, position, program } = params;
   const sourceFile = program.getSourceFile(fileName);
   assertNonNullable(sourceFile, `Source file not found in program: ${fileName}`);
@@ -1244,7 +1245,7 @@ function getCurrentMemberExposure(modifierKinds: ReadonlySet<SyntaxKind>): Membe
   return modifierKinds.has(SyntaxKind.ProtectedKeyword) ? 'protected' : 'public';
 }
 
-function getEnclosingClass(node: Node): ClassLikeDeclaration | undefined {
+function getEnclosingClass(node: Node): ClassLikeDeclaration | null {
   let current: Node = node;
   while (!isSourceFile(current)) {
     if (isClassLike(current)) {
@@ -1252,7 +1253,7 @@ function getEnclosingClass(node: Node): ClassLikeDeclaration | undefined {
     }
     current = current.parent;
   }
-  return undefined;
+  return null;
 }
 
 function getExportedNameNodes(declaration: ExportableDeclaration): Node[] {
@@ -1263,7 +1264,7 @@ function getExportedNameNodes(declaration: ExportableDeclaration): Node[] {
 }
 
 /**
- * The node whose position {@link LanguageService.findReferences} resolves to the member itself, or `undefined`
+ * The node whose position {@link LanguageService.findReferences} resolves to the member itself, or `null`
  * when the member cannot be analyzed.
  *
  * A computed name is queried at its literal (`['name']`, `[0]`), because at the `[` the language service finds
@@ -1274,14 +1275,14 @@ function getExportedNameNodes(declaration: ExportableDeclaration): Node[] {
  * reported.
  *
  * @param nameNode - The member's name.
- * @returns The node to query, or `undefined` to leave the member alone.
+ * @returns The node to query, or `null` to leave the member alone.
  */
-function getMemberReferenceNode(nameNode: PropertyName): Node | undefined {
+function getMemberReferenceNode(nameNode: PropertyName): Node | null {
   if (!isComputedPropertyName(nameNode)) {
     return nameNode;
   }
   const { expression } = nameNode;
-  return isStringLiteralLike(expression) || isNumericLiteral(expression) ? expression : undefined;
+  return isStringLiteralLike(expression) || isNumericLiteral(expression) ? expression : null;
 }
 
 function getModifierKinds(node: Node): ReadonlySet<SyntaxKind> {
@@ -1339,7 +1340,7 @@ function hasTsDocComment(node: Node): boolean {
 function isCodeReference(context: AnalysisContext, reference: ReferenceLocation): boolean {
   const sourceFile = context.program.getSourceFile(reference.fileName);
   assertNonNullable(sourceFile, `Source file not found in program: ${reference.fileName}`);
-  return findNodeAtPosition(sourceFile, reference.start) !== undefined;
+  return findNodeAtPosition(sourceFile, reference.start) !== null;
 }
 
 // The span of a string-literal name starts after its opening quote, so a declaration matches by range.

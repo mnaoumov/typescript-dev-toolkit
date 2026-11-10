@@ -23,8 +23,8 @@ import {
 } from './eslint-rules/in-house-plugin.ts';
 import { CLAUDE_WORKTREES_IGNORE_GLOB } from './lint-ignores.ts';
 
-function findRuleEntry(configs: Linter.Config[], ruleName: string): Linter.RuleEntry | undefined {
-  let ruleEntry: Linter.RuleEntry | undefined;
+function findRuleEntry(configs: Linter.Config[], ruleName: string): Linter.RuleEntry | null {
+  let ruleEntry: Linter.RuleEntry | null = null;
   for (const config of configs) {
     ruleEntry = config.rules?.[ruleName] ?? ruleEntry;
   }

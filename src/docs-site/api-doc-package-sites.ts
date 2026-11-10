@@ -59,10 +59,10 @@ export function clearPackageDeclarations(): void {
  * Gets the page URL of a type declared in another documented package.
  *
  * @param name - The type's name, as type text prints it.
- * @returns The URL, or `undefined` when no documented package declares exactly one type of that name.
+ * @returns The URL, or `null` when no documented package declares exactly one type of that name.
  */
-export function getPackageTypeUrl(name: string): string | undefined {
-  return moduleState.urls.get(name) ?? undefined;
+export function getPackageTypeUrl(name: string): null | string {
+  return moduleState.urls.get(name) ?? null;
 }
 
 /**
@@ -76,7 +76,7 @@ export function getPackageTypeUrl(name: string): string | undefined {
  */
 export function registerPackageDeclaration(name: string, declarationFilePath: string): void {
   const url = toPackageTypeUrl({ declarationFilePath, name, settings: getApiDocSettings() });
-  if (url === undefined) {
+  if (url === null) {
     return;
   }
 
@@ -88,20 +88,20 @@ export function registerPackageDeclaration(name: string, declarationFilePath: st
   }
 }
 
-function toPackageTypeUrl(params: ToPackageTypeUrlParams): string | undefined {
+function toPackageTypeUrl(params: ToPackageTypeUrlParams): null | string {
   const { declarationFilePath, name, settings } = params;
   const match = PACKAGE_DECLARATION_REG_EXP.exec(declarationFilePath.replaceAll('\\', '/'));
   if (match === null) {
-    return undefined;
+    return null;
   }
 
   const packageName = getMandatoryNamedGroup(match, 'Package');
   const path = getMandatoryNamedGroup(match, 'Path');
   // The owning site's generator skipped that module, so no page exists to link to.
   if (packageName === settings.packageName || !isDocumentedModulePath(path)) {
-    return undefined;
+    return null;
   }
 
   const site = settings.packageSites.get(packageName);
-  return site === undefined ? undefined : `${site}api/${path}/${toRouteSegmentPreserveCase(name)}/`;
+  return site === undefined ? null : `${site}api/${path}/${toRouteSegmentPreserveCase(name)}/`;
 }

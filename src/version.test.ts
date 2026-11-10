@@ -736,11 +736,11 @@ describe('publishGitHubRelease', () => {
     });
   }
 
-  function getGhReleaseArguments(): string[] | undefined {
+  function getGhReleaseArguments(): null | string[] {
     const ghReleaseCall = mockExecFromRoot.mock.calls.find(
       (call: unknown[]) => Array.isArray(call[0]) && (call[0] as string[]).includes('release')
     ) as [string[], unknown] | undefined;
-    return ghReleaseCall?.[0];
+    return ghReleaseCall?.[0] ?? null;
   }
 
   function getAssetPaths(...assetPaths: string[]): () => Promise<string[]> {
@@ -832,7 +832,7 @@ describe('publishGitHubRelease', () => {
     setupReleaseNotesMocks();
     mockExistsSync.mockReturnValue(true);
     mockCloseReleasedIssues.mockImplementation(() => {
-      expect(getGhReleaseArguments()).toBeDefined();
+      expect(getGhReleaseArguments()).not.toBeNull();
       return Promise.resolve([]);
     });
     await publishGitHubRelease('1.0.0', { getReleaseAssetPaths: getAssetPaths('dist/build/main.js') });
@@ -1733,7 +1733,7 @@ describe('updateVersion', () => {
       readonly metadata?: object;
     }
 
-    function getPublicationStep(text: string): string | undefined {
+    function getPublicationStep(text: string): null | string {
       if (text.startsWith('git push origin refs/tags/')) {
         return 'tag';
       }
@@ -1743,7 +1743,7 @@ describe('updateVersion', () => {
       if (text.startsWith('gh release create')) {
         return 'publish';
       }
-      return text.startsWith('gh release view') ? 'verify' : undefined;
+      return text.startsWith('gh release view') ? 'verify' : null;
     }
 
     function setupPublicationMocks(options: SetupPublicationMocksOptions = {}): string[] {

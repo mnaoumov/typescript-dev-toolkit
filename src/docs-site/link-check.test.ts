@@ -339,9 +339,9 @@ describe('parseRetryAfterInMilliseconds', () => {
   });
 
   it('returns undefined for an absent or unreadable header', () => {
-    expect(parseRetryAfterInMilliseconds(null, NOW_IN_MILLISECONDS)).toBeUndefined();
-    expect(parseRetryAfterInMilliseconds('  ', NOW_IN_MILLISECONDS)).toBeUndefined();
-    expect(parseRetryAfterInMilliseconds('soon', NOW_IN_MILLISECONDS)).toBeUndefined();
+    expect(parseRetryAfterInMilliseconds(null, NOW_IN_MILLISECONDS)).toBeNull();
+    expect(parseRetryAfterInMilliseconds('  ', NOW_IN_MILLISECONDS)).toBeNull();
+    expect(parseRetryAfterInMilliseconds('soon', NOW_IN_MILLISECONDS)).toBeNull();
   });
 });
 

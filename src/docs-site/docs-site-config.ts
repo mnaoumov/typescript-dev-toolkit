@@ -68,7 +68,7 @@ export interface DocsSiteConfig {
 
   /**
    * Builds each export's import statement, for a package whose exports are not imported from
-   * `<package>/<module path>`, e.g. one publishing barrel entry points. Returning `undefined` shows no statement.
+   * `<package>/<module path>`, e.g. one publishing barrel entry points. Returning `null` shows no statement.
    *
    * @default the statement importing the export from `<package>/<module path>`
    */

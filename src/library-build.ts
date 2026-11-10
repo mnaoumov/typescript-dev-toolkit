@@ -596,7 +596,7 @@ async function generateIndex(params: GenerateIndexParams): Promise<GenerateIndex
   const { folder } = params;
   const dirents = await readdirPosix(folder, { withFileTypes: true });
   const maybeLines = await asyncMap(dirents, (dirent) => handleIndexDirent(params, dirent));
-  const lines = maybeLines.filter((line) => line !== undefined);
+  const lines = maybeLines.filter((line) => line !== null);
 
   if (lines.length === 0) {
     return GenerateIndexResult.Skipped;
@@ -615,16 +615,16 @@ async function getLibFiles(): Promise<string[]> {
   );
 }
 
-async function handleIndexDirent(params: GenerateIndexParams, dirent: Dirent): Promise<string | undefined> {
+async function handleIndexDirent(params: GenerateIndexParams, dirent: Dirent): Promise<null | string> {
   const { excludedPaths, folder, unmatchedPaths } = params;
   if (isExcludedFromIndex(folder, dirent)) {
-    return;
+    return null;
   }
 
   const path = join(folder, dirent.name);
   if (excludedPaths.has(path)) {
     unmatchedPaths.delete(path);
-    return;
+    return null;
   }
 
   let sourceFile: string;
@@ -632,7 +632,7 @@ async function handleIndexDirent(params: GenerateIndexParams, dirent: Dirent): P
   if (dirent.isDirectory()) {
     const result = await generateIndex({ ...params, folder: path });
     if (result !== GenerateIndexResult.Success) {
-      return;
+      return null;
     }
     sourceFile = normalizeIfRelative(join(dirent.name, RepoPaths.IndexTs));
     name = dirent.name;

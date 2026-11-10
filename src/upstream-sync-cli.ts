@@ -99,10 +99,10 @@ export async function runSyncUpstreamsCli(cliArguments: readonly string[], depen
 }
 
 // An empty value counts as absent, because a workflow passes an unset input as one.
-function readOption(cliArguments: readonly string[], name: string): string | undefined {
+function readOption(cliArguments: readonly string[], name: string): null | string {
   const prefix = `--${name}=`;
   const value = cliArguments.find((argument) => argument.startsWith(prefix))?.slice(prefix.length);
-  return value === '' ? undefined : value;
+  return value === '' ? null : value ?? null;
 }
 
 function toResult(result: SpawnSyncReturns<string>): CommandResult {

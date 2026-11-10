@@ -27,10 +27,12 @@ RuleTester.it = it;
 const ruleTester = new RuleTester();
 
 interface MockBaseType {
+  // eslint-disable-next-line typescript-dev-toolkit/no-undefined-return-type -- Mirrors TypeScript's `Type.getProperty`.
   readonly getProperty: (name: string) => MockBaseTypeProperty | undefined;
 }
 
 interface MockBaseTypeProperty {
+  // eslint-disable-next-line typescript-dev-toolkit/no-undefined-return-type -- Mirrors TypeScript's `Symbol.getDeclarations`.
   readonly getDeclarations: () => undefined | unknown[];
 }
 
@@ -40,6 +42,7 @@ interface MockRuleContextResult {
 }
 
 interface MockTypeCheckerOverrides {
+  // eslint-disable-next-line typescript-dev-toolkit/no-undefined-return-type -- Mirrors TypeScript's `TypeChecker.getBaseTypes` mock seam, which a test makes return `undefined`.
   readonly getBaseTypes?: () => MockBaseType[] | undefined;
 }
 

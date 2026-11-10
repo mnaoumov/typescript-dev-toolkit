@@ -415,12 +415,12 @@ export function isInternalDocUrl(targetUrl: URL, siteBaseUrl: string): boolean {
  *
  * @param headerValue - The header's value, or `null` when the response has none.
  * @param nowInMilliseconds - The current time, against which a date is measured.
- * @returns How long to wait, never negative, or `undefined` when the header is absent or unreadable.
+ * @returns How long to wait, never negative, or `null` when the header is absent or unreadable.
  */
-export function parseRetryAfterInMilliseconds(headerValue: null | string, nowInMilliseconds: number): number | undefined {
+export function parseRetryAfterInMilliseconds(headerValue: null | string, nowInMilliseconds: number): null | number {
   const trimmed = headerValue?.trim() ?? '';
   if (trimmed === '') {
-    return undefined;
+    return null;
   }
 
   if (/^\d+$/u.test(trimmed)) {
@@ -428,7 +428,7 @@ export function parseRetryAfterInMilliseconds(headerValue: null | string, nowInM
   }
 
   const dateInMilliseconds = Date.parse(trimmed);
-  return Number.isNaN(dateInMilliseconds) ? undefined : Math.max(0, dateInMilliseconds - nowInMilliseconds);
+  return Number.isNaN(dateInMilliseconds) ? null : Math.max(0, dateInMilliseconds - nowInMilliseconds);
 }
 
 /**

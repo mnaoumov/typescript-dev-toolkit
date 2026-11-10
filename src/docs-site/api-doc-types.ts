@@ -89,6 +89,7 @@ export interface ProseSegment {
  */
 export interface ReturnTypeProvider {
   readonly getReturnType: () => TextProvider;
+  // eslint-disable-next-line typescript-dev-toolkit/no-undefined-return-type -- Mirrors ts-morph's `getReturnTypeNode`, which returns `undefined` for an unannotated function.
   readonly getReturnTypeNode?: () => TextProvider | undefined;
 }
 
