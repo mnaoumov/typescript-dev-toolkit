@@ -525,6 +525,13 @@ function getInHousePluginConfigs(context: EslintConfigContext): Linter.Config[] 
         'typescript-dev-toolkit/no-async-callback-to-unsafe-return': 'error',
         'typescript-dev-toolkit/no-keyword-identifiers': 'error',
         /*
+         * Off until the projects built on this config are migrated; a project opts in with `'error'`. Measured
+         * 2026-11-10: 56 findings in this repository alone, most on exported functions, where `undefined` -> `null` is
+         * a breaking change, and about 680 syntactic candidates across 47 consuming repositories. `'warn'` is no
+         * middle ground, since a warning fails `lint` too.
+         */
+        'typescript-dev-toolkit/no-undefined-return-type': 'off',
+        /*
          * Measured over 32 plugins built on this config before it was turned on (2026-09-24): 29 had no finding,
          * the other three had 8 between them, every one a genuinely dead link.
          */

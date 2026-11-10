@@ -87,6 +87,7 @@ describe('defineEslintConfigs', () => {
     expect(inHousePlugins.every((plugin) => plugin === inHouseEslintPlugin)).toBe(true);
     expect(findRuleEntry(configs, 'typescript-dev-toolkit/no-unused-params-members')).toBe('error');
     expect(findRuleEntry(configs, 'typescript-dev-toolkit/no-keyword-identifiers')).toBe('error');
+    expect(findRuleEntry(configs, 'typescript-dev-toolkit/no-undefined-return-type')).toBe('off');
     expect(findRuleEntry(configs, 'typescript-dev-toolkit/prefer-spread')).toBe('error');
     expect(findRuleEntry(configs, 'unicorn/prefer-spread')).toBe('off');
   });
