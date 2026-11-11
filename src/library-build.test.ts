@@ -592,7 +592,7 @@ describe('buildLibrary', () => {
 
     const cjs = readText('dist/lib/cjs/sub/b.cjs');
     expect(cjs).toContain(LIBRARY_BANNER.trim());
-    expect(cjs).toContain('require(\'../a.cjs\')');
+    expect(cjs).toContain('require("../a.cjs")');
     expect(cjs).not.toContain('isMobile');
     expect(readText('dist/lib/esm/sub/b.mjs')).toContain('from "../a.mjs"');
     expect(existsSync('dist/lib/cjs/a.test.cjs')).toBe(false);
