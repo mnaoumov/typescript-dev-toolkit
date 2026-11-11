@@ -52,43 +52,39 @@ export function changeExtensionPlugin(extension: string): Plugin {
  *
  * Covers `require('…')`, static `from "…"`, and dynamic `import("…")` occurrences.
  *
+ * The scan is textual, so it also meets such spellings inside string literals and comments. It therefore changes
+ * nothing but the `.ts` extension itself: a path that does not end in `.ts` is left as written, and the quote
+ * character is never changed. An earlier version re-quoted every match, so an `import('x')` written inside a
+ * double-quoted string ended that string and the emitted module no longer parsed.
+ *
  * @param text - The emitted module text to rewrite.
  * @param extension - The output extension to rewrite `.ts` paths to (e.g. `.mjs` or `.cjs`).
  * @returns The rewritten module text.
  */
 export function rewriteImportPathExtensions(text: string, extension: string): string {
-  let newText = replaceAll({
-    $string: text,
-    replacer: ({ capturedGroupArguments: [importPath = ''] }) => `require('${rewriteTsExtension(importPath, extension)}')`,
-    searchValue: /require\(["'](?<ImportPath>.+?)["']\)/g
-  });
+  let newText = text;
 
-  newText = replaceAll({
-    $string: newText,
-    replacer: ({ capturedGroupArguments: [importPath = ''] }) => `from "${rewriteTsExtension(importPath, extension)}"`,
-    searchValue: /from "(?<ImportPath>.+?)"/g
-  });
-
-  newText = replaceAll({
-    $string: newText,
-    replacer: ({ capturedGroupArguments: [importPath = ''] }) => `import("${rewriteTsExtension(importPath, extension)}")`,
-    searchValue: /import\(["'](?<ImportPath>.+?)["']\)/g
-  });
+  for (const searchValue of IMPORT_PATH_REG_EXPS) {
+    // Every group of each expression always participates in a match, so the tuple holds four strings.
+    newText = replaceAll<[prefix: string, quote: string, importPath: string, suffix: string]>({
+      $string: newText,
+      replacer: ({ capturedGroupArguments: [prefix, , importPath, suffix] }) => `${prefix}${importPath.slice(0, -TS_EXTENSION.length)}${extension}${suffix}`,
+      searchValue
+    });
+  }
 
   return newText;
 }
 
+const TS_EXTENSION = '.ts';
+
 /**
- * Rewrites a trailing `.ts` extension in a single import path to the target output extension.
- *
- * @param importPath - The captured import path.
- * @param extension - The output extension to rewrite a trailing `.ts` to.
- * @returns The rewritten path.
+ * The import-like spellings whose `.ts` path is rewritten. Each captures the text before the path (the call or
+ * keyword and the opening quote), the path, which ends in `.ts` and holds no quote or line break, and the text after
+ * it (the same quote, and the closing parenthesis for a call).
  */
-function rewriteTsExtension(importPath: string, extension: string): string {
-  return replaceAll({
-    $string: importPath,
-    replacer: extension,
-    searchValue: /\.ts$/g
-  });
-}
+const IMPORT_PATH_REG_EXPS: readonly RegExp[] = [
+  /(?<Prefix>require\((?<Quote>["']))(?<ImportPath>[^"'\r\n]+?\.ts)(?<Suffix>\k<Quote>\))/g,
+  /(?<Prefix>from (?<Quote>["']))(?<ImportPath>[^"'\r\n]+?\.ts)(?<Suffix>\k<Quote>)/g,
+  /(?<Prefix>import\((?<Quote>["']))(?<ImportPath>[^"'\r\n]+?\.ts)(?<Suffix>\k<Quote>\))/g
+];
