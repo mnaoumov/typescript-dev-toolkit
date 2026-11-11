@@ -92,6 +92,12 @@ describe('renderGroupedChangelogSection', () => {
     expect(renderGroupedChangelogSection([entry('fix: re #10', { detailLines: [title] })])).toBe(`This release has 1 fix.\n\n### Fixed\n\n- ${expected} (#10)`);
   });
 
+  it('should strip the form prefix and escape a wikilink opener in an issue title', () => {
+    expect(renderGroupedChangelogSection([entry('feat: re #12', { detailLines: ['[FR] Format links inserted by [[ autocomplete'] })])).toBe(
+      'This release has 1 new feature.\n\n### New\n\n- Format links inserted by \\[\\[ autocomplete (#12)'
+    );
+  });
+
   it('should not strip the prefix from a subject the author wrote', () => {
     expect(renderGroupedChangelogSection([entry('fix: [BUG] marker in the parser')])).toBe('This release has 1 fix.\n\n### Fixed\n\n- [BUG] marker in the parser');
   });
