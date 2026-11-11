@@ -93,7 +93,8 @@ export const LIBRARY_BUILD_STEPS: readonly string[] = [
   'build:validate-declarations',
   'build:lib',
   'build:generate-exports',
-  'build:validate-dependencies'
+  'build:validate-dependencies',
+  'build:validate-built-syntax'
 ];
 
 /**
