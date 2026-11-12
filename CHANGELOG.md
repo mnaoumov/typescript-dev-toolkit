@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## 7.0.2
+
+This release has 1 fix.
+
+### Fixed
+
+- **deps:** take markdownlint 0.42.1 and markdownlint-cli2 0.24.1, dropping the re2js override
+
 ## 7.0.1
 
 This release has 1 fix.
