@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## 7.0.3
+
+This release has 1 fix.
+
+### Fixed
+
+- **deps:** admit satteri 0.11 beside 0.10 in the peer range
+
 ## 7.0.2
 
 This release has 1 fix.
