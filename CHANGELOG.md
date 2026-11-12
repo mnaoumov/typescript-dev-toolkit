@@ -1,5 +1,24 @@
 # CHANGELOG
 
+## 7.0.0
+
+This release has 1 breaking change, 4 new features and 1 fix. 1 maintenance commit (tests, build, CI, refactoring, dependencies) is not listed.
+
+### Breaking changes
+
+- return null rather than undefined for "no value"
+
+### New
+
+- **build:** add build:validate-built-syntax, parsing every emitted module of dist/lib and bin
+- **linters:** add `no-direct-dispose-call`, reporting a direct `[Symbol.dispose]()` call
+- **linters:** add no-undefined-return-type, reporting undefined in a declared return-type union
+- **changelog:** merge repeated issues, strip form prefixes, hide advisory deps, add For developers
+
+### Fixed
+
+- **build:** keep the quote and rewrite only .ts paths in the extension rewrite
+
 ## 6.4.1
 
 This release has 1 fix.
