@@ -1,4 +1,9 @@
 import {
+  globSync,
+  readFileSync
+} from 'node:fs';
+import { join } from 'node:path';
+import {
   describe,
   expect,
   it
@@ -63,10 +68,43 @@ describe('rewriteImportPathExtensions', () => {
       expect(rewriteImportPathExtensions('import("../foo.mjs")', extension)).toBe('import("../foo.mjs")');
     });
 
+    it('leaves a regular expression literal that spells a .ts import untouched', () => {
+      const source = 'const STATIC_IMPORT_REG_EXP = /from \'(?<ImportPath>.+?)\\.ts\';/gm;';
+      expect(rewriteImportPathExtensions(source, extension)).toBe(source);
+    });
+
     it('rewrites the open-demo-vault regression case', () => {
       const source = 'const { openDemoVault } = await import("../desktop-demo-vault-opener.ts");';
       const expected = `const { openDemoVault } = await import("../desktop-demo-vault-opener${extension}");`;
       expect(rewriteImportPathExtensions(source, extension)).toBe(expected);
     });
   });
+
+  // The toolkit builds itself with this rewrite, so a line of its own source that is not an import is never changed.
+  // 7.0.0 shipped `library-build`'s `STATIC_IMPORT_REG_EXP` rewritten to `\.mjs`, and every consumer's
+  // `buildLibraryTypes` then left relative `.ts` imports in its declarations.
+  it('changes no line of the toolkit\'s own sources but imports and comments', () => {
+    const sourceDirectory = join(import.meta.dirname, '../..');
+    const changedLines: string[] = [];
+
+    for (const relativePath of globSync('**/*.ts', { cwd: sourceDirectory })) {
+      if (relativePath.endsWith('.test.ts') || relativePath.endsWith('.d.ts')) {
+        continue;
+      }
+
+      const text = readFileSync(join(sourceDirectory, relativePath), 'utf-8');
+      const originalLines = text.split('\n');
+      const rewrittenLines = rewriteImportPathExtensions(text, '.mjs').split('\n');
+
+      for (const [index, line] of originalLines.entries()) {
+        if (line !== rewrittenLines[index] && !IMPORT_OR_COMMENT_LINE_REG_EXP.test(line)) {
+          changedLines.push(`${relativePath}:${String(index + 1)}: ${line}`);
+        }
+      }
+    }
+
+    expect(changedLines).toEqual([]);
+  });
 });
+
+const IMPORT_OR_COMMENT_LINE_REG_EXP = /^\s*(?:(?:import|export)\b.* from ["']|\} from ["']|\/\/|\*)/;
