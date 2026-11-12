@@ -80,11 +80,15 @@ const TS_EXTENSION = '.ts';
 
 /**
  * The import-like spellings whose `.ts` path is rewritten. Each captures the text before the path (the call or
- * keyword and the opening quote), the path, which ends in `.ts` and holds no quote or line break, and the text after
- * it (the same quote, and the closing parenthesis for a call).
+ * keyword and the opening quote), the path, which ends in `.ts` and holds no quote, line break or backslash, and the
+ * text after it (the same quote, and the closing parenthesis for a call).
+ *
+ * The backslash is excluded because an emitted import path never holds one, while a regular expression literal that
+ * spells an import does: `library-build`'s `/from '(?<ImportPath>.+?)\.ts';/gm` was rewritten to `\.mjs` in the
+ * toolkit's own 7.0.0 build, so `buildLibraryTypes` stopped rewriting relative declaration imports.
  */
 const IMPORT_PATH_REG_EXPS: readonly RegExp[] = [
-  /(?<Prefix>require\((?<Quote>["']))(?<ImportPath>[^"'\r\n]+?\.ts)(?<Suffix>\k<Quote>\))/g,
-  /(?<Prefix>from (?<Quote>["']))(?<ImportPath>[^"'\r\n]+?\.ts)(?<Suffix>\k<Quote>)/g,
-  /(?<Prefix>import\((?<Quote>["']))(?<ImportPath>[^"'\r\n]+?\.ts)(?<Suffix>\k<Quote>\))/g
+  /(?<Prefix>require\((?<Quote>["']))(?<ImportPath>[^"'\\\r\n]+?\.ts)(?<Suffix>\k<Quote>\))/g,
+  /(?<Prefix>from (?<Quote>["']))(?<ImportPath>[^"'\\\r\n]+?\.ts)(?<Suffix>\k<Quote>)/g,
+  /(?<Prefix>import\((?<Quote>["']))(?<ImportPath>[^"'\\\r\n]+?\.ts)(?<Suffix>\k<Quote>\))/g
 ];
