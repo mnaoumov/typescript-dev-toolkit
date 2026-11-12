@@ -64,6 +64,7 @@ export function satteriRelativeLinks(base: string): MdastPluginDefinition {
         // Self-link: the target IS the current page (e.g. a function linking `this` to its own page).
         // Preserve a same-page fragment, otherwise point at the current directory. Building `./` and
         // `/` here would emit `.//`, which resolves to a non-existent `page//` URL and 404s.
+        // eslint-disable-next-line @typescript-eslint/no-deprecated -- `setField` replaces it in satteri 0.11, but 0.10 (still in the satteri peer range) has no `setField`.
         context.setProperty(node, 'url', anchor === '' ? './' : anchor);
         return;
       }
@@ -72,6 +73,7 @@ export function satteriRelativeLinks(base: string): MdastPluginDefinition {
         relativePath = `./${relativePath}`;
       }
 
+      // eslint-disable-next-line @typescript-eslint/no-deprecated -- `setField` replaces it in satteri 0.11, but 0.10 (still in the satteri peer range) has no `setField`.
       context.setProperty(node, 'url', `${relativePath}/${anchor}`);
     },
     name: 'relative-links'

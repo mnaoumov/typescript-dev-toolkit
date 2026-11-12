@@ -12,10 +12,10 @@
   "pins": {
     "satteri": {
       "section": "devDependencies",
-      "why": "The docs-site mdast plugins import their types from satteri, and the runtime that calls them is the satteri @astrojs/markdown-satteri (and Starlight through @astrojs/mdx) depends on, which is ^0.10.5. A newer satteri here type-checks the plugins against an API the docs build never runs, so the dev copy stays on the release Astro uses, and the peer range stays ^0.10.5.",
+      "why": "The docs-site mdast plugins import their types from satteri, and the runtime that calls them is the satteri @astrojs/markdown-satteri depends on, which is ^0.11.6 (astro and @astrojs/mdx pin that release). A different satteri here type-checks the plugins against an API the docs build never runs, so the dev copy stays on the release Astro uses. The peer range is ^0.10.5 || ^0.11.6, because Starlight 0.42 still depends on satteri ^0.10.3 directly and a consumer on an older @astrojs/markdown-satteri still runs 0.10; the plugins type-check unchanged against 0.11.",
       "check": "npm view @astrojs/markdown-satteri dependencies.satteri",
-      "expect": "^0.10.5",
-      "manualCheck": "When the newest @astrojs/markdown-satteri moves to a newer satteri, move this pin, the satteri peer range and @astrojs/markdown-satteri together, and re-run the docs build."
+      "expect": "^0.11.6",
+      "manualCheck": "When the newest @astrojs/markdown-satteri moves to a newer satteri, move this pin, the satteri peer range and @astrojs/markdown-satteri together, and re-run the docs build. Once the peer range drops ^0.10.5, replace the two docs-site `context.setProperty` calls (deprecated in 0.11, which 0.10 needs because it has no `setField`) with `setField` and remove their no-deprecated disables."
     },
     "fflate": {
       "section": "overrides",
