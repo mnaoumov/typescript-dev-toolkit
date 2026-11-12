@@ -38,13 +38,6 @@
       "expect": "4.3.2",
       "manualCheck": "A newer v4-legacy publish means read its changelog and move this pin onto it. The override can go once nothing needs js-yaml 4, i.e. when `node -e \"process.stdout.write(JSON.parse(require('node:fs').readFileSync('node_modules/@astrojs/starlight/package.json','utf8')).dependencies['js-yaml'])\"` stops reporting ^4.x. Verify either change with `npm run docs:build` and `npm run lint:md`."
     },
-    "re2js": {
-      "section": "overrides",
-      "why": "Clears GHSA-gg6h-894w-4m9c (RE2JS quadratic-time denial of service in lookbehind matching, >=2.2.0 <2.8.7). Reached only through markdownlint, whose newest release 0.42.0 pins re2js at the exact 2.8.6, and markdownlint-cli2 0.24.0 pins that markdownlint exactly in turn, so no bump reaches the fix. 2.9.1 is the version markdownlint itself moved to upstream, so the forced minor is the one it is tested against. An override reaches only this repository's own tree, never a consumer's, so every consumer carries the same override until the release below. NEVER take the `npm audit fix --force` remedy: it downgrades markdownlint.",
-      "check": "node -e \"const fs=require('node:fs');process.stdout.write(JSON.parse(fs.readFileSync('node_modules/markdownlint/package.json','utf8')).dependencies.re2js)\"",
-      "expect": "2.8.6",
-      "manualCheck": "The check reads the exact re2js pin of the installed markdownlint, which moves only when a markdownlint-cli2 release pins a newer markdownlint. When it reads 2.8.7 or later, drop the override and this entry, raise the markdownlint and markdownlint-cli2 floors in dependencies to those releases so consumers can drop their own overrides, and re-run `npm audit`."
-    },
     "typescript": {
       "section": "dependencies",
       "why": "TypeScript 7 (tsgo) breaks this toolchain: @typescript-eslint's parser crashes on the native API, so type-aware ESLint cannot run on 7. @typescript-eslint peer-requires the range below, so 6.x is the last usable major. Propagates to the whole tree via overrides.typescript = $typescript.",
