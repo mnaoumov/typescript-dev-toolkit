@@ -23,7 +23,6 @@ const SLOW_TEST_GROUP_ORDER = 1;
 // Every `@typescript-eslint/rule-tester` case builds a type-aware program, so these run one file at a time in a
 // shared worker; see AGENTS.md on why a timeout here is machine load rather than a broken rule.
 const ESLINT_TYPECHECK_GROUP_ORDER = 2;
-const BIG_TIMEOUT_IN_MILLISECONDS = 30_000;
 const LOADED_MACHINE_TIMEOUT_IN_MILLISECONDS = 180_000;
 
 export default defineLibraryVitestConfig({
@@ -72,10 +71,14 @@ export default defineLibraryVitestConfig({
       test: {
         environment: 'node',
         exclude: [...DEFAULT_VITEST_TEST_EXCLUDE],
+        // Real tool round trips that type-check, format or spawn a test runner. A release preflight on a loaded machine
+        // took 40.3 s for a case that runs in 4.5 s alone, so tests and hooks (which build fixtures and programs) get the
+        // loaded-machine budget; see AGENTS.md.
+        hookTimeout: LOADED_MACHINE_TIMEOUT_IN_MILLISECONDS,
         include: [INTEGRATION_TEST_FILES],
         name: 'integration-tests',
         setupFiles: [],
-        testTimeout: BIG_TIMEOUT_IN_MILLISECONDS
+        testTimeout: LOADED_MACHINE_TIMEOUT_IN_MILLISECONDS
       }
     },
     {
