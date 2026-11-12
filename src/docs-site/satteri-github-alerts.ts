@@ -61,6 +61,7 @@ export function satteriGitHubAlerts(): MdastPluginDefinition {
         return;
       }
 
+      // eslint-disable-next-line @typescript-eslint/no-deprecated -- `setField` replaces it in satteri 0.11, but 0.10 (still in the satteri peer range) has no `setField`.
       context.setProperty(alert.markerText, 'value', alert.markerText.value.slice(alert.markerLength).trimStart());
       context.replaceNode(node, {
         children: [...node.children],
