@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## 7.0.1
+
+This release has 1 fix.
+
+### Fixed
+
+- **build:** leave a regular expression literal alone in the extension rewrite
+
 ## 7.0.0
 
 This release has 1 breaking change, 4 new features and 1 fix. 1 maintenance commit (tests, build, CI, refactoring, dependencies) is not listed.
