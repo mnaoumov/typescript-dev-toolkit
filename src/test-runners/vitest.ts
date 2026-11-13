@@ -16,6 +16,7 @@ import {
 } from '../root.ts';
 import { assertNoOwnedArguments } from './forwarded-arguments.ts';
 
+const FULL_COVERAGE_IN_PERCENTS = 100;
 const WATCH_WORKER_DIVISOR = 2;
 const workerEnvironmentQueue = { pending: Promise.resolve<unknown>(undefined) };
 
@@ -33,10 +34,11 @@ const OWNED_OPTIONS: readonly OwnedOption[] = [PROJECT_OPTION, RUN_MODE_OPTION, 
  */
 export interface TestCoverageOptions extends TestOptions {
   /**
-   * Minimum coverage percentage required. If the actual coverage falls below
-   * this threshold, the process exits with a non-zero code.
+   * Minimum coverage percentage required, for lines, functions, branches and statements alike. If the actual coverage
+   * falls below this threshold, the process exits with a non-zero code. The default is the full gate, so a script that
+   * leaves the option out cannot silently run with no gate at all; `0` turns the gate off.
    *
-   * @default `0`
+   * @default `100`
    */
   readonly minCoverageInPercents?: number;
 }
@@ -81,7 +83,7 @@ export async function test(options: TestOptions = {}): Promise<void> {
  * @returns A {@link Promise} that resolves when the tests have completed.
  */
 export async function testCoverage(options: TestCoverageOptions = {}): Promise<void> {
-  const threshold = String(options.minCoverageInPercents ?? 0);
+  const threshold = String(options.minCoverageInPercents ?? FULL_COVERAGE_IN_PERCENTS);
   await execFromRoot([
     'vitest',
     'run',

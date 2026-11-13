@@ -19,6 +19,7 @@ import {
 import { assertNoOwnedArguments } from './forwarded-arguments.ts';
 import { isEsmPackage } from './jest-config.ts';
 
+const FULL_COVERAGE_IN_PERCENTS = 100;
 const OWNED_OPTIONS: readonly OwnedOption[] = [
   { names: ['--selectProjects', '--select-projects'], replacement: 'the `projects` option' },
   { names: ['--watch', '--watchAll', '--watch-all'], replacement: 'the `testWatch` wrapper' },
@@ -55,9 +56,10 @@ export const EXPERIMENTAL_VM_MODULES_FLAG = '--experimental-vm-modules';
 export interface TestCoverageOptions extends TestOptions {
   /**
    * Minimum coverage percentage required, for lines, functions, branches and statements alike. If the actual coverage
-   * falls below it, jest exits with a non-zero code.
+   * falls below it, jest exits with a non-zero code. The default is the full gate, so a script that leaves the option
+   * out cannot silently run with no gate at all; `0` turns the gate off.
    *
-   * @default `0`
+   * @default `100`
    */
   readonly minCoverageInPercents?: number;
 }
@@ -126,7 +128,7 @@ export async function test(options: TestOptions = {}): Promise<void> {
  * @returns A {@link Promise} that resolves when the tests have completed.
  */
 export async function testCoverage(options: TestCoverageOptions = {}): Promise<void> {
-  const threshold = options.minCoverageInPercents ?? 0;
+  const threshold = options.minCoverageInPercents ?? FULL_COVERAGE_IN_PERCENTS;
   const coverageThreshold = {
     global: {
       branches: threshold,

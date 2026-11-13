@@ -145,8 +145,17 @@ describe('test', () => {
 });
 
 describe('testCoverage', () => {
-  it('should run with coverage and a zero threshold by default', async () => {
+  it('should run with coverage and the full threshold by default', async () => {
     await testCoverage();
+    expect(mockExecFromRoot).toHaveBeenCalledWith([
+      JEST,
+      '--coverage',
+      '--coverageThreshold={"global":{"branches":100,"functions":100,"lines":100,"statements":100}}'
+    ], { env: {}, isInteractive: false });
+  });
+
+  it('should turn the gate off for an explicit zero threshold', async () => {
+    await testCoverage({ minCoverageInPercents: 0 });
     expect(mockExecFromRoot).toHaveBeenCalledWith([
       JEST,
       '--coverage',
