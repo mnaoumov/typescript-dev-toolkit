@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 8.0.0
+
+This release has 1 breaking change and 1 fix. 1 maintenance commit (tests, build, CI, refactoring, dependencies) is not listed.
+
+### Breaking changes
+
+- default testCoverage to the full 100% threshold
+
+### Fixed
+
+- **deps:** require @mnaoumov/typescript-lib ^4.0.0
+
 ## 7.0.3
 
 This release has 1 fix.
