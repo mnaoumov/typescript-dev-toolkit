@@ -64,9 +64,9 @@ const RUNNERS: Readonly<Record<TestRunner, RunnerFunctions>> = {
  */
 export interface TestCoverageOptions extends TestOptions {
   /**
-   * Minimum coverage percentage required, for lines, functions, branches and statements alike.
+   * Minimum coverage percentage required, for lines, functions, branches and statements alike. `0` turns the gate off.
    *
-   * @default `0`
+   * @default `100`
    */
   readonly minCoverageInPercents?: number;
 }

@@ -53,7 +53,12 @@ describe('Vitest wrappers', () => {
   });
 
   it('keeps coverage thresholds', async () => {
-    await testCoverage({ minCoverageInPercents: 100 });
+    await testCoverage({ minCoverageInPercents: 90 });
+    expect(mockExec.mock.calls[0]?.[0]).toEqual(['vitest', 'run', '--coverage', '--coverage.thresholds.lines=90', '--coverage.thresholds.functions=90', '--coverage.thresholds.branches=90', '--coverage.thresholds.statements=90']);
+  });
+
+  it('defaults to the full coverage gate', async () => {
+    await testCoverage();
     expect(mockExec.mock.calls[0]?.[0]).toEqual(['vitest', 'run', '--coverage', '--coverage.thresholds.lines=100', '--coverage.thresholds.functions=100', '--coverage.thresholds.branches=100', '--coverage.thresholds.statements=100']);
   });
 
