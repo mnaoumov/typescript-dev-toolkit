@@ -286,6 +286,7 @@
     "version": "jiti scripts/version.ts"
   },
   "overrides": {
+    "@mnaoumov/typescript-lib": "$@mnaoumov/typescript-lib",
     "@puppeteer/browsers": "^3.2.6",
     "@vitest/coverage-v8": "$@vitest/coverage-v8",
     "deepmerge-ts": "^8.0.2",
@@ -304,7 +305,7 @@
     "@eslint-community/eslint-plugin-eslint-comments": "^4.8.1",
     "@eslint/config-helpers": "^0.7.0",
     "@eslint/js": "^10.0.1",
-    "@mnaoumov/typescript-lib": "^2.0.0",
+    "@mnaoumov/typescript-lib": "^4.0.0",
     "@stylistic/eslint-plugin": "^5.10.0",
     "@tsconfig/strictest": "^2.0.8",
     "@types/estree": "^1.0.10",
