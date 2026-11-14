@@ -286,7 +286,6 @@
     "version": "jiti scripts/version.ts"
   },
   "overrides": {
-    "@mnaoumov/typescript-lib": "$@mnaoumov/typescript-lib",
     "@puppeteer/browsers": "^3.2.6",
     "@vitest/coverage-v8": "$@vitest/coverage-v8",
     "deepmerge-ts": "^8.0.2",
@@ -339,7 +338,7 @@
     "@astrojs/starlight": "^0.42.10",
     "@biomejs/biome": "^2.6.4",
     "@commitlint/cli": "^21.2.4",
-    "@mnaoumov/typescript-test-toolkit": "^1.0.3",
+    "@mnaoumov/typescript-test-toolkit": "^1.1.0",
     "@resvg/resvg-js": "^2.6.2",
     "@stryker-mutator/core": "^10.1.1",
     "@stryker-mutator/vitest-runner": "^10.1.1",
