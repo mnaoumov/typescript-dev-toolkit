@@ -4,6 +4,7 @@ import {
   expect,
   it
 } from 'vitest';
+import { parse as parseYaml } from 'yaml';
 
 import type { PageContent } from './api-doc-types.ts';
 
@@ -93,6 +94,15 @@ describe('api-doc page generation', () => {
       '---',
       ''
     ]);
+  });
+
+  it('escapes backslashes and quotes so the frontmatter parses back to the original text', () => {
+    const description = String.raw`Reads "plugins" from %APPDATA%\obsidian and C:\temp\new.`;
+    const lines = renderFrontMatter({ description, sidebarLabel: 'alpha', slug: 'api/alpha', title: String.raw`a\b "c"` });
+    expect(lines).toContain(String.raw`description: "Reads \"plugins\" from %APPDATA%\\obsidian and C:\\temp\\new."`);
+    const parsed = parseYaml(lines.slice(1, -2).join('\n')) as Record<string, unknown>;
+    expect(parsed['description']).toBe(description);
+    expect(parsed['title']).toBe(String.raw`a\b "c"`);
   });
 
   it('omits description and signature when the page has neither', () => {
