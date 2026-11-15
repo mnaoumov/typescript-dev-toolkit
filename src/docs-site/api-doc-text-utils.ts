@@ -106,11 +106,20 @@ export function escapeMdxBraces(text: string): string {
 /**
  * Escape text for a double-quoted YAML value.
  *
+ * A backslash starts an escape sequence in a double-quoted scalar, so a literal one (a Windows path such as
+ * `%APPDATA%\obsidian` in a JSDoc summary) is doubled; otherwise the parser rejects `\o` as an invalid escape.
+ *
  * @param text - The text to escape.
  * @returns The escaped text.
  */
 export function escapeYaml(text: string): string {
-  return text.replaceAll('"', String.raw`\"`);
+  // The backslash goes first, so the backslashes the later escapes add are not doubled again.
+  return text
+    .replaceAll('\\', String.raw`\\`)
+    .replaceAll('"', String.raw`\"`)
+    .replaceAll('\n', String.raw`\n`)
+    .replaceAll('\r', String.raw`\r`)
+    .replaceAll('\t', String.raw`\t`);
 }
 
 const SIGNATURE_MAX_LENGTH = 160;

@@ -13,6 +13,7 @@ import {
 import {
   computeOverloadKey,
   escapeMdxProse,
+  escapeYaml,
   foldTsDocParagraphs,
   getDisplayName,
   getImportStatement,
@@ -34,6 +35,10 @@ describe('api-doc text utilities', () => {
   it('keys event-method overloads by literal event name', () => {
     expect(computeOverloadKey(createMemberInfo({ name: 'on', parameters: [{ description: '', name: 'event', type: '"changed"' }] }))).toBe('on(\'changed\')');
     expect(computeOverloadKey(createMemberInfo({ name: 'on', parameters: [{ description: '', name: 'event', type: 'string' }] }))).toBe('on');
+  });
+
+  it('escapes backslashes, quotes and line breaks for a double-quoted YAML value', () => {
+    expect(escapeYaml('a\\o "b"\n\tc\r')).toBe(String.raw`a\\o \"b\"\n\tc\r`);
   });
 
   it('escapes only MDX-unsafe prose characters', () => {
