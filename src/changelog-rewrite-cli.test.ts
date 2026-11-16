@@ -305,19 +305,37 @@ describe('runRewriteChangelogCli', () => {
       const dependencies = fakeSync({
         releaseBodies: {
           '0.1.0': '- feat: start, explained later',
-          '2.0.0': 'This release has 1 fix.\r\n\r\n### Fixed\r\n\r\n- use `tool`\r\n'
+          '2.0.0': 'Edited by hand.'
         }
       });
 
-      expect(await runRewriteChangelogCli(['--write', '--sync-releases', '--overwrite-edited-releases', '--only=0.1.0'], dependencies)).toBe(0);
+      expect(await runRewriteChangelogCli(['--write', '--sync-releases', '--overwrite-edited-releases', '--only=2.0.0'], dependencies)).toBe(0);
       expect(dependencies.lines.slice(1)).toEqual([
-        'gh release edit 0.1.0 --notes-file - <<< - feat: start',
-        'release 0.1.0: rewritten'
+        'gh release edit 2.0.0 --notes-file - <<< This release has 1 fix.\n\n### Fixed\n\n- use `tool`',
+        'release 2.0.0: rewritten'
       ]);
 
       const inStep = fakeSync({ releaseBodies: { '2.0.0': 'This release has 1 fix.\r\n\r\n### Fixed\r\n\r\n- use `tool`\r\n' } });
       expect(await runRewriteChangelogCli(['--sync-releases', '--only=2.0.0'], inStep)).toBe(0);
       expect(inStep.lines.at(-1)).toBe('release 2.0.0: already up to date');
+    });
+
+    it('should refuse to publish a section that is a raw commit list, and exit 1', async () => {
+      const dependencies = fakeSync({ releaseBodies: { '0.1.0': '- feat: start, explained later' } });
+
+      expect(await runRewriteChangelogCli(['--write', '--sync-releases', '--overwrite-edited-releases', '--only=0.1.0'], dependencies)).toBe(1);
+      expect(dependencies.lines.slice(1)).toEqual([
+        'release 0.1.0: REFUSED, the new notes would be raw-commit-list; rewrite its changelog section for a reader first',
+        '1 release(s) REFUSED, their notes would be empty, a compare link or a raw commit list: 0.1.0'
+      ]);
+    });
+
+    it('should report a refusal beside a failed edit', async () => {
+      const dependencies = fakeSync({ editExitCode: 1, releaseBodies: { '0.1.0': '- feat: start, explained later', '2.0.0': 'Edited by hand.' } });
+
+      expect(await runRewriteChangelogCli(['--write', '--sync-releases', '--overwrite-edited-releases'], dependencies)).toBe(1);
+      expect(dependencies.lines).toContain('1 release(s) REFUSED, their notes would be empty, a compare link or a raw commit list: 0.1.0');
+      expect(dependencies.lines.some((line) => line.startsWith('1 release edit(s) FAILED'))).toBe(true);
     });
   });
 

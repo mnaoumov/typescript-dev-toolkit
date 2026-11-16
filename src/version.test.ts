@@ -45,6 +45,7 @@ import {
 } from './version.ts';
 
 const {
+  mockAssertReleaseNotesAreReadable,
   mockCloseReleasedIssues,
   mockCreateInterface,
   mockEditNpmShrinkWrapJson,
@@ -65,6 +66,7 @@ const {
   mockSpellcheckContent,
   mockWriteFile
 } = vi.hoisted(() => ({
+  mockAssertReleaseNotesAreReadable: vi.fn<(text: string, what: string, remedy: string) => void>(),
   mockCloseReleasedIssues: vi.fn(),
   mockCreateInterface: vi.fn(),
   mockEditNpmShrinkWrapJson: vi.fn(),
@@ -141,6 +143,11 @@ vi.mock('./linters/markdownlint-content.ts', () => ({
 
 vi.mock('./released-issues.ts', () => ({
   closeReleasedIssues: mockCloseReleasedIssues
+}));
+
+// The classification itself is tested in its own module; most fixtures here carry deliberately bare sections.
+vi.mock('./release-notes-quality.ts', () => ({
+  assertReleaseNotesAreReadable: mockAssertReleaseNotesAreReadable
 }));
 
 vi.mock('./package-lock-integrity.ts', () => ({
@@ -761,6 +768,21 @@ describe('publishGitHubRelease', () => {
     );
     expect(getGhReleaseArguments()).toContain('dist/library-1.0.0.tgz');
     expect(getGhReleaseArguments()).toContain('dist/styles.css');
+  });
+
+  it('should check the release body before creating the release, and create none when it is refused', async () => {
+    setupReleaseNotesMocks();
+    mockExistsSync.mockReturnValue(true);
+    mockAssertReleaseNotesAreReadable.mockImplementation(() => {
+      throw new Error('raw');
+    });
+    await expect(publishGitHubRelease('1.0.0')).rejects.toThrow('raw');
+    expect(mockAssertReleaseNotesAreReadable).toHaveBeenCalledWith(
+      '**Full Changelog**: https://github.com/user/repo/commits/1.0.0',
+      'The GitHub release body for 1.0.0',
+      expect.stringContaining('No release has been created')
+    );
+    expect(getGhReleaseArguments()).toBeNull();
   });
 
   it('should attach the files a custom getReleaseAssetPaths returns instead of packing', async () => {
@@ -1458,6 +1480,20 @@ describe('updateChangelog', () => {
     });
   });
 
+  it('should check that the settled new section reads for a person, and write nothing when it does not', async () => {
+    mockReadFile.mockResolvedValue('- fix: tidy\n');
+    mockAssertReleaseNotesAreReadable.mockImplementation(() => {
+      throw new Error('raw');
+    });
+    await expect(updateChangelog('1.0.0', { changelogFilePath: '/notes.md' })).rejects.toThrow('raw');
+    expect(mockAssertReleaseNotesAreReadable).toHaveBeenCalledWith(
+      '- fix: tidy',
+      'The 1.0.0 section of CHANGELOG.md',
+      expect.stringContaining('Nothing has been written yet')
+    );
+    expect(mockWriteFile).not.toHaveBeenCalled();
+  });
+
   it('should refuse prepared release notes the spellchecker reports on, before writing them', async () => {
     mockReadFile.mockResolvedValue('- A note nobody can spell\n');
     mockSpellcheckContent.mockResolvedValue(SPELLING_FINDINGS);
@@ -2123,6 +2159,16 @@ describe('updateVersion', () => {
     await expect(updateVersion('patch', options)).rejects.toThrow('does not pass lint:md');
     expect(mockNpmRun).not.toHaveBeenCalled();
     expect(mockNpmRunOptional).not.toHaveBeenCalled();
+    expect(mockEditPackageJson).not.toHaveBeenCalled();
+  });
+
+  it('should refuse an unreadable section nobody reviews before the gate', async () => {
+    setupFullMocks();
+    mockAssertReleaseNotesAreReadable.mockImplementation(() => {
+      throw new Error('raw');
+    });
+    await expect(updateVersion('patch', { shouldEditChangelog: false })).rejects.toThrow('raw');
+    expect(mockNpmRun).not.toHaveBeenCalled();
     expect(mockEditPackageJson).not.toHaveBeenCalled();
   });
 

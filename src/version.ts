@@ -63,6 +63,7 @@ import {
   editPackageLockJson,
   readPackageJson
 } from './npm.ts';
+import { assertReleaseNotesAreReadable } from './release-notes-quality.ts';
 import { closeReleasedIssues } from './released-issues.ts';
 import { RepoPaths } from './repo-paths.ts';
 import {
@@ -917,7 +918,7 @@ export async function publishGitHubRelease(newVersion: string, options: PublishG
     '-'
   ], {
     isQuiet: true,
-    stdin: await getReleaseNotes(newVersion)
+    stdin: await getReadableReleaseNotes(newVersion)
   });
 
   if (shouldVerifyRelease) {
@@ -1252,6 +1253,23 @@ function assertChangelogHasNoMergeSubjects(changelogContent: string, version: st
 }
 
 /**
+ * Refuses a changelog whose NEW section is empty, a compare link alone or a raw list of commit subjects, whatever
+ * {@link ChangelogStyle} produced it. The GitHub release body is that section plus a compare link, so this also keeps
+ * an unreadable release body from being published.
+ *
+ * @param changelogContent - The full composed `CHANGELOG.md` content.
+ * @param version - The version whose section is about to be published.
+ */
+function assertChangelogSectionIsReadable(changelogContent: string, version: string): void {
+  assertReleaseNotesAreReadable(
+    extractChangelogSection(changelogContent, version),
+    `The ${version} section of ${RepoPaths.ChangelogMd}`,
+    'Nothing has been written yet. Supply release notes written for a reader with `--changelog-file <path>`, or'
+      + ' rewrite the section at the interactive review, and re-run the release.'
+  );
+}
+
+/**
  * Refuses a release that would have to stop at the interactive changelog review with nobody there to
  * finish it. Called from the preflight so the refusal costs seconds, not the whole check-and-build gate.
  *
@@ -1299,6 +1317,7 @@ async function assertNonInteractiveChangelogIsPublishable(versionUpdateType: str
 
   assertChangelogHasNoMergeSubjects(changelog, newVersion);
   await assertChangelogHasNoForbiddenPatterns(changelog, newVersion);
+  assertChangelogSectionIsReadable(changelog, newVersion);
 }
 
 /**
@@ -1467,20 +1486,6 @@ function describeBranch(branch: string): string {
   return branch ? `branch '${branch}'` : 'a detached HEAD';
 }
 
-/**
- * Extracts the body of one version's `CHANGELOG.md` section — everything between its `## <version>` heading
- * and whichever comes first, the next `## ` heading or the end of the file.
- *
- * Ending at the end of the file is not an edge case but the normal shape of a FIRST release: sections are
- * prepended, so the newest one is bounded by the previous release only once a previous release exists. The
- * regex this replaced required a trailing `\n\n##`, so every `1.0.0` silently published empty release notes.
- * Terminating on `'## '` WITH its trailing space is what keeps an `###` sub-heading inside the section
- * instead of truncating it there.
- *
- * @param changelogContent - The full contents of `CHANGELOG.md`.
- * @param version - The version whose section to extract.
- * @returns The section body, trimmed, or an empty string when the changelog has no section for that version.
- */
 function extractChangelogSection(changelogContent: string, version: string): string {
   const lines = changelogContent.split(/\r?\n/);
   const headingIndex = lines.indexOf(`## ${version}`);
@@ -1598,6 +1603,39 @@ async function getNpmPackReleaseAssetPaths(): Promise<string[]> {
     join(RepoPaths.Dist, result.filename),
     join(RepoPaths.Dist, RepoPaths.StylesCss)
   ];
+}
+
+/**
+ * Extracts the body of one version's `CHANGELOG.md` section — everything between its `## <version>` heading
+ * and whichever comes first, the next `## ` heading or the end of the file.
+ *
+ * Ending at the end of the file is not an edge case but the normal shape of a FIRST release: sections are
+ * prepended, so the newest one is bounded by the previous release only once a previous release exists. The
+ * regex this replaced required a trailing `\n\n##`, so every `1.0.0` silently published empty release notes.
+ * Terminating on `'## '` WITH its trailing space is what keeps an `###` sub-heading inside the section
+ * instead of truncating it there.
+ *
+ * @param changelogContent - The full contents of `CHANGELOG.md`.
+ * @param version - The version whose section to extract.
+ * @returns The section body, trimmed, or an empty string when the changelog has no section for that version.
+ */
+/**
+ * Reads the release body with {@link getReleaseNotes} and refuses one that is not human-readable. The changelog
+ * section was checked when it was composed, but a release published by hand (`publishGitHubRelease` alone) or from a
+ * changelog edited since reaches here without that check.
+ *
+ * @param newVersion - The version being released.
+ * @returns A {@link Promise} that resolves to the release body.
+ */
+async function getReadableReleaseNotes(newVersion: string): Promise<string> {
+  const releaseNotes = await getReleaseNotes(newVersion);
+  assertReleaseNotesAreReadable(
+    releaseNotes,
+    `The GitHub release body for ${newVersion}`,
+    `No release has been created. Rewrite the ${newVersion} section of ${RepoPaths.ChangelogMd} for a reader, then`
+      + ` create the release with \`gh release create ${newVersion} --notes-file <notes>\`.`
+  );
+  return releaseNotes;
 }
 
 /**
@@ -1762,6 +1800,7 @@ async function prepareChangelog(newVersion: string, options: UpdateChangelogOpti
   // written to the repository yet either, so the throw leaves the working tree pristine and the release re-runnable.
   assertChangelogHasNoMergeSubjects(settledChangeLog, newVersion);
   await assertChangelogHasNoForbiddenPatterns(settledChangeLog, newVersion);
+  assertChangelogSectionIsReadable(settledChangeLog, newVersion);
   return settledChangeLog;
 }
 

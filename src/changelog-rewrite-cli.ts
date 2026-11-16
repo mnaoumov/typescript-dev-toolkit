@@ -24,6 +24,7 @@ import {
   rewriteChangelog,
   rewriteReleaseNotes
 } from './changelog-rewrite.ts';
+import { classifyReleaseNotes } from './release-notes-quality.ts';
 
 /**
  * The result of one command the `rewrite-changelog` command runs.
@@ -134,7 +135,7 @@ interface ReleaseRecord {
   readonly tag: string;
 }
 
-type ReleaseRewriteOutcome = 'failed' | 'ok';
+type ReleaseRewriteOutcome = 'failed' | 'ok' | 'refused';
 
 const DEFAULT_CHANGELOG_PATH = 'CHANGELOG.md';
 
@@ -310,6 +311,14 @@ async function rewriteRelease(
     return 'ok';
   }
 
+  // The rewrite never makes notes worse, but a section kept as it was can still be empty or a raw commit list, and
+  // publishing that again would only stamp it as reviewed.
+  const verdict = classifyReleaseNotes(notes);
+  if (verdict !== 'readable') {
+    dependencies.log(`release ${section.tag}: REFUSED, the new notes would be ${verdict}; rewrite its changelog section for a reader first`);
+    return 'refused';
+  }
+
   if (!options.shouldWrite) {
     dependencies.log(`release ${section.tag}: would be rewritten`);
     return 'ok';
@@ -334,14 +343,24 @@ async function rewriteReleases(
   const selected = only.size === 0 ? updates : updates.filter((update) => only.has(toBareVersion(update.tag)));
   const notesByTag = readReleaseNotes(dependencies);
   const failedTags: string[] = [];
+  const refusedTags: string[] = [];
   for (const update of selected) {
-    if (await rewriteRelease(update, notesByTag.get(update.tag), options, dependencies) === 'failed') {
+    const outcome = await rewriteRelease(update, notesByTag.get(update.tag), options, dependencies);
+    if (outcome === 'failed') {
       failedTags.push(update.tag);
+    } else if (outcome === 'refused') {
+      refusedTags.push(update.tag);
     }
   }
 
+  if (refusedTags.length > 0) {
+    dependencies.log(
+      `${String(refusedTags.length)} release(s) REFUSED, their notes would be empty, a compare link or a raw commit list: ${refusedTags.join(', ')}`
+    );
+  }
+
   if (failedTags.length === 0) {
-    return 0;
+    return refusedTags.length === 0 ? 0 : 1;
   }
 
   // A plain re-run finds those sections already rewritten and skips them, so the summary names the command that does not.
