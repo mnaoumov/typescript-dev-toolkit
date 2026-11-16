@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## 8.1.1
+
+This release has 2 fixes.
+
+### Fixed
+
+- **eslint-config:** turn no-unsafe-class-instance-assignment off for test files
+- **version:** stop force-pushing the branch when releasing
+
 ## 8.1.0
 
 This release has 1 new feature and 2 fixes. 1 maintenance commit (tests, build, CI, refactoring, dependencies) is not listed.
