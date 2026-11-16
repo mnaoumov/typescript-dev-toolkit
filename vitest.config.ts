@@ -11,9 +11,11 @@ const INTEGRATION_TEST_FILES = 'src/**/*.integration.test.ts';
 // run in a project of their own with a budget sized for that load and no more than two workers.
 const SLOW_TEST_FILES = [
   'src/bundlers/esbuild-impl/preprocess-plugin.test.ts',
+  'src/bundlers/esbuild-impl/svelte-preprocessor.test.ts',
   'src/docs-site/api-doc-*.test.ts',
   'src/docs-site/api-docs.test.ts',
   'src/docs-site/docs-snippets.test.ts',
+  'src/docs-site/og-image.test.ts',
   'src/docs-site/og-images*.test.ts',
   'src/library-build.test.ts'
 ];
