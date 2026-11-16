@@ -608,9 +608,28 @@ describe('addUpdatedFilesToGit', () => {
 });
 
 describe('gitPush', () => {
-  it('should push with follow-tags and force', async () => {
+  it('should push with follow-tags and without force when no tag is given', async () => {
     await gitPush();
-    expect(mockExecFromRoot).toHaveBeenCalledWith('git push --follow-tags --force', { isQuiet: true });
+    expect(mockExecFromRoot.mock.calls).toEqual([[['git', 'push', '--follow-tags'], { isQuiet: true }]]);
+  });
+
+  it('should push the branch unforced, then force only the release tag', async () => {
+    await gitPush('1.0.1');
+    expect(mockExecFromRoot.mock.calls).toEqual([
+      [['git', 'push'], { isQuiet: true }],
+      [['git', 'push', '--force', 'origin', 'refs/tags/1.0.1:refs/tags/1.0.1'], { isQuiet: true }]
+    ]);
+  });
+
+  it('should not push the tag when origin is ahead and refuses the branch push', async () => {
+    mockExecFromRoot.mockImplementation((command: unknown) =>
+      Array.isArray(command) && command.join(' ') === 'git push'
+        ? Promise.reject(new Error('! [rejected] main -> main (fetch first)'))
+        : Promise.resolve('')
+    );
+    await expect(gitPush('1.0.1')).rejects.toThrow('fetch first');
+    expect(mockExecFromRoot).toHaveBeenCalledTimes(1);
+    expect(mockExecFromRoot).not.toHaveBeenCalledWith(expect.arrayContaining(['--force']), expect.anything());
   });
 });
 
@@ -1837,7 +1856,8 @@ describe('updateVersion', () => {
       expect(steps).toEqual(['prepare', 'assets', 'tag', 'publish', 'verify', 'branch']);
       expect(mockExecFromRoot).toHaveBeenCalledWith(['git', 'push', 'origin', 'refs/tags/1.0.1:refs/tags/1.0.1'], { isQuiet: true });
       expect(mockExecFromRoot).toHaveBeenCalledWith(['git', 'push', 'origin', `${RELEASE_SHA}:refs/heads/main`], { isQuiet: true });
-      expect(mockExecFromRoot).not.toHaveBeenCalledWith('git push --follow-tags --force', expect.anything());
+      expect(mockExecFromRoot).not.toHaveBeenCalledWith(['git', 'push'], expect.anything());
+      expect(mockExecFromRoot).not.toHaveBeenCalledWith(expect.arrayContaining(['git', 'push', '--force']), expect.anything());
       expect(mockCloseReleasedIssues.mock.invocationCallOrder[0]).toBeGreaterThan(
         mockExecFromRoot.mock.invocationCallOrder[mockExecFromRoot.mock.calls.findIndex(([command]) => Array.isArray(command) && command.includes(`${RELEASE_SHA}:refs/heads/main`))] ?? 0
       );
@@ -2009,7 +2029,7 @@ describe('updateVersion', () => {
       shouldRelease: false
     });
     expect(mockExecFromRoot).toHaveBeenCalledWith(expect.stringContaining('git tag'), expect.any(Object));
-    expect(mockExecFromRoot).not.toHaveBeenCalledWith('git push --follow-tags --force', expect.any(Object));
+    expect(mockExecFromRoot.mock.calls.some(([command]: unknown[]) => Array.isArray(command) && command[0] === 'git' && command[1] === 'push')).toBe(false);
     expect(prepareRelease).not.toHaveBeenCalled();
   });
 
@@ -2055,7 +2075,7 @@ describe('updateVersion', () => {
     });
 
     await expect(updateVersion('patch')).rejects.toThrow('Refusing to continue before pushing');
-    expect(mockExecFromRoot).not.toHaveBeenCalledWith('git push --follow-tags --force', expect.any(Object));
+    expect(mockExecFromRoot.mock.calls.some(([command]: unknown[]) => Array.isArray(command) && command[0] === 'git' && command[1] === 'push')).toBe(false);
   });
 
   it('should add --no-verify to the release commit when shouldVerifyCommit is false', async () => {

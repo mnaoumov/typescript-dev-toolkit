@@ -747,10 +747,23 @@ export function getVersionUpdateType(versionUpdateType: string): VersionUpdateTy
 /**
  * Pushes commits and tags to the remote Git repository.
  *
+ * The branch is never force-pushed: a release made on a checkout that is behind `origin` fails here rather than
+ * overwriting the commits `origin` has. Only the release tag is forced, because `addGitTag` re-makes it with
+ * `--force` and a re-run of a failed release would otherwise be refused by the tag `origin` already holds. The tag
+ * is pushed after the branch, so a refused branch push leaves `origin` without the tag.
+ *
+ * @param tag - The release tag to push. Without it, the annotated tags reachable from the pushed commits go along
+ * with the branch (`--follow-tags`), unforced.
  * @returns A {@link Promise} that resolves when the push operation is complete.
  */
-export async function gitPush(): Promise<void> {
-  await execFromRoot('git push --follow-tags --force', { isQuiet: true });
+export async function gitPush(tag?: string): Promise<void> {
+  if (tag === undefined) {
+    await execFromRoot(['git', 'push', '--follow-tags'], { isQuiet: true });
+    return;
+  }
+
+  await execFromRoot(['git', 'push'], { isQuiet: true });
+  await execFromRoot(['git', 'push', '--force', 'origin', `refs/tags/${tag}:refs/tags/${tag}`], { isQuiet: true });
 }
 
 /**
@@ -1137,7 +1150,7 @@ export async function updateVersion(versionUpdateType?: string, options: UpdateV
   }
 
   await assertReleaseCommitLanded(newVersion, startHead, 'pushing');
-  await gitPush();
+  await gitPush(newVersion);
   await prepareGitHubRelease?.(newVersion);
   await publishGitHubRelease(newVersion, { getReleaseAssetPaths, shouldCloseReleasedIssues });
 }
