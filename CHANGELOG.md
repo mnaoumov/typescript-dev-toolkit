@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## 8.1.0
+
+This release has 1 new feature and 2 fixes. 1 maintenance commit (tests, build, CI, refactoring, dependencies) is not listed.
+
+### New
+
+- **version:** refuse release notes that are empty, a compare link or a raw commit list
+
+### Fixed
+
+- **docs-site:** escape backslashes and line breaks in API page frontmatter
+- **deps:** require @mnaoumov/typescript-test-toolkit ^1.1.0 and drop the typescript-lib override
+
 ## 8.0.0
 
 This release has 1 breaking change and 1 fix. 1 maintenance commit (tests, build, CI, refactoring, dependencies) is not listed.
