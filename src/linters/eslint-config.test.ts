@@ -116,6 +116,16 @@ describe('defineEslintConfigs', () => {
     expect(findRuleEntry(configs, 'n/no-unsupported-features/node-builtins')).toEqual(['error', { ignores: ['Blob', 'File'] }]);
   });
 
+  it('should keep no-unsafe-class-instance-assignment for shipped code and turn it off for test files only', () => {
+    const configs = defineEslintConfigs();
+    const ruleName = '@typescript-eslint/no-unsafe-class-instance-assignment';
+    const testFilesKey = JSON.stringify(createDefaultEslintConfigContext().testFiles);
+    const testFileConfigs = configs.filter((config) => JSON.stringify(config.files) === testFilesKey);
+    const otherConfigs = configs.filter((config) => !testFileConfigs.includes(config));
+    expect(findRuleEntry(testFileConfigs, ruleName)).toBe('off');
+    expect(findRuleEntry(otherConfigs, ruleName)).toBe('error');
+  });
+
   it('should pin the Node version of the compatibility rules when given one', () => {
     const configs = defineEslintConfigs({ minimumNodeVersion: '>=16.16.0' });
     expect(findRuleEntry(configs, 'n/no-unsupported-features/es-builtins')).toEqual(['error', { version: '>=16.16.0' }]);

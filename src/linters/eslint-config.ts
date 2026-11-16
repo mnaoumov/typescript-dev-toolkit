@@ -745,6 +745,9 @@ function getTseslintConfigs(context: EslintConfigContext): Linter.Config[] {
           allowPrivateClassPropertyAccess: true,
           allowProtectedClassPropertyAccess: true
         }],
+        // A test hands a mock where a class instance is expected by design (a stub `Plugin`, a fake `PluginSettingTab`), so
+        // every such call site is a report here. Shipped code keeps the rule from `strictTypeChecked`.
+        '@typescript-eslint/no-unsafe-class-instance-assignment': 'off',
         '@typescript-eslint/unbound-method': 'off'
       }
     },
