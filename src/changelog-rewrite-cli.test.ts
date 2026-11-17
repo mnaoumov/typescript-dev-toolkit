@@ -141,6 +141,18 @@ describe('parseRewriteChangelogArguments', () => {
 });
 
 describe('runRewriteChangelogCli', () => {
+  it('should print its usage and exit 0 on --help or -h, reading nothing', async () => {
+    for (const helpArgument of ['--help', '-h']) {
+      const dependencies = fake();
+      const exec = vi.spyOn(dependencies, 'exec');
+
+      expect(await runRewriteChangelogCli([helpArgument, '--bogus'], dependencies)).toBe(0);
+
+      expect(dependencies.lines).toEqual([expect.stringMatching(/^Usage: rewrite-changelog \[--write\][\s\S]*--path=<file>/) as unknown]);
+      expect(exec).not.toHaveBeenCalled();
+    }
+  });
+
   it('should report and write nothing on a dry run', async () => {
     const dependencies = fake({ releaseBodies: { '0.1.0': '- feat: start\n\n**Full Changelog**: https://example.com/commits/0.1.0' } });
 

@@ -175,6 +175,17 @@ describe('runSyncUpstreamsCli', () => {
     vi.mocked(process.stderr.write).mockRestore();
   });
 
+  it('prints its usage and exits 0 on --help or -h, syncing nothing', async () => {
+    for (const helpArgument of ['--help', '-h']) {
+      const dependencies = createDependencies();
+      dependencies.exec = vi.fn();
+      expect(await runSyncUpstreamsCli([helpArgument, '--bogus'], dependencies)).toBe(0);
+      expect(dependencies.log).toHaveBeenCalledTimes(1);
+      expect(dependencies.log).toHaveBeenCalledWith(expect.stringMatching(/^Usage: sync-upstreams \[--dry-run\][\s\S]*--config=<path>/) as unknown);
+      expect(dependencies.exec).not.toHaveBeenCalled();
+    }
+  });
+
   it('prints a thrown non-error as it is', async () => {
     vi.spyOn(process.stderr, 'write').mockReturnValue(true);
     const dependencies = createDependencies();

@@ -20,6 +20,16 @@ import { syncUpstreams } from './upstream-sync.ts';
 
 const DEFAULT_BASE_BRANCH = 'main';
 const DEFAULT_CONFIG_PATH = 'upstreams.json';
+const HELP_ARGUMENTS: ReadonlySet<string> = new Set(['--help', '-h']);
+const USAGE = `Usage: sync-upstreams [--dry-run] [--only=<name>[,<name>]] [--base=<branch>] [--config=<path>]
+
+Opens a pull request for every upstreams.json entry whose upstream has a newer version.
+
+  --dry-run          print each pull request it would open and change nothing
+  --only=<names>     sync only the comma-separated entries named
+  --base=<branch>    the branch the pull requests target (default: ${DEFAULT_BASE_BRANCH})
+  --config=<path>    the upstreams file (default: ${DEFAULT_CONFIG_PATH} in the working directory)
+  --help, -h         print this help and exit`;
 
 /**
  * Creates the sync's outside world: commands run with `spawnSync`, JSON fetched with `fetch`, output to stdout.
@@ -85,9 +95,15 @@ export function parseSyncUpstreamsArguments(cliArguments: readonly string[]): Sy
  *
  * @param cliArguments - The arguments after the command name.
  * @param dependencies - The outside world. The real one when omitted.
- * @returns The exit code: `1` when the arguments or `upstreams.json` are wrong or any entry failed, `0` otherwise.
+ * @returns The exit code: `1` when the arguments or `upstreams.json` are wrong or any entry failed, `0` otherwise. With
+ * `--help` or `-h` it prints its usage, syncs nothing and returns `0`, whatever else is passed.
  */
 export async function runSyncUpstreamsCli(cliArguments: readonly string[], dependencies: SyncDependencies = createNodeSyncDependencies()): Promise<number> {
+  if (cliArguments.some((argument) => HELP_ARGUMENTS.has(argument))) {
+    dependencies.log(USAGE);
+    return 0;
+  }
+
   try {
     const results = await syncUpstreams(parseSyncUpstreamsArguments(cliArguments), dependencies);
     return results.some((result) => result.outcome === 'error') ? 1 : 0;

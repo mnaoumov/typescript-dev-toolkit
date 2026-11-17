@@ -141,6 +141,20 @@ const DEFAULT_CHANGELOG_PATH = 'CHANGELOG.md';
 
 const KNOWN_ARGUMENTS = ['--write', '--releases', '--sync-releases', '--overwrite-edited-releases', '--only=', '--path='];
 
+const HELP_ARGUMENTS: ReadonlySet<string> = new Set(['--help', '-h']);
+
+const USAGE = `Usage: rewrite-changelog [--write] [--releases | --sync-releases] [--overwrite-edited-releases] [--only=<versions>] [--path=<file>]
+
+Rewrites the published sections of a changelog into the grouped layout. Without --write it only reports.
+
+  --write                       apply the changes
+  --releases                    rewrite the GitHub release notes too
+  --sync-releases               set the GitHub release notes from the changelog as it stands, leaving it alone
+  --overwrite-edited-releases   include releases whose notes were edited after publishing
+  --only=<versions>             edit only the comma-separated releases named (with --releases or --sync-releases)
+  --path=<file>                 the changelog (default: ${DEFAULT_CHANGELOG_PATH})
+  --help, -h                    print this help and exit`;
+
 const RELEASE_EDIT_ATTEMPTS = 3;
 
 const RELEASE_EDIT_RETRY_DELAY_IN_MILLISECONDS = 2000;
@@ -218,11 +232,17 @@ export function parseRewriteChangelogArguments(cliArguments: readonly string[]):
  * @param cliArguments - The arguments after the command name.
  * @param dependencies - The outside world. The real one when omitted.
  * @returns The exit code: `1` when the arguments are wrong, git cannot be read or a release edit failed, `0` otherwise.
+ * With `--help` or `-h` it prints its usage, reads nothing and returns `0`, whatever else is passed.
  */
 export async function runRewriteChangelogCli(
   cliArguments: readonly string[],
   dependencies: RewriteChangelogDependencies = createNodeRewriteChangelogDependencies()
 ): Promise<number> {
+  if (cliArguments.some((argument) => HELP_ARGUMENTS.has(argument))) {
+    dependencies.log(USAGE);
+    return 0;
+  }
+
   try {
     return await runRewriteChangelog(parseRewriteChangelogArguments(cliArguments), dependencies);
   } catch (error) {
