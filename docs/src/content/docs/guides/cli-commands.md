@@ -287,6 +287,34 @@ Runs the checks a release runs as its preflight, as a command of its own, so a b
 
 A step the project defines no script for is skipped. `--no-build` skips the build when its output is current, and `--integration` runs `test:integration` last.
 
+### Pack smoke
+
+```typescript
+import { smokePack } from '@mnaoumov/typescript-dev-toolkit/pack-smoke';
+```
+
+Uses the package the way a consumer gets it. It runs `npm pack`, installs the tarball into an empty project and loads every module the `exports` field reaches. Each module is imported in one ES module process and required in a separate CommonJS process. Then it runs every bin with `--help`. It fails on a file the tarball leaves out, an `exports` entry naming a missing file, a module that throws while loading, a bin that does not start, and an optional peer that the install brought in. Run it after the build, because `npm pack` packs whatever `dist/` holds. It installs the package's dependencies from the registry, so it belongs in CI after the gate rather than in the gate itself.
+
+```typescript
+// scripts/smoke-pack.ts
+import { wrapCliTask } from '@mnaoumov/typescript-dev-toolkit/cli-utils';
+import { smokePack } from '@mnaoumov/typescript-dev-toolkit/pack-smoke';
+
+await wrapCliTask(() =>
+  smokePack({
+    bins: [{ arguments: ['--version'], name: 'my-tool' }],
+    installedOptionalPeers: [{ name: 'yaml', reason: 'a dependency depends on it' }],
+    peerBoundModules: ['docs-site', 'docs-site/**']
+  })
+);
+```
+
+- `peerBoundModules` lists globs over exported subpaths: `.` for the package root, `docs-site/api-docs` for `<package>/docs-site/api-docs`. These name the modules whose whole job needs an optional peer. Such a module may fail to load only because an optional peer is missing. Any other failure, including a missing package that is not an optional peer, still fails the smoke. A glob matches every subpath that names the module, so `docs-site` and `docs-site/index` both work.
+- `installedOptionalPeers` lists the optional peers that a dependency installs anyway, each with its reason. The smoke reports them instead of failing.
+- `bins` changes the arguments and the expected exit code of a bin. A bin left out of the list is run with `--help` and must exit `0`.
+
+An entry that no longer applies is a failure: a glob that names no module, an accepted peer that is no longer installed, or a bin the package does not declare. That keeps the configuration from going stale.
+
 ### Release
 
 ```typescript
@@ -382,6 +410,8 @@ Rewrites the published sections of `CHANGELOG.md` into the grouped layout that `
 - **A failed release edit is tried three times.** Any that still fail are listed at the end with the `--sync-releases` command that finishes them, and the command exits with `1`. A plain re-run would not retry them, because their sections are already rewritten.
 
 Lint the result before committing it (`npm run lint:md` and `npm run spellcheck`): an issue title is user-written text. Then run `--sync-releases --write`, so the releases carry whatever `npm run lint:md:fix` changed.
+
+`--help` (or `-h`) prints the usage and exits `0` without reading anything, whatever else is passed. So does `sync-upstreams --help`.
 
 ### Sync upstreams
 

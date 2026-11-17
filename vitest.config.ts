@@ -6,7 +6,8 @@ import {
 const ESLINT_TYPECHECK_TEST_FILES = 'src/linters/eslint-rules/*.test.ts';
 const INTEGRATION_TEST_FILES = 'src/**/*.integration.test.ts';
 
-// The unit tests that build a real TypeScript or ts-morph program, esbuild bundle or resvg image. Each takes seconds
+// The unit tests that build a real TypeScript or ts-morph program, esbuild bundle or resvg image, or spawn a Node
+// process per case (the pack smoke's probes). Each takes seconds
 // alone and went past a 30 s per-test override when a release ran on a machine other work held at 100% CPU, so they
 // run in a project of their own with a budget sized for that load and no more than two workers.
 const SLOW_TEST_FILES = [
@@ -17,7 +18,8 @@ const SLOW_TEST_FILES = [
   'src/docs-site/docs-snippets.test.ts',
   'src/docs-site/og-image.test.ts',
   'src/docs-site/og-images*.test.ts',
-  'src/library-build.test.ts'
+  'src/library-build.test.ts',
+  'src/pack-smoke.test.ts'
 ];
 const SLOW_TEST_MAX_WORKERS = 2;
 const SLOW_TEST_GROUP_ORDER = 1;
