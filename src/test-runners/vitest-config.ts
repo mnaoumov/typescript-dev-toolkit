@@ -14,6 +14,8 @@ import type {
 } from 'vitest/config';
 import type { Reporter } from 'vitest/node';
 
+import { assertVitestPeerVersions } from './vitest-peers.ts';
+
 /**
  * One entry of a vitest `reporters` list: the name of a built-in reporter (`'default'`, `'junit'`,
  * `'minimal'`, …) or a reporter instance.
@@ -101,10 +103,15 @@ export interface DefineLibraryVitestConfigParams {
  * Defines a library package's vitest configuration: its own projects, wrapped in the shared reporters, excludes and
  * coverage block, with console output from passing tests suppressed.
  *
+ * It throws, with the one `npm install` line that fixes it, when `@vitest/coverage-v8` is installed at a version
+ * other than `vitest`'s.
+ *
  * @param params - The configuration parameters.
  * @returns The vitest configuration.
  */
 export function defineLibraryVitestConfig(params: DefineLibraryVitestConfigParams): ViteUserConfig {
+  assertVitestPeerVersions({ callerName: 'defineLibraryVitestConfig()' });
+
   const config: ViteUserConfig = {
     plugins: params.plugins ?? [],
     test: {

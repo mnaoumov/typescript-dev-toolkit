@@ -1,7 +1,8 @@
 import {
   describe,
   expect,
-  it
+  it,
+  vi
 } from 'vitest';
 
 import {
@@ -10,8 +11,17 @@ import {
   defineLibraryVitestConfig,
   LIBRARY_VITEST_COVERAGE
 } from './vitest-config.ts';
+import { assertVitestPeerVersions } from './vitest-peers.ts';
+
+vi.mock('./vitest-peers.ts', { spy: true });
 
 describe('defineLibraryVitestConfig', () => {
+  it('checks the vitest companion package versions', () => {
+    defineLibraryVitestConfig({ projects: [] });
+
+    expect(assertVitestPeerVersions).toHaveBeenCalledWith({ callerName: 'defineLibraryVitestConfig()' });
+  });
+
   it('wraps the projects in the shared reporters, excludes and coverage block', () => {
     const projects = [{ test: { name: 'unit-tests' } }];
 
