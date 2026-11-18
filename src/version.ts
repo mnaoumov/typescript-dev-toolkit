@@ -65,6 +65,10 @@ import {
   readPackageJson
 } from './npm.ts';
 import { assertReleaseNotesAreReadable } from './release-notes-quality.ts';
+import {
+  assertBranchNotBehindOrigin,
+  assertReleasePreflight
+} from './release-preflight.ts';
 import { closeReleasedIssues } from './released-issues.ts';
 import { RepoPaths } from './repo-paths.ts';
 import {
@@ -1020,7 +1024,8 @@ export async function updateChangelog(newVersion: string, options: UpdateChangel
  * 1. Validates the version update type.
  * 2. Checks if Git and GitHub CLI are installed.
  * 3. Verifies that the interactive changelog review, if one is due, can actually be answered.
- * 4. Verifies that the bump is not lower than the commits since the last tag force it to be.
+ * 4. Verifies that the bump is not lower than the commits since the last tag force it to be, and runs the release
+ *    preflight (`release-preflight.ts`): default branch, in step with `origin`, no existing tag, gh write access.
  * 5. Verifies that the Git repository is clean.
  * 6. Runs spellcheck and linting.
  * 7. Builds the project.
@@ -1083,6 +1088,9 @@ export async function updateVersion(versionUpdateType?: string, options: UpdateV
   // Same placement, same reason: a changelog section nobody will review is fully known before the gate, and a subject it
   // fails on is already pushed, so learning that after the preflight only costs the preflight.
   await assertNonInteractiveChangelogIsPublishable(versionUpdateType, { changelogFilePath, changelogStyle, shouldEditChangelog });
+  // Same placement, same reason: the branch, origin, the tag and gh's access are known now, and each used to surface
+  // only at the push or at `gh release create`, after the gate and sometimes after the release was already public.
+  await assertReleasePreflight({ newVersion: await getNewVersion(versionUpdateType), shouldCheckRemote: shouldRelease });
 
   if (shouldRunChecks) {
     await assertGitRepoClean();
@@ -1130,6 +1138,7 @@ export async function updateVersion(versionUpdateType?: string, options: UpdateV
     await prepareGitHubRelease?.(newVersion);
     const filePaths = await resolveReleaseAssetPaths(getReleaseAssetPaths, true);
     await assertReleaseCommitLanded(newVersion, startHead, 'pushing');
+    await assertBranchNotBehindOrigin({ branch: startHead.branch, newVersion, startSha: startHead.sha });
     const tagCommitSha = await execFromRoot(['git', 'rev-parse', `refs/tags/${newVersion}^{}`], { isQuiet: true });
     if (tagCommitSha !== releaseCommitSha) {
       throw new Error(`Refusing to push ${newVersion}: its tag no longer names the verified release commit.`);
@@ -1147,6 +1156,7 @@ export async function updateVersion(versionUpdateType?: string, options: UpdateV
   }
 
   await assertReleaseCommitLanded(newVersion, startHead, 'pushing');
+  await assertBranchNotBehindOrigin({ branch: startHead.branch, newVersion, startSha: startHead.sha });
   await gitPush(newVersion);
   await prepareGitHubRelease?.(newVersion);
   await publishGitHubRelease(newVersion, { getReleaseAssetPaths, shouldCloseReleasedIssues });

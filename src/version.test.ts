@@ -17,6 +17,10 @@ import type {
   FixMarkdownContentParams,
   FixMarkdownContentResult
 } from './linters/markdownlint-content.ts';
+import type {
+  AssertBranchNotBehindOriginParams,
+  AssertReleasePreflightParams
+} from './release-preflight.ts';
 import type { ResolvePathFromRootSafeParams } from './root.ts';
 
 import {
@@ -45,7 +49,9 @@ import {
 } from './version.ts';
 
 const {
+  mockAssertBranchNotBehindOrigin,
   mockAssertReleaseNotesAreReadable,
+  mockAssertReleasePreflight,
   mockCloseReleasedIssues,
   mockCreateInterface,
   mockEditNpmShrinkWrapJson,
@@ -66,7 +72,9 @@ const {
   mockSpellcheckContent,
   mockWriteFile
 } = vi.hoisted(() => ({
+  mockAssertBranchNotBehindOrigin: vi.fn<(params: AssertBranchNotBehindOriginParams) => Promise<void>>(),
   mockAssertReleaseNotesAreReadable: vi.fn<(text: string, what: string, remedy: string) => void>(),
+  mockAssertReleasePreflight: vi.fn<(params: AssertReleasePreflightParams) => Promise<void>>(),
   mockCloseReleasedIssues: vi.fn(),
   mockCreateInterface: vi.fn(),
   mockEditNpmShrinkWrapJson: vi.fn(),
@@ -150,6 +158,12 @@ vi.mock('./release-notes-quality.ts', () => ({
   assertReleaseNotesAreReadable: mockAssertReleaseNotesAreReadable
 }));
 
+// The preflight reads git and gh state of its own; it is tested in its own module.
+vi.mock('./release-preflight.ts', () => ({
+  assertBranchNotBehindOrigin: mockAssertBranchNotBehindOrigin,
+  assertReleasePreflight: mockAssertReleasePreflight
+}));
+
 vi.mock('./package-lock-integrity.ts', () => ({
   assertPackageLockIntegrity: noopAsync
 }));
@@ -198,6 +212,8 @@ beforeEach(() => {
   mockFixMarkdownContent.mockImplementation((params) => Promise.resolve({ content: params.content, fixCount: 0 }));
   mockSpellcheckContent.mockResolvedValue([]);
   mockReadForbiddenPatterns.mockResolvedValue([]);
+  mockAssertReleasePreflight.mockResolvedValue(undefined);
+  mockAssertBranchNotBehindOrigin.mockResolvedValue(undefined);
 });
 
 const START_SHA = 'a'.repeat(40);
@@ -1782,6 +1798,39 @@ describe('updateVersion', () => {
     expect(prepareRelease).toHaveBeenCalledWith('1.0.1');
   });
 
+  describe('the release preflight', () => {
+    it('should run before the gate and check the remote for a release that pushes', async () => {
+      setupFullMocks();
+      await updateVersion('patch');
+      expect(mockAssertReleasePreflight).toHaveBeenCalledWith({ newVersion: '1.0.1', shouldCheckRemote: true });
+      expect(mockAssertReleasePreflight.mock.invocationCallOrder[0]).toBeLessThan(mockNpmRun.mock.invocationCallOrder[0] ?? 0);
+    });
+
+    it('should check only the local tag with --no-release', async () => {
+      setupFullMocks();
+      await updateVersion('patch', { shouldRelease: false });
+      expect(mockAssertReleasePreflight).toHaveBeenCalledWith({ newVersion: '1.0.1', shouldCheckRemote: false });
+      expect(mockAssertBranchNotBehindOrigin).not.toHaveBeenCalled();
+    });
+
+    it('should stop before the gate when the preflight refuses, even with --no-checks', async () => {
+      setupFullMocks();
+      mockAssertReleasePreflight.mockRejectedValue(new Error('Refusing to release 1.0.1'));
+      await expect(updateVersion('patch', { shouldRunChecks: false })).rejects.toThrow('Refusing to release 1.0.1');
+      expect(mockNpmRun).not.toHaveBeenCalled();
+      expect(mockEditPackageJson).not.toHaveBeenCalled();
+    });
+
+    it('should re-check origin before the push and push nothing when it moved', async () => {
+      setupFullMocks();
+      mockAssertBranchNotBehindOrigin.mockRejectedValue(new Error('Refusing to push 1.0.1'));
+      await expect(updateVersion('patch')).rejects.toThrow('Refusing to push 1.0.1');
+      expect(mockAssertBranchNotBehindOrigin).toHaveBeenCalledWith({ branch: 'main', newVersion: '1.0.1', startSha: START_SHA });
+      const commands = mockExecFromRoot.mock.calls.map(([command]) => (Array.isArray(command) ? command.join(' ') : String(command)));
+      expect(commands.some((command) => command.startsWith('git push'))).toBe(false);
+    });
+  });
+
   describe('publication before branch push', () => {
     interface SetupPublicationMocksOptions {
       readonly failure?: string;
@@ -1833,6 +1882,15 @@ describe('updateVersion', () => {
           : original(command);
       }
     }
+
+    it('should push no tag and publish nothing when origin moved during the release', async () => {
+      const steps = setupPublicationMocks();
+      mockAssertBranchNotBehindOrigin.mockRejectedValue(new Error('Refusing to push 1.0.1'));
+      await expect(updateVersion('patch', { getReleaseAssetPaths: () => Promise.resolve(['dist/main.js']), shouldPublishBeforePush: true })).rejects.toThrow(
+        'Refusing to push 1.0.1'
+      );
+      expect(steps).toEqual([]);
+    });
 
     it('should prepare, publish and verify the exact version tag before advancing the branch', async () => {
       const steps = setupPublicationMocks();
