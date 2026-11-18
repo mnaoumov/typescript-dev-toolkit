@@ -41,3 +41,8 @@ jobs:
       # the registry, so it stays out of the gate.
       - name: Pack smoke
         run: npm run smoke:pack
+
+      # Builds `git archive HEAD` in another folder and requires its `dist/` to match the gate's byte for byte, which
+      # catches a build input git does not hold and an absolute path in the output. `--no-build` reuses the gate's build.
+      - name: Reproducible build
+        run: npm run check:reproducible -- --no-build

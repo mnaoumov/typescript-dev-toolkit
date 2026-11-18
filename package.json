@@ -261,6 +261,7 @@
     "build:validate-declarations": "jiti scripts/build-validate-declarations.ts",
     "build:validate-built-syntax": "jiti scripts/build-validate-built-syntax.ts",
     "build:validate-dependencies": "jiti scripts/build-validate-dependencies.ts",
+    "check:reproducible": "jiti scripts/check-reproducible-build.ts",
     "commit": "jiti scripts/commit.ts",
     "docs:build": "jiti scripts/docs-build.ts",
     "docs:check-snippets": "jiti scripts/docs-check-snippets.ts",
