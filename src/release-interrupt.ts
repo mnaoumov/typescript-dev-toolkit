@@ -3,13 +3,17 @@
  *
  * Ctrl+C during a release. While the release has edited files it has not committed yet, an interrupt puts those
  * files back the way they were, so the tree is clean and the release can simply be run again. After the tag, an
- * interrupt says what is on origin and how to resume. Re-implemented after `obsidian-plugin-dev-kit`'s
+ * interrupt says what is on origin and how to resume. A dry run prints the same edits as a diff and restores them the
+ * same way. Re-implemented after `obsidian-plugin-dev-kit`'s
  * `src/release/interrupt.ts` (MIT).
  */
 
 import { invokeAsyncSafely } from '@mnaoumov/typescript-lib/async';
 import { errorToString } from '@mnaoumov/typescript-lib/error';
-import { rm } from 'node:fs/promises';
+import {
+  readFile,
+  rm
+} from 'node:fs/promises';
 import process from 'node:process';
 
 import {
@@ -171,6 +175,33 @@ export async function readWorkingTreeChanges(): Promise<WorkingTreeChanges> {
 }
 
 /**
+ * Renders every change made since `before` as plain diff text, without writing anything to git: a tracked path is
+ * diffed against `HEAD` (`--no-optional-locks`, because even `git diff` may refresh the index), and a new untracked
+ * file is shown whole, each line prefixed with `+`. A path that was already changed before is left out, for the reason
+ * {@link restoreWorkingTreeChanges} leaves it alone. Re-implemented after `obsidian-plugin-dev-kit`'s dry-run diff in
+ * `src/release/release.ts` (MIT).
+ *
+ * @param before - The changes when the release started editing.
+ * @returns A {@link Promise} that resolves to the diff text, empty when nothing changed since.
+ */
+export async function renderWorkingTreeDiff(before: WorkingTreeChanges): Promise<string> {
+  const { changedPaths, untrackedPaths: newPaths } = await readWorkingTreeChangesSince(before);
+  const parts: string[] = [];
+
+  if (changedPaths.length > 0) {
+    parts.push(await execFromRoot(['git', '--no-optional-locks', 'diff', '--no-color', 'HEAD', '--', ...changedPaths], { isQuiet: true }));
+  }
+
+  for (const path of [...newPaths].sort()) {
+    const content = await readFile(resolvePathFromRootSafe({ path }), 'utf-8');
+    const lines = content.replace(/\r?\n$/, '').split(/\r?\n/).map((line) => `+${line}`);
+    parts.push([`new file ${path}`, ...lines].join('\n'));
+  }
+
+  return parts.join('\n');
+}
+
+/**
  * Undoes every change made since `before`: a tracked path that was unchanged then is restored from `HEAD` (in the
  * index and the working tree, which also removes a staged new file), and an untracked path that did not exist then
  * is deleted. A path that was already changed before is left alone, because the release cannot tell its edit from
@@ -180,11 +211,7 @@ export async function readWorkingTreeChanges(): Promise<WorkingTreeChanges> {
  * @returns A {@link Promise} that resolves to the paths it put back, sorted.
  */
 export async function restoreWorkingTreeChanges(before: WorkingTreeChanges): Promise<string[]> {
-  const now = await readWorkingTreeChanges();
-  const changedBefore = new Set(before.changedPaths);
-  const untrackedBefore = new Set(before.untrackedPaths);
-  const changedPaths = now.changedPaths.filter((path) => !changedBefore.has(path));
-  const newPaths = now.untrackedPaths.filter((path) => !untrackedBefore.has(path));
+  const { changedPaths, untrackedPaths: newPaths } = await readWorkingTreeChangesSince(before);
 
   if (changedPaths.length > 0) {
     await execFromRoot(['git', 'restore', '--source=HEAD', '--staged', '--worktree', '--', ...changedPaths], { isQuiet: true });
@@ -195,6 +222,16 @@ export async function restoreWorkingTreeChanges(before: WorkingTreeChanges): Pro
   }
 
   return [...changedPaths, ...newPaths].sort();
+}
+
+async function readWorkingTreeChangesSince(before: WorkingTreeChanges): Promise<WorkingTreeChanges> {
+  const now = await readWorkingTreeChanges();
+  const changedBefore = new Set(before.changedPaths);
+  const untrackedBefore = new Set(before.untrackedPaths);
+  return {
+    changedPaths: now.changedPaths.filter((path) => !changedBefore.has(path)),
+    untrackedPaths: now.untrackedPaths.filter((path) => !untrackedBefore.has(path))
+  };
 }
 
 function splitNullSeparated(text: string): string[] {
