@@ -118,7 +118,8 @@ describe('defineEslintConfigs', () => {
 
   it('should keep no-unsafe-class-instance-assignment for shipped code and turn it off for test files only', () => {
     const configs = defineEslintConfigs();
-    const ruleName = '@typescript-eslint/no-unsafe-class-instance-assignment';
+    expect(findRuleEntry(configs, '@typescript-eslint/no-unsafe-class-instance-assignment')).toBe('off');
+    const ruleName = 'typescript-dev-toolkit/no-unsafe-class-instance-assignment';
     const testFilesKey = JSON.stringify(createDefaultEslintConfigContext().testFiles);
     const testFileConfigs = configs.filter((config) => JSON.stringify(config.files) === testFilesKey);
     const otherConfigs = configs.filter((config) => !testFileConfigs.includes(config));

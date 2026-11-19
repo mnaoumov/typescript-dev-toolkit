@@ -22,6 +22,7 @@ describe('in-house plugin', () => {
       'no-keyword-identifiers',
       'no-undefined-return-type',
       'no-unresolved-jsdoc-link',
+      'no-unsafe-class-instance-assignment',
       'no-unused-params-members',
       'no-used-underscore-variables',
       'params-options-name-match',
