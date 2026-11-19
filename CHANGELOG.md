@@ -1,5 +1,26 @@
 # CHANGELOG
 
+## 8.2.0
+
+This release has 6 new features, 1 fix and 1 documentation change.
+
+### New
+
+- **version:** add --dry-run, which edits, prints the diff and restores the files without committing
+- **version:** resume a release stopped after its tag, and restore edited files on Ctrl+C
+- **version:** refuse a release whose branch, origin, tag or gh access is not ready, before any bump
+- **reproducible-build:** check the build output depends only on the committed tree
+- **vitest-config:** fail when @vitest/coverage-v8 differs from vitest's version
+- **pack-smoke:** smoke-test the packed package the way a consumer installs it
+
+### Fixed
+
+- **eslint-config:** walk a mixin base in no-unsafe-class-instance-assignment (<https://github.com/typescript-eslint/typescript-eslint/issues/13214>)
+
+### Documentation
+
+- **agents:** record the pack smoke timing measured in CI
+
 ## 8.1.1
 
 This release has 2 fixes.
