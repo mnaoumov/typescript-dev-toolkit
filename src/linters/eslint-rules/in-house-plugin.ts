@@ -15,6 +15,7 @@ import { noDirectDisposeCall } from './no-direct-dispose-call.ts';
 import { noKeywordIdentifiers } from './no-keyword-identifiers.ts';
 import { noUndefinedReturnType } from './no-undefined-return-type.ts';
 import { noUnresolvedJsdocLink } from './no-unresolved-jsdoc-link.ts';
+import { noUnsafeClassInstanceAssignment } from './no-unsafe-class-instance-assignment.ts';
 import { noUnusedParamsMembers } from './no-unused-params-members.ts';
 import { noUsedUnderscoreVariables } from './no-used-underscore-variables.ts';
 import { paramsOptionsNameMatch } from './params-options-name-match.ts';
@@ -41,6 +42,7 @@ export const genericInHouseEslintRules: NonNullable<ESLint.Plugin['rules']> = {
   'no-keyword-identifiers': noKeywordIdentifiers,
   'no-undefined-return-type': noUndefinedReturnType,
   'no-unresolved-jsdoc-link': noUnresolvedJsdocLink,
+  'no-unsafe-class-instance-assignment': noUnsafeClassInstanceAssignment,
   'no-unused-params-members': noUnusedParamsMembers,
   'no-used-underscore-variables': noUsedUnderscoreVariables,
   'params-options-name-match': paramsOptionsNameMatch,

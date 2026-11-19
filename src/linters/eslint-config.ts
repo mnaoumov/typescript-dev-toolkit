@@ -537,6 +537,7 @@ function getInHousePluginConfigs(context: EslintConfigContext): Linter.Config[] 
          * the other three had 8 between them, every one a genuinely dead link.
          */
         'typescript-dev-toolkit/no-unresolved-jsdoc-link': 'error',
+        'typescript-dev-toolkit/no-unsafe-class-instance-assignment': 'error',
         'typescript-dev-toolkit/no-unused-params-members': 'error',
         'typescript-dev-toolkit/no-used-underscore-variables': 'error',
         'typescript-dev-toolkit/params-options-name-match': 'error',
@@ -547,6 +548,14 @@ function getInHousePluginConfigs(context: EslintConfigContext): Linter.Config[] 
         'typescript-dev-toolkit/readonly-interface-members': 'error',
         'typescript-dev-toolkit/require-method-template': 'error',
         'typescript-dev-toolkit/require-super-call': 'off'
+      }
+    },
+    {
+      files: context.testFiles,
+      rules: {
+        // A test hands a mock where a class instance is expected by design (a stub `Plugin`, a fake `PluginSettingTab`), so
+        // every such call site is a report here. Shipped code keeps the rule.
+        'typescript-dev-toolkit/no-unsafe-class-instance-assignment': 'off'
       }
     }
   ]);
@@ -720,6 +729,9 @@ function getTseslintConfigs(context: EslintConfigContext): Linter.Config[] {
             'that'
           ]
         }],
+        // Replaced by `typescript-dev-toolkit/no-unsafe-class-instance-assignment`, which walks a mixin base class
+        // (typescript-eslint/typescript-eslint#13214).
+        '@typescript-eslint/no-unsafe-class-instance-assignment': 'off',
         '@typescript-eslint/no-unused-vars': [
           'error',
           {
@@ -745,9 +757,6 @@ function getTseslintConfigs(context: EslintConfigContext): Linter.Config[] {
           allowPrivateClassPropertyAccess: true,
           allowProtectedClassPropertyAccess: true
         }],
-        // A test hands a mock where a class instance is expected by design (a stub `Plugin`, a fake `PluginSettingTab`), so
-        // every such call site is a report here. Shipped code keeps the rule from `strictTypeChecked`.
-        '@typescript-eslint/no-unsafe-class-instance-assignment': 'off',
         '@typescript-eslint/unbound-method': 'off'
       }
     },
