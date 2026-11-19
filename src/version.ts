@@ -12,6 +12,7 @@ import type { ReleaseType } from 'semver';
 
 import { getLibDebugger } from '@mnaoumov/typescript-lib/debug';
 import { errorToString } from '@mnaoumov/typescript-lib/error';
+import { noopAsync } from '@mnaoumov/typescript-lib/function';
 import { join } from '@mnaoumov/typescript-lib/path';
 import {
   escapeRegExp,
@@ -64,11 +65,22 @@ import {
   editPackageLockJson,
   readPackageJson
 } from './npm.ts';
+import {
+  guardReleaseInterrupt,
+  readWorkingTreeChanges,
+  restoreWorkingTreeChanges
+} from './release-interrupt.ts';
 import { assertReleaseNotesAreReadable } from './release-notes-quality.ts';
 import {
   assertBranchNotBehindOrigin,
   assertReleasePreflight
 } from './release-preflight.ts';
+import {
+  assertReleaseResumable,
+  continueRelease,
+  getResumeCommand,
+  ReleaseProgress
+} from './release-resume.ts';
 import { closeReleasedIssues } from './released-issues.ts';
 import { RepoPaths } from './repo-paths.ts';
 import {
@@ -133,6 +145,12 @@ export interface PublishGitHubReleaseOptions {
    */
   readonly shouldVerifyRelease?: boolean;
 }
+
+/**
+ * Options for {@link resumeRelease}: the publishing half of {@link UpdateVersionOptions}, so {@link updateVersion}
+ * hands its own options over unchanged.
+ */
+export type ResumeReleaseOptions = Pick<UpdateVersionOptions, 'getReleaseAssetPaths' | 'prepareGitHubRelease' | 'shouldCloseReleasedIssues' | 'shouldPublishBeforePush'>;
 
 /**
  * Options for {@link updateChangelog}.
@@ -257,6 +275,14 @@ export interface UpdateVersionOptions {
    * @default `true`
    */
   readonly shouldRelease?: boolean;
+
+  /**
+   * Whether to continue a release that stopped after its local tag instead of making a new one. The version update
+   * type is then the version to continue (`package.json`'s when omitted). See {@link resumeRelease}.
+   *
+   * @default `false`
+   */
+  readonly shouldResume?: boolean;
 
   /**
    * Whether to run the preflight verification checks (clean-repo check, format, spellcheck, lint,
@@ -791,7 +817,8 @@ export const VERSION_ARGUMENT_OPTIONS = {
   'no-checks': { type: 'boolean' },
   'no-commit-verification': { type: 'boolean' },
   'no-issue-closing': { type: 'boolean' },
-  'no-release': { type: 'boolean' }
+  'no-release': { type: 'boolean' },
+  'resume': { type: 'boolean' }
 } as const satisfies NonNullable<ParseArgsConfig['options']>;
 
 /**
@@ -883,6 +910,7 @@ export function isPreRelease(version: string): boolean {
  * - `--no-commit-verification` — pass `--no-verify` to the release commit, skipping the pre-commit hook.
  * - `--no-issue-closing` — do not close the issues the release carries once it is published.
  * - `--no-release` — run all local steps but skip the push and the GitHub release.
+ * - `--resume` — continue a release that stopped after its local tag; the positional is then the version.
  *
  * @param $arguments - The command-line arguments to parse (typically `process.argv.slice(2)`).
  * @returns The {@link ParsedVersionArguments} containing the version update type and the options.
@@ -947,6 +975,48 @@ export async function publishGitHubRelease(newVersion: string, options: PublishG
 }
 
 /**
+ * Continues a release that stopped after its local tag: a failed push, a GitHub outage, Ctrl+C. Run it with the
+ * release branch checked out at the tagged commit, which is where the stopped release left it
+ * (`npm run version '--' <version> --resume`).
+ *
+ * Every step checks origin first and skips what is already there (see {@link continueRelease}): the branch is pushed
+ * without force when origin's lacks the release commit, the tag when origin has none (one naming another commit is
+ * refused), the GitHub release is created when none exists, and the issues it carries are closed. A stop reports
+ * the same way {@link updateVersion}'s does.
+ *
+ * @param version - The version whose tag exists locally.
+ * @param options - The {@link ResumeReleaseOptions}.
+ * @returns A {@link Promise} that resolves when the release is complete.
+ */
+export async function resumeRelease(version: string, options: ResumeReleaseOptions = {}): Promise<void> {
+  const {
+    getReleaseAssetPaths = getNpmPackReleaseAssetPaths,
+    prepareGitHubRelease,
+    shouldCloseReleasedIssues = true,
+    shouldPublishBeforePush = false
+  } = options;
+
+  if (getVersionUpdateType(version) !== VersionUpdateType.Manual) {
+    throw new Error(`--resume continues the release of one version, so it takes that version (x.y.z[-suffix]), not '${version}'.`);
+  }
+
+  await assertGitInstalled();
+  await assertGitHubCliInstalled();
+  const branch = await execFromRoot(['git', 'branch', '--show-current'], { isQuiet: true });
+  const tagSha = await assertReleaseResumable({ branch, version });
+  const progress = new ReleaseProgress({ branch, shouldPublishBeforePush, version });
+  await runReleaseSteps(progress, () =>
+    continueRelease({
+      closeIssues: () => closeReleasedIssuesSafely(version, shouldCloseReleasedIssues),
+      progress,
+      async publishRelease() {
+        await prepareGitHubRelease?.(version);
+        await publishGitHubRelease(version, { getReleaseAssetPaths, shouldCloseReleasedIssues: false, shouldVerifyRelease: shouldPublishBeforePush });
+      },
+      tagSha
+    }));
+}
+/**
  * Reads one first-parent commit into the parts both changelog styles render: the line {@link toChangelogEntry}
  * describes, the issue references it does not already show, and what else the body says.
  *
@@ -980,6 +1050,7 @@ export function toChangelogCommitEntry(commitMessage: string): ChangelogCommitEn
     references: [...references]
   };
 }
+
 /**
  * Maps the values `parseArgs` reports for {@link VERSION_ARGUMENT_OPTIONS} onto {@link UpdateVersionOptions}.
  *
@@ -994,6 +1065,7 @@ export function toUpdateVersionOptions(values: VersionArgumentValues): UpdateVer
     shouldCloseReleasedIssues: !(values['no-issue-closing'] ?? false),
     shouldEditChangelog: !(values['no-changelog-editing'] ?? false),
     shouldRelease: !(values['no-release'] ?? false),
+    shouldResume: values.resume ?? false,
     shouldRunChecks: !(values['no-checks'] ?? false),
     shouldVerifyCommit: !(values['no-commit-verification'] ?? false)
   };
@@ -1041,6 +1113,10 @@ export async function updateChangelog(newVersion: string, options: UpdateChangel
  * With {@link UpdateVersionOptions.shouldPublishBeforePush}, preparation and asset validation precede
  * the tag push. Publication and verification then precede the branch push, and issue closing remains last.
  *
+ * From the first file edit to the release commit, Ctrl+C restores the edited files. A failure or Ctrl+C after the
+ * tag reports what is on origin and the command that continues; with {@link UpdateVersionOptions.shouldResume}
+ * this function continues a stopped release instead (see {@link resumeRelease}).
+ *
  * @param versionUpdateType - The type of version update to perform (major, minor, patch, premajor, preminor, prepatch, prerelease, or x.y.z[-suffix]).
  * @param options - The {@link UpdateVersionOptions} controlling the release behavior.
  * @returns A {@link Promise} that resolves when the version update is complete.
@@ -1060,6 +1136,12 @@ export async function updateVersion(versionUpdateType?: string, options: UpdateV
     shouldVerifyCommit = true,
     updateVersionInExtraFiles
   } = options;
+
+  if (options.shouldResume) {
+    const packageJson = await readPackageJson();
+    await resumeRelease(versionUpdateType ?? packageJson.version ?? '', options);
+    return;
+  }
 
   if (!versionUpdateType) {
     const npmOldVersion = process.env['npm_old_version'];
@@ -1120,46 +1202,83 @@ export async function updateVersion(versionUpdateType?: string, options: UpdateV
     shouldEditChangelog
   });
 
-  await updateVersionInFiles(newVersion);
-  await updateVersionInExtraFiles?.(newVersion);
+  // From the first edit to the commit, Ctrl+C puts the edited files back, so the tree is clean and the release can
+  // simply be run again.
+  const changesBeforeEdit = await readWorkingTreeChanges();
+  const editGuard = guardReleaseInterrupt({
+    async onInterrupt(write) {
+      const restoredPaths = await restoreWorkingTreeChanges(changesBeforeEdit);
+      const restoredList = restoredPaths.length > 0 ? ` (${restoredPaths.join(', ')})` : '';
+      write(
+        `Interrupted before the release commit: restored ${String(restoredPaths.length)} file(s) the release had edited${restoredList}. `
+          + 'Nothing was committed or pushed; run the release again.'
+      );
+    }
+  });
+  try {
+    await updateVersionInFiles(newVersion);
+    await updateVersionInExtraFiles?.(newVersion);
 
-  await writeChangelog(newChangeLog);
-  await addUpdatedFilesToGit(newVersion, { shouldVerifyCommit });
+    await writeChangelog(newChangeLog);
+    await addUpdatedFilesToGit(newVersion, { shouldVerifyCommit });
+  } finally {
+    editGuard.stop();
+  }
   // The tag names the verified commit rather than whatever `HEAD` is by the time `git tag` runs.
   const releaseCommitSha = await assertReleaseCommitLanded(newVersion, startHead, 'tagging');
   await addGitTag(newVersion, releaseCommitSha);
 
   if (!shouldRelease) {
-    getLibDebugger('Version')('Skipping git push and GitHub release (--no-release). The version bump, changelog, commit, and tag have been created locally.');
+    getLibDebugger('Version')(
+      'Skipping git push and GitHub release (--no-release). The version bump, changelog, commit, and tag have been created locally. '
+        + `To publish them later, run: ${getResumeCommand(newVersion)}`
+    );
     return;
   }
 
-  if (shouldPublishBeforePush) {
-    await prepareGitHubRelease?.(newVersion);
-    const filePaths = await resolveReleaseAssetPaths(getReleaseAssetPaths, true);
+  const progress = new ReleaseProgress({ branch: startHead.branch, shouldPublishBeforePush, version: newVersion });
+  await runReleaseSteps(progress, async () => {
+    if (shouldPublishBeforePush) {
+      await prepareGitHubRelease?.(newVersion);
+      const filePaths = await resolveReleaseAssetPaths(getReleaseAssetPaths, true);
+      await assertReleaseCommitLanded(newVersion, startHead, 'pushing');
+      await assertBranchNotBehindOrigin({ branch: startHead.branch, newVersion, startSha: startHead.sha });
+      const tagCommitSha = await execFromRoot(['git', 'rev-parse', `refs/tags/${newVersion}^{}`], { isQuiet: true });
+      if (tagCommitSha !== releaseCommitSha) {
+        throw new Error(`Refusing to push ${newVersion}: its tag no longer names the verified release commit.`);
+      }
+      await progress.run('push-tag', async () => {
+        await execFromRoot(['git', 'push', 'origin', `refs/tags/${newVersion}:refs/tags/${newVersion}`], { isQuiet: true });
+      });
+      await progress.run('publish-release', () =>
+        publishGitHubRelease(newVersion, {
+          getReleaseAssetPaths: () => Promise.resolve(filePaths),
+          shouldCloseReleasedIssues: false,
+          shouldVerifyRelease: true
+        }));
+      await assertReleaseCommitLanded(newVersion, startHead, 'pushing');
+      await progress.run('push-branch', async () => {
+        await execFromRoot(['git', 'push', 'origin', `${releaseCommitSha}:refs/heads/${startHead.branch}`], { isQuiet: true });
+      });
+      await progress.run('close-issues', () => closeReleasedIssuesSafely(newVersion, shouldCloseReleasedIssues));
+      return;
+    }
+
     await assertReleaseCommitLanded(newVersion, startHead, 'pushing');
     await assertBranchNotBehindOrigin({ branch: startHead.branch, newVersion, startSha: startHead.sha });
-    const tagCommitSha = await execFromRoot(['git', 'rev-parse', `refs/tags/${newVersion}^{}`], { isQuiet: true });
-    if (tagCommitSha !== releaseCommitSha) {
-      throw new Error(`Refusing to push ${newVersion}: its tag no longer names the verified release commit.`);
-    }
-    await execFromRoot(['git', 'push', 'origin', `refs/tags/${newVersion}:refs/tags/${newVersion}`], { isQuiet: true });
-    await publishGitHubRelease(newVersion, {
-      getReleaseAssetPaths: () => Promise.resolve(filePaths),
-      shouldCloseReleasedIssues: false,
-      shouldVerifyRelease: true
+    // What `gitPush(newVersion)` does, one step at a time, so a stop can say which of the two reached origin.
+    await progress.run('push-branch', async () => {
+      await execFromRoot(['git', 'push'], { isQuiet: true });
     });
-    await assertReleaseCommitLanded(newVersion, startHead, 'pushing');
-    await execFromRoot(['git', 'push', 'origin', `${releaseCommitSha}:refs/heads/${startHead.branch}`], { isQuiet: true });
-    await closeReleasedIssuesSafely(newVersion, shouldCloseReleasedIssues);
-    return;
-  }
-
-  await assertReleaseCommitLanded(newVersion, startHead, 'pushing');
-  await assertBranchNotBehindOrigin({ branch: startHead.branch, newVersion, startSha: startHead.sha });
-  await gitPush(newVersion);
-  await prepareGitHubRelease?.(newVersion);
-  await publishGitHubRelease(newVersion, { getReleaseAssetPaths, shouldCloseReleasedIssues });
+    await progress.run('push-tag', async () => {
+      await execFromRoot(['git', 'push', '--force', 'origin', `refs/tags/${newVersion}:refs/tags/${newVersion}`], { isQuiet: true });
+    });
+    await progress.run('publish-release', async () => {
+      await prepareGitHubRelease?.(newVersion);
+      await publishGitHubRelease(newVersion, { getReleaseAssetPaths, shouldCloseReleasedIssues: false });
+    });
+    await progress.run('close-issues', () => closeReleasedIssuesSafely(newVersion, shouldCloseReleasedIssues));
+  });
 }
 
 /**
@@ -1502,10 +1621,10 @@ async function composeChangelogNobodyReviews(
   const heading = `## ${newVersion}\n\n`;
   return changelog.replace(`${heading}${section}`, () => `${heading}${extractChangelogSection(content, newVersion)}`);
 }
+
 function describeBranch(branch: string): string {
   return branch ? `branch '${branch}'` : 'a detached HEAD';
 }
-
 function extractChangelogSection(changelogContent: string, version: string): string {
   const lines = changelogContent.split(/\r?\n/);
   const headingIndex = lines.indexOf(`## ${version}`);
@@ -1913,6 +2032,30 @@ async function reviewChangelog(newChangeLog: string, findings: ChangelogFinding[
       force: true,
       recursive: true
     });
+  }
+}
+
+/**
+ * Runs the steps of a release that reach origin. A failure is rethrown with the stop report appended, and Ctrl+C
+ * prints the report and exits, so either way the person running it learns what is on origin and how to resume.
+ *
+ * @param progress - Where the steps are recorded.
+ * @param action - Runs the steps.
+ * @returns A {@link Promise} that resolves when the steps are done.
+ */
+async function runReleaseSteps(progress: ReleaseProgress, action: () => Promise<void>): Promise<void> {
+  const guard = guardReleaseInterrupt({
+    onInterrupt(write) {
+      write(progress.describeStop(true));
+      return noopAsync();
+    }
+  });
+  try {
+    await action();
+  } catch (error) {
+    throw new Error(`${error instanceof Error ? error.message : String(error)}\n\n${progress.describeStop(false)}`, { cause: error });
+  } finally {
+    guard.stop();
   }
 }
 

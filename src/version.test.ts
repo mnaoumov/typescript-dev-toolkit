@@ -18,6 +18,11 @@ import type {
   FixMarkdownContentResult
 } from './linters/markdownlint-content.ts';
 import type {
+  GuardReleaseInterruptParams,
+  ReleaseInterruptGuard,
+  WorkingTreeChanges
+} from './release-interrupt.ts';
+import type {
   AssertBranchNotBehindOriginParams,
   AssertReleasePreflightParams
 } from './release-preflight.ts';
@@ -60,6 +65,7 @@ const {
   mockExecFromRoot,
   mockExistsSync,
   mockFixMarkdownContent,
+  mockGuardReleaseInterrupt,
   mockLintMarkdownContent,
   mockMkdtemp,
   mockNpmRun,
@@ -67,7 +73,9 @@ const {
   mockReadFile,
   mockReadForbiddenPatterns,
   mockReadPackageJson,
+  mockReadWorkingTreeChanges,
   mockResolvePathFromRootSafe,
+  mockRestoreWorkingTreeChanges,
   mockRm,
   mockSpellcheckContent,
   mockWriteFile
@@ -83,6 +91,7 @@ const {
   mockExecFromRoot: vi.fn(),
   mockExistsSync: vi.fn<(path: string) => boolean>(),
   mockFixMarkdownContent: vi.fn<(params: FixMarkdownContentParams) => Promise<FixMarkdownContentResult>>(),
+  mockGuardReleaseInterrupt: vi.fn<(params: GuardReleaseInterruptParams) => ReleaseInterruptGuard>(),
   mockLintMarkdownContent: vi.fn<() => Promise<string[]>>(),
   mockMkdtemp: vi.fn(),
   mockNpmRun: vi.fn(),
@@ -90,7 +99,9 @@ const {
   mockReadFile: vi.fn(),
   mockReadForbiddenPatterns: vi.fn<() => Promise<RegExp[]>>(),
   mockReadPackageJson: vi.fn(),
+  mockReadWorkingTreeChanges: vi.fn<() => Promise<WorkingTreeChanges>>(),
   mockResolvePathFromRootSafe: vi.fn<(params: ResolvePathFromRootSafeParams) => string>(),
+  mockRestoreWorkingTreeChanges: vi.fn<(before: WorkingTreeChanges) => Promise<string[]>>(),
   mockRm: vi.fn(),
   mockSpellcheckContent: vi.fn<() => Promise<string[]>>(),
   mockWriteFile: vi.fn()
@@ -164,6 +175,14 @@ vi.mock('./release-preflight.ts', () => ({
   assertReleasePreflight: mockAssertReleasePreflight
 }));
 
+// The interrupt guard registers a real SIGINT listener and reads git state of its own; it is tested in its own
+// module. Here each guard is recorded, so a case can play out a Ctrl+C by calling its `onInterrupt`.
+vi.mock('./release-interrupt.ts', () => ({
+  guardReleaseInterrupt: mockGuardReleaseInterrupt,
+  readWorkingTreeChanges: mockReadWorkingTreeChanges,
+  restoreWorkingTreeChanges: mockRestoreWorkingTreeChanges
+}));
+
 vi.mock('./package-lock-integrity.ts', () => ({
   assertPackageLockIntegrity: noopAsync
 }));
@@ -214,6 +233,9 @@ beforeEach(() => {
   mockReadForbiddenPatterns.mockResolvedValue([]);
   mockAssertReleasePreflight.mockResolvedValue(undefined);
   mockAssertBranchNotBehindOrigin.mockResolvedValue(undefined);
+  mockReadWorkingTreeChanges.mockResolvedValue({ changedPaths: [], untrackedPaths: [] });
+  mockRestoreWorkingTreeChanges.mockResolvedValue([]);
+  mockGuardReleaseInterrupt.mockImplementation(() => ({ stop: vi.fn() }));
 });
 
 const START_SHA = 'a'.repeat(40);
@@ -1627,6 +1649,7 @@ describe('parseVersionArguments', () => {
       shouldCloseReleasedIssues: true,
       shouldEditChangelog: true,
       shouldRelease: true,
+      shouldResume: false,
       shouldRunChecks: true,
       shouldVerifyCommit: true
     });
@@ -1641,7 +1664,8 @@ describe('parseVersionArguments', () => {
       '--no-checks',
       '--no-commit-verification',
       '--no-issue-closing',
-      '--no-release'
+      '--no-release',
+      '--resume'
     ]);
     expect(versionUpdateType).toBe('patch');
     expect(options).toEqual({
@@ -1650,6 +1674,7 @@ describe('parseVersionArguments', () => {
       shouldCloseReleasedIssues: false,
       shouldEditChangelog: false,
       shouldRelease: false,
+      shouldResume: true,
       shouldRunChecks: false,
       shouldVerifyCommit: false
     });
@@ -1689,7 +1714,8 @@ describe('VERSION_ARGUMENT_OPTIONS', () => {
       'no-checks',
       'no-commit-verification',
       'no-issue-closing',
-      'no-release'
+      'no-release',
+      'resume'
     ]);
   });
 });
@@ -1702,6 +1728,7 @@ describe('toUpdateVersionOptions', () => {
       shouldCloseReleasedIssues: true,
       shouldEditChangelog: true,
       shouldRelease: true,
+      shouldResume: false,
       shouldRunChecks: true,
       shouldVerifyCommit: true
     });
@@ -1715,13 +1742,15 @@ describe('toUpdateVersionOptions', () => {
       'no-checks': true,
       'no-commit-verification': true,
       'no-issue-closing': true,
-      'no-release': true
+      'no-release': true,
+      'resume': true
     })).toEqual({
       changelogFilePath: 'notes.md',
       shouldBuild: false,
       shouldCloseReleasedIssues: false,
       shouldEditChangelog: false,
       shouldRelease: false,
+      shouldResume: true,
       shouldRunChecks: false,
       shouldVerifyCommit: false
     });
@@ -2095,6 +2124,206 @@ describe('updateVersion', () => {
     setupFullMocks();
     await updateVersion('patch');
     expect(mockExecFromRoot).toHaveBeenCalledWith(`git tag -a 1.0.1 -m 1.0.1 --force ${RELEASE_SHA}`, { isQuiet: true });
+  });
+
+  describe('a stop after the tag', () => {
+    it('should rethrow a failed push with what is on origin and the command that resumes', async () => {
+      setupFullMocks();
+      const fullImplementation = mockExecFromRoot.getMockImplementation() as ExecImplementation;
+      mockExecFromRoot.mockImplementation((command: string | string[]) =>
+        Array.isArray(command) && command.join(' ').startsWith('git push --force origin refs/tags/')
+          ? Promise.reject(new Error('push refused'))
+          : fullImplementation(command)
+      );
+      const error = await updateVersion('patch').catch((error_: unknown) => error_);
+      expect(error).toBeInstanceOf(Error);
+      const { message } = error as Error;
+      expect(message).toContain('push refused\n\nThe release of 1.0.1 stopped while pushing the tag 1.0.1.');
+      expect(message).toContain('- The release commit is on origin\'s main.');
+      expect(message).toContain('- The tag 1.0.1 was not pushed.');
+      expect(message).toContain('- The GitHub release 1.0.1 is not published.');
+      expect(message).toContain('npm run version \'--\' 1.0.1 --resume');
+      expect(mockCloseReleasedIssues).not.toHaveBeenCalled();
+    });
+
+    it('should keep a non-Error failure readable', async () => {
+      setupFullMocks();
+      await expect(updateVersion('patch', {
+        // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors -- A hook may reject with anything; the report must stay readable.
+        prepareGitHubRelease: () => Promise.reject('gh is down')
+      })).rejects.toThrow(/^gh is down\n\nThe release of 1\.0\.1 stopped while publishing the GitHub release 1\.0\.1\./);
+    });
+
+    it('should print the stop report on Ctrl+C, naming the step in flight', async () => {
+      setupFullMocks();
+      const write = vi.fn<(text: string) => void>();
+      await updateVersion('patch', {
+        prepareGitHubRelease: async () => {
+          const pushGuardParams = mockGuardReleaseInterrupt.mock.calls[1]?.[0];
+          await pushGuardParams?.onInterrupt(write);
+        }
+      });
+      expect(write).toHaveBeenCalledOnce();
+      const report = write.mock.calls[0]?.[0] ?? '';
+      expect(report).toContain('The release of 1.0.1 was interrupted while publishing the GitHub release 1.0.1.');
+      expect(report).toContain('- The tag 1.0.1 is on origin.');
+      expect(report).toContain('- Publishing the GitHub release 1.0.1 was in flight: `gh release view 1.0.1` shows whether it exists.');
+      expect(report).toContain('- The issues the release carries are not closed yet.');
+    });
+
+    it('should stop every guard it starts', async () => {
+      setupFullMocks();
+      const stops: ReturnType<typeof vi.fn>[] = [];
+      mockGuardReleaseInterrupt.mockImplementation(() => {
+        const stop = vi.fn();
+        stops.push(stop);
+        return { stop };
+      });
+      await updateVersion('patch');
+      expect(stops).toHaveLength(2);
+      for (const stop of stops) {
+        expect(stop).toHaveBeenCalledOnce();
+      }
+    });
+
+    it('should start no publishing guard when the release stays local', async () => {
+      setupFullMocks();
+      await updateVersion('patch', { shouldRelease: false });
+      expect(mockGuardReleaseInterrupt).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe('Ctrl+C before the release commit', () => {
+    it.each([
+      { expected: 'restored 2 file(s) the release had edited (CHANGELOG.md, package.json). ', restored: ['CHANGELOG.md', 'package.json'] },
+      { expected: 'restored 0 file(s) the release had edited. ', restored: [] }
+    ])('should put the edited files back and say so: $restored', async ({ expected, restored }) => {
+      setupFullMocks();
+      const before = { changedPaths: ['notes.txt'], untrackedPaths: [] };
+      mockReadWorkingTreeChanges.mockResolvedValue(before);
+      mockRestoreWorkingTreeChanges.mockResolvedValue(restored);
+      await updateVersion('patch');
+      const editGuardParams = mockGuardReleaseInterrupt.mock.calls[0]?.[0];
+      const write = vi.fn<(text: string) => void>();
+      await editGuardParams?.onInterrupt(write);
+      expect(mockRestoreWorkingTreeChanges).toHaveBeenCalledWith(before);
+      expect(write).toHaveBeenCalledWith(`Interrupted before the release commit: ${expected}Nothing was committed or pushed; run the release again.`);
+    });
+
+    it('should read the tree after the changelog review and before the first edit', async () => {
+      setupFullMocks();
+      await updateVersion('patch');
+      expect(mockReadWorkingTreeChanges.mock.invocationCallOrder[0]).toBeLessThan(mockEditPackageJson.mock.invocationCallOrder[0] ?? 0);
+    });
+
+    it('should stop the guard when the commit fails', async () => {
+      setupFullMocks();
+      setIsTty(false);
+      const stop = vi.fn();
+      mockGuardReleaseInterrupt.mockImplementation(() => ({ stop }));
+      const fullImplementation = mockExecFromRoot.getMockImplementation() as ExecImplementation;
+      mockExecFromRoot.mockImplementation((command: string | string[]) => Array.isArray(command) && command[1] === 'commit' ? Promise.reject(new Error('hook failed')) : fullImplementation(command));
+      await expect(updateVersion('patch', { changelogFilePath: 'notes.md' })).rejects.toThrow('hook failed');
+      expect(stop).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe('--resume', () => {
+    const RESUME_CHANGELOG = '# CHANGELOG\n\n## 1.0.1\n\n- fix: repair the thing\n';
+
+    interface ResumeRepo {
+      readonly branch?: string;
+      readonly headSha?: string;
+      readonly releaseViewError?: string;
+      readonly tagSha?: string;
+    }
+
+    function setupResumeMocks(repo: ResumeRepo = {}): string[] {
+      const commands: string[] = [];
+      mockReadPackageJson.mockResolvedValue({ name: 'my-package', version: '1.0.1' });
+      mockReadFile.mockResolvedValue(RESUME_CHANGELOG);
+      mockExecFromRoot.mockImplementation((command: string | string[], options?: GenericObject) => {
+        const text = Array.isArray(command) ? command.join(' ') : command;
+        commands.push(text);
+        if (text.startsWith('git rev-parse --verify --quiet refs/tags/')) {
+          return Promise.resolve(repo.tagSha ?? RELEASE_SHA);
+        }
+        if (text === 'git rev-parse HEAD') {
+          return Promise.resolve(repo.headSha ?? RELEASE_SHA);
+        }
+        if (text === 'git branch --show-current') {
+          return Promise.resolve(repo.branch ?? 'main');
+        }
+        if (text.startsWith('git merge-base --is-ancestor')) {
+          return Promise.resolve(options?.['shouldIncludeDetails'] ? { exitCode: 1 } : '');
+        }
+        if (text.startsWith('gh release view')) {
+          return Promise.reject(new Error(repo.releaseViewError ?? 'release not found'));
+        }
+        if (text.startsWith('gh repo view')) {
+          return Promise.resolve('https://github.com/user/repo');
+        }
+        if (text.startsWith('git tag --sort')) {
+          return Promise.resolve('1.0.1\n1.0.0');
+        }
+        return Promise.resolve('');
+      });
+      return commands;
+    }
+
+    it('should push the branch and the tag, publish the release and close its issues', async () => {
+      const commands = setupResumeMocks();
+      await updateVersion('1.0.1', { getReleaseAssetPaths: () => Promise.resolve([]), shouldResume: true });
+      expect(commands).toContain(`git push origin ${RELEASE_SHA}:refs/heads/main`);
+      expect(commands).toContain('git push origin refs/tags/1.0.1:refs/tags/1.0.1');
+      expect(commands.some((command) => command.startsWith('gh release create 1.0.1'))).toBe(true);
+      expect(mockCloseReleasedIssues).toHaveBeenCalledWith({ newVersion: '1.0.1' });
+      expect(mockNpmRun).not.toHaveBeenCalled();
+      expect(mockEditPackageJson).not.toHaveBeenCalled();
+    });
+
+    it('should publish before the branch, and verify the release, with shouldPublishBeforePush', async () => {
+      const commands = setupResumeMocks();
+      const prepare = vi.fn(noopAsync);
+      await expect(updateVersion('1.0.1', {
+        getReleaseAssetPaths: () => Promise.resolve([]),
+        prepareGitHubRelease: prepare,
+        shouldPublishBeforePush: true,
+        shouldResume: true
+      })).rejects.toThrow('The release of 1.0.1 stopped while publishing the GitHub release 1.0.1.');
+      expect(prepare).toHaveBeenCalledWith('1.0.1');
+      expect(commands).toContain('git push origin refs/tags/1.0.1:refs/tags/1.0.1');
+      expect(commands).not.toContain(`git push origin ${RELEASE_SHA}:refs/heads/main`);
+      expect(commands.some((command) => command.startsWith('gh release create 1.0.1') && command.includes('--verify-tag'))).toBe(true);
+    });
+
+    it('should resume the version package.json names when none is given', async () => {
+      const commands = setupResumeMocks();
+      await updateVersion(undefined, { getReleaseAssetPaths: () => Promise.resolve([]), shouldCloseReleasedIssues: false, shouldResume: true });
+      expect(commands).toContain('git push origin refs/tags/1.0.1:refs/tags/1.0.1');
+      expect(mockCloseReleasedIssues).not.toHaveBeenCalled();
+    });
+
+    it('should resume an empty version when package.json has none, and refuse it', async () => {
+      setupResumeMocks();
+      mockReadPackageJson.mockResolvedValue({});
+      await expect(updateVersion(undefined, { shouldResume: true })).rejects.toThrow('not \'\'.');
+    });
+
+    it('should refuse a bump type instead of a version', async () => {
+      const commands = setupResumeMocks();
+      await expect(updateVersion('patch', { shouldResume: true })).rejects.toThrow(
+        '--resume continues the release of one version, so it takes that version (x.y.z[-suffix]), not \'patch\'.'
+      );
+      expect(commands).toEqual([]);
+    });
+
+    it('should refuse without a stop report when the release cannot be resumed from here', async () => {
+      setupResumeMocks({ tagSha: '' });
+      const error = await updateVersion('1.0.1', { shouldResume: true }).catch((error_: unknown) => error_);
+      expect((error as Error).message).toContain('there is no local tag 1.0.1');
+      expect((error as Error).message).not.toContain('--resume');
+    });
   });
 
   it('should refuse to tag, push or publish when the release commit did not land on the release branch', async () => {
