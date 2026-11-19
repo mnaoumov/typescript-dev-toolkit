@@ -68,6 +68,7 @@ import {
 import {
   guardReleaseInterrupt,
   readWorkingTreeChanges,
+  renderWorkingTreeDiff,
   restoreWorkingTreeChanges
 } from './release-interrupt.ts';
 import { assertReleaseNotesAreReadable } from './release-notes-quality.ts';
@@ -247,6 +248,17 @@ export interface UpdateVersionOptions {
   readonly shouldCloseReleasedIssues?: boolean;
 
   /**
+   * Whether to stop before anything reaches git. A dry run does every step a release does up to the release commit —
+   * the preflight, the gate, the changelog, the edits of the version files and of `CHANGELOG.md` — then prints the
+   * diff of those edits to standard output, restores the edited files and returns. Nothing is committed, tagged,
+   * pushed or published, and {@link prepareGitHubRelease} is not called. The remote half of the preflight still runs
+   * unless {@link shouldRelease} is `false`, so a dry run answers whether the release would be refused.
+   *
+   * @default `false`
+   */
+  readonly shouldDryRun?: boolean;
+
+  /**
    * Whether to open the generated changelog in the editor for an interactive review.
    *
    * Ignored when {@link changelogFilePath} is set. When it is neither set nor disabled, the release
@@ -381,6 +393,36 @@ interface ChangelogFinding {
    * The reported line, exactly as that script's own output would have carried it.
    */
   readonly text: string;
+}
+
+/**
+ * Parameters for {@link editReleaseFiles}.
+ */
+interface EditReleaseFilesParams {
+  /**
+   * The settled changelog to write.
+   */
+  readonly newChangeLog: string;
+
+  /**
+   * The version being released.
+   */
+  readonly newVersion: string;
+
+  /**
+   * Whether to print the diff and restore the files instead of committing them.
+   */
+  readonly shouldDryRun: boolean;
+
+  /**
+   * Whether the release commit runs the pre-commit hook.
+   */
+  readonly shouldVerifyCommit: boolean;
+
+  /**
+   * See {@link UpdateVersionOptions.updateVersionInExtraFiles}.
+   */
+  readonly updateVersionInExtraFiles: ((newVersion: string) => Promise<void>) | undefined;
 }
 
 /**
@@ -812,6 +854,7 @@ export async function readGitHeadState(): Promise<GitHeadState> {
 export const VERSION_ARGUMENT_OPTIONS = {
   'changelog-file': { type: 'string' },
   'changelog-style': { type: 'string' },
+  'dry-run': { type: 'boolean' },
   'no-build': { type: 'boolean' },
   'no-changelog-editing': { type: 'boolean' },
   'no-checks': { type: 'boolean' },
@@ -904,6 +947,7 @@ export function isPreRelease(version: string): boolean {
  * - `--changelog-file=<path>` — use this file's contents as the new version's changelog section instead of
  *   the commit-derived bullets, and skip the interactive review entirely.
  * - `--changelog-style=<grouped|commits>` — how the commit-derived section is laid out (default `grouped`).
+ * - `--dry-run` — do everything up to the release commit, print the diff of the edited files, restore them and stop.
  * - `--no-build` — skip the build step (only safe when the build output already matches the current code).
  * - `--no-changelog-editing` — generate the changelog without opening it for manual review.
  * - `--no-checks` — skip the clean-repo check, format, spellcheck, lint, over-exposure analysis, and tests (the build still runs).
@@ -1063,6 +1107,7 @@ export function toUpdateVersionOptions(values: VersionArgumentValues): UpdateVer
     changelogStyle: toChangelogStyle(values['changelog-style']) ?? undefined,
     shouldBuild: !(values['no-build'] ?? false),
     shouldCloseReleasedIssues: !(values['no-issue-closing'] ?? false),
+    shouldDryRun: values['dry-run'] ?? false,
     shouldEditChangelog: !(values['no-changelog-editing'] ?? false),
     shouldRelease: !(values['no-release'] ?? false),
     shouldResume: values.resume ?? false,
@@ -1115,7 +1160,8 @@ export async function updateChangelog(newVersion: string, options: UpdateChangel
  *
  * From the first file edit to the release commit, Ctrl+C restores the edited files. A failure or Ctrl+C after the
  * tag reports what is on origin and the command that continues; with {@link UpdateVersionOptions.shouldResume}
- * this function continues a stopped release instead (see {@link resumeRelease}).
+ * this function continues a stopped release instead (see {@link resumeRelease}). With
+ * {@link UpdateVersionOptions.shouldDryRun} it stops after step 9, prints the diff and restores the edited files.
  *
  * @param versionUpdateType - The type of version update to perform (major, minor, patch, premajor, preminor, prepatch, prerelease, or x.y.z[-suffix]).
  * @param options - The {@link UpdateVersionOptions} controlling the release behavior.
@@ -1138,6 +1184,7 @@ export async function updateVersion(versionUpdateType?: string, options: UpdateV
   } = options;
 
   if (options.shouldResume) {
+    assertNotDryRun(options.shouldDryRun === true);
     const packageJson = await readPackageJson();
     await resumeRelease(versionUpdateType ?? packageJson.version ?? '', options);
     return;
@@ -1202,27 +1249,19 @@ export async function updateVersion(versionUpdateType?: string, options: UpdateV
     shouldEditChangelog
   });
 
-  // From the first edit to the commit, Ctrl+C puts the edited files back, so the tree is clean and the release can
-  // simply be run again.
-  const changesBeforeEdit = await readWorkingTreeChanges();
-  const editGuard = guardReleaseInterrupt({
-    async onInterrupt(write) {
-      const restoredPaths = await restoreWorkingTreeChanges(changesBeforeEdit);
-      const restoredList = restoredPaths.length > 0 ? ` (${restoredPaths.join(', ')})` : '';
-      write(
-        `Interrupted before the release commit: restored ${String(restoredPaths.length)} file(s) the release had edited${restoredList}. `
-          + 'Nothing was committed or pushed; run the release again.'
-      );
-    }
+  await editReleaseFiles({
+    newChangeLog,
+    newVersion,
+    shouldDryRun: options.shouldDryRun === true,
+    shouldVerifyCommit,
+    updateVersionInExtraFiles
   });
-  try {
-    await updateVersionInFiles(newVersion);
-    await updateVersionInExtraFiles?.(newVersion);
 
-    await writeChangelog(newChangeLog);
-    await addUpdatedFilesToGit(newVersion, { shouldVerifyCommit });
-  } finally {
-    editGuard.stop();
+  // Read from `options` rather than destructured with a default like the other flags: the default is one more branch,
+  // which would put this function over the complexity limit.
+  if (options.shouldDryRun) {
+    writeDryRunSummary(newVersion, shouldRelease ? startHead.branch : null);
+    return;
   }
   // The tag names the verified commit rather than whatever `HEAD` is by the time `git tag` runs.
   const releaseCommitSha = await assertReleaseCommitLanded(newVersion, startHead, 'tagging');
@@ -1459,6 +1498,12 @@ async function assertNonInteractiveChangelogIsPublishable(versionUpdateType: str
   assertChangelogSectionIsReadable(changelog, newVersion);
 }
 
+function assertNotDryRun(shouldDryRun: boolean): void {
+  if (shouldDryRun) {
+    throw new Error('--dry-run cannot be combined with --resume: a resumed release only pushes and publishes, which a dry run never does.');
+  }
+}
+
 /**
  * Refuses a release whose bump is LOWER than the commits it is about to publish force it to be.
  *
@@ -1625,6 +1670,46 @@ async function composeChangelogNobodyReviews(
 function describeBranch(branch: string): string {
   return branch ? `branch '${branch}'` : 'a detached HEAD';
 }
+
+/**
+ * Edits the version files and `CHANGELOG.md`, then makes the release commit, or, in a dry run, prints the diff of the
+ * edits and restores them. From the first edit to the commit, Ctrl+C puts the edited files back, so the tree is clean
+ * and the release can simply be run again.
+ *
+ * @param params - The {@link EditReleaseFilesParams}.
+ * @returns A {@link Promise} that resolves when the commit is made or the dry run's files are restored.
+ */
+async function editReleaseFiles(params: EditReleaseFilesParams): Promise<void> {
+  const { newChangeLog, newVersion, shouldDryRun, shouldVerifyCommit, updateVersionInExtraFiles } = params;
+  const changesBeforeEdit = await readWorkingTreeChanges();
+  const editGuard = guardReleaseInterrupt({
+    async onInterrupt(write) {
+      const restoredPaths = await restoreWorkingTreeChanges(changesBeforeEdit);
+      const restoredList = restoredPaths.length > 0 ? ` (${restoredPaths.join(', ')})` : '';
+      write(
+        `Interrupted before the release commit: restored ${String(restoredPaths.length)} file(s) the release had edited${restoredList}. `
+          + 'Nothing was committed or pushed; run the release again.'
+      );
+    }
+  });
+  try {
+    await updateVersionInFiles(newVersion);
+    await updateVersionInExtraFiles?.(newVersion);
+
+    await writeChangelog(newChangeLog);
+    if (shouldDryRun) {
+      process.stdout.write(`\n${await renderWorkingTreeDiff(changesBeforeEdit)}\n`);
+    } else {
+      await addUpdatedFilesToGit(newVersion, { shouldVerifyCommit });
+    }
+  } finally {
+    editGuard.stop();
+    if (shouldDryRun) {
+      await restoreWorkingTreeChanges(changesBeforeEdit);
+    }
+  }
+}
+
 function extractChangelogSection(changelogContent: string, version: string): string {
   const lines = changelogContent.split(/\r?\n/);
   const headingIndex = lines.indexOf(`## ${version}`);
@@ -1637,7 +1722,6 @@ function extractChangelogSection(changelogContent: string, version: string): str
   const bodyEndIndex = nextHeadingOffset === -1 ? lines.length : bodyStartIndex + nextHeadingOffset;
   return lines.slice(bodyStartIndex, bodyEndIndex).join('\n').trim();
 }
-
 /**
  * Derives the lowest bump a commit range may be published under, from the Conventional-Commits markers the
  * commits in it carry.
@@ -2324,4 +2408,12 @@ async function verifyGitHubRelease(newVersion: string, filePaths: readonly strin
  */
 async function writeChangelog(newChangeLog: string): Promise<void> {
   await writeFile(resolvePathFromRootSafe({ path: RepoPaths.ChangelogMd }), newChangeLog, 'utf-8');
+}
+
+function writeDryRunSummary(newVersion: string, pushedBranch: null | string): void {
+  const publishing = pushedBranch === null ? '' : `, pushes ${pushedBranch} and the tag, and publishes the GitHub release`;
+  process.stdout.write(
+    `Dry run of ${newVersion}: nothing was committed, and the edited files are restored. `
+      + `Without --dry-run the release commits 'chore: release ${newVersion}', tags ${newVersion}${publishing}.\n`
+  );
 }

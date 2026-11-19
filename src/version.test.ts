@@ -74,6 +74,7 @@ const {
   mockReadForbiddenPatterns,
   mockReadPackageJson,
   mockReadWorkingTreeChanges,
+  mockRenderWorkingTreeDiff,
   mockResolvePathFromRootSafe,
   mockRestoreWorkingTreeChanges,
   mockRm,
@@ -100,6 +101,7 @@ const {
   mockReadForbiddenPatterns: vi.fn<() => Promise<RegExp[]>>(),
   mockReadPackageJson: vi.fn(),
   mockReadWorkingTreeChanges: vi.fn<() => Promise<WorkingTreeChanges>>(),
+  mockRenderWorkingTreeDiff: vi.fn<(before: WorkingTreeChanges) => Promise<string>>(),
   mockResolvePathFromRootSafe: vi.fn<(params: ResolvePathFromRootSafeParams) => string>(),
   mockRestoreWorkingTreeChanges: vi.fn<(before: WorkingTreeChanges) => Promise<string[]>>(),
   mockRm: vi.fn(),
@@ -180,6 +182,7 @@ vi.mock('./release-preflight.ts', () => ({
 vi.mock('./release-interrupt.ts', () => ({
   guardReleaseInterrupt: mockGuardReleaseInterrupt,
   readWorkingTreeChanges: mockReadWorkingTreeChanges,
+  renderWorkingTreeDiff: mockRenderWorkingTreeDiff,
   restoreWorkingTreeChanges: mockRestoreWorkingTreeChanges
 }));
 
@@ -1647,6 +1650,7 @@ describe('parseVersionArguments', () => {
     expect(options).toEqual({
       shouldBuild: true,
       shouldCloseReleasedIssues: true,
+      shouldDryRun: false,
       shouldEditChangelog: true,
       shouldRelease: true,
       shouldResume: false,
@@ -1659,6 +1663,7 @@ describe('parseVersionArguments', () => {
     const { options, versionUpdateType } = parseVersionArguments([
       'patch',
       '--changelog-file=notes.md',
+      '--dry-run',
       '--no-build',
       '--no-changelog-editing',
       '--no-checks',
@@ -1672,6 +1677,7 @@ describe('parseVersionArguments', () => {
       changelogFilePath: 'notes.md',
       shouldBuild: false,
       shouldCloseReleasedIssues: false,
+      shouldDryRun: true,
       shouldEditChangelog: false,
       shouldRelease: false,
       shouldResume: true,
@@ -1709,6 +1715,7 @@ describe('VERSION_ARGUMENT_OPTIONS', () => {
     expect(Object.keys(VERSION_ARGUMENT_OPTIONS).sort()).toEqual([
       'changelog-file',
       'changelog-style',
+      'dry-run',
       'no-build',
       'no-changelog-editing',
       'no-checks',
@@ -1726,6 +1733,7 @@ describe('toUpdateVersionOptions', () => {
       changelogFilePath: undefined,
       shouldBuild: true,
       shouldCloseReleasedIssues: true,
+      shouldDryRun: false,
       shouldEditChangelog: true,
       shouldRelease: true,
       shouldResume: false,
@@ -1737,6 +1745,7 @@ describe('toUpdateVersionOptions', () => {
   it('should map each flag onto its option', () => {
     expect(toUpdateVersionOptions({
       'changelog-file': 'notes.md',
+      'dry-run': true,
       'no-build': true,
       'no-changelog-editing': true,
       'no-checks': true,
@@ -1748,6 +1757,7 @@ describe('toUpdateVersionOptions', () => {
       changelogFilePath: 'notes.md',
       shouldBuild: false,
       shouldCloseReleasedIssues: false,
+      shouldDryRun: true,
       shouldEditChangelog: false,
       shouldRelease: false,
       shouldResume: true,
@@ -2225,6 +2235,78 @@ describe('updateVersion', () => {
       mockExecFromRoot.mockImplementation((command: string | string[]) => Array.isArray(command) && command[1] === 'commit' ? Promise.reject(new Error('hook failed')) : fullImplementation(command));
       await expect(updateVersion('patch', { changelogFilePath: 'notes.md' })).rejects.toThrow('hook failed');
       expect(stop).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe('--dry-run', () => {
+    function commandsRun(): string[] {
+      return mockExecFromRoot.mock.calls.map(([command]) => (Array.isArray(command) ? command.join(' ') : String(command)));
+    }
+
+    function captureStdout(): string[] {
+      const chunks: string[] = [];
+      vi.spyOn(process.stdout, 'write').mockImplementation((chunk: unknown) => {
+        chunks.push(String(chunk));
+        return true;
+      });
+      return chunks;
+    }
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('should edit the files, print their diff, restore them, and reach neither git nor GitHub', async () => {
+      setupFullMocks();
+      const chunks = captureStdout();
+      const before = { changedPaths: [], untrackedPaths: ['notes.txt'] };
+      mockReadWorkingTreeChanges.mockResolvedValue(before);
+      mockRenderWorkingTreeDiff.mockResolvedValue('diff --git a/package.json b/package.json');
+      const prepareRelease = vi.fn().mockResolvedValue(undefined);
+      await updateVersion('patch', { prepareGitHubRelease: prepareRelease, shouldDryRun: true });
+      expect(mockNpmRun).toHaveBeenCalledWith('build');
+      expect(mockEditPackageJson).toHaveBeenCalled();
+      expect(mockRenderWorkingTreeDiff).toHaveBeenCalledWith(before);
+      expect(mockRestoreWorkingTreeChanges).toHaveBeenCalledWith(before);
+      expect(mockRenderWorkingTreeDiff.mock.invocationCallOrder[0]).toBeLessThan(mockRestoreWorkingTreeChanges.mock.invocationCallOrder[0] ?? 0);
+      expect(prepareRelease).not.toHaveBeenCalled();
+      const commands = commandsRun();
+      expect(commands.some((command) => /^git (?:add|commit|tag|push)\b/.test(command))).toBe(false);
+      expect(commands.some((command) => command.startsWith('gh release'))).toBe(false);
+      expect(chunks.join('')).toBe(
+        '\ndiff --git a/package.json b/package.json\n'
+          + 'Dry run of 1.0.1: nothing was committed, and the edited files are restored. '
+          + 'Without --dry-run the release commits \'chore: release 1.0.1\', tags 1.0.1, pushes main and the tag, and publishes the GitHub release.\n'
+      );
+    });
+
+    it('should name only the local steps with --no-release', async () => {
+      setupFullMocks();
+      const chunks = captureStdout();
+      await updateVersion('patch', { shouldDryRun: true, shouldRelease: false });
+      expect(mockAssertReleasePreflight).toHaveBeenCalledWith({ newVersion: '1.0.1', shouldCheckRemote: false });
+      expect(chunks.at(-1)).toBe('Dry run of 1.0.1: nothing was committed, and the edited files are restored. Without --dry-run the release commits \'chore: release 1.0.1\', tags 1.0.1.\n');
+    });
+
+    it('should still check the remote for a release that pushes', async () => {
+      setupFullMocks();
+      captureStdout();
+      await updateVersion('patch', { shouldDryRun: true });
+      expect(mockAssertReleasePreflight).toHaveBeenCalledWith({ newVersion: '1.0.1', shouldCheckRemote: true });
+    });
+
+    it('should restore the edited files when an edit fails', async () => {
+      setupFullMocks();
+      captureStdout();
+      mockEditPackageLockJson.mockRejectedValue(new Error('lockfile is broken'));
+      await expect(updateVersion('patch', { shouldDryRun: true })).rejects.toThrow('lockfile is broken');
+      expect(mockRestoreWorkingTreeChanges).toHaveBeenCalledOnce();
+      expect(mockRenderWorkingTreeDiff).not.toHaveBeenCalled();
+    });
+
+    it('should refuse to be combined with --resume', async () => {
+      await expect(updateVersion('1.0.1', { shouldDryRun: true, shouldResume: true })).rejects.toThrow('--dry-run cannot be combined with --resume');
+      expect(mockExecFromRoot).not.toHaveBeenCalled();
     });
   });
 

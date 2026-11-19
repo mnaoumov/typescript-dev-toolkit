@@ -2,6 +2,7 @@ import {
   noop,
   noopAsync
 } from '@mnaoumov/typescript-lib/function';
+import dedent from 'dedent';
 import process from 'node:process';
 import {
   afterEach,
@@ -20,11 +21,13 @@ import {
   guardReleaseInterrupt,
   INTERRUPTED_EXIT_CODE,
   readWorkingTreeChanges,
+  renderWorkingTreeDiff,
   restoreWorkingTreeChanges
 } from './release-interrupt.ts';
 
-const { mockExecFromRoot, mockRm } = vi.hoisted(() => ({
+const { mockExecFromRoot, mockReadFile, mockRm } = vi.hoisted(() => ({
   mockExecFromRoot: vi.fn<(command: string | string[]) => Promise<string>>(),
+  mockReadFile: vi.fn<(path: string, encoding: string) => Promise<string>>(),
   mockRm: vi.fn<(path: string, options: object) => Promise<void>>()
 }));
 
@@ -35,6 +38,7 @@ vi.mock('./root.ts', () => ({
 
 vi.mock('node:fs/promises', async (importOriginal) => ({
   ...await importOriginal<typeof import('node:fs/promises')>(),
+  readFile: mockReadFile,
   rm: mockRm
 }));
 
@@ -183,5 +187,44 @@ describe('restoreWorkingTreeChanges', () => {
     await expect(restoreWorkingTreeChanges({ changedPaths: ['own-edit.ts'], untrackedPaths: [] })).resolves.toEqual([]);
     expect(mockExecFromRoot.mock.calls.some(([command]) => Array.isArray(command) && command[1] === 'restore')).toBe(false);
     expect(mockRm).not.toHaveBeenCalled();
+  });
+});
+
+describe('renderWorkingTreeDiff', () => {
+  function playTree(changed: string, untracked: string): void {
+    mockExecFromRoot.mockImplementation((command) => {
+      if (Array.isArray(command) && command[1] === 'diff') {
+        return Promise.resolve(changed);
+      }
+      if (Array.isArray(command) && command[1] === 'ls-files') {
+        return Promise.resolve(untracked);
+      }
+      return Promise.resolve(Array.isArray(command) && command[2] === 'diff' ? 'diff --git a/package.json b/package.json\n-1.0.0\n+1.0.1' : '');
+    });
+  }
+
+  it('should diff only what changed since, and show only what appeared since whole', async () => {
+    playTree('package.json\0own-edit.ts', 'own-notes.txt\0versions.json\0CHANGELOG.md');
+    mockReadFile.mockImplementation((path) => Promise.resolve(path === '/root/versions.json' ? '{\r\n  "1.0.1": "1.0.0"\r\n}\r\n' : '# CHANGELOG\n'));
+    const diff = await renderWorkingTreeDiff({ changedPaths: ['own-edit.ts'], untrackedPaths: ['own-notes.txt'] });
+    expect(diff).toBe(dedent`
+      diff --git a/package.json b/package.json
+      -1.0.0
+      +1.0.1
+      new file CHANGELOG.md
+      +# CHANGELOG
+      new file versions.json
+      +{
+      +  "1.0.1": "1.0.0"
+      +}
+    `);
+    expect(mockExecFromRoot).toHaveBeenCalledWith(['git', '--no-optional-locks', 'diff', '--no-color', 'HEAD', '--', 'package.json'], { isQuiet: true });
+    expect(mockReadFile).toHaveBeenCalledTimes(2);
+  });
+
+  it('should be empty and run no diff when nothing changed since', async () => {
+    playTree('own-edit.ts', '');
+    await expect(renderWorkingTreeDiff({ changedPaths: ['own-edit.ts'], untrackedPaths: [] })).resolves.toBe('');
+    expect(mockExecFromRoot.mock.calls.some(([command]) => Array.isArray(command) && command[2] === 'diff')).toBe(false);
   });
 });
