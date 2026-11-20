@@ -1664,6 +1664,7 @@ describe('parseVersionArguments', () => {
     expect(versionUpdateType).toBe('patch');
     expect(options).toEqual({
       shouldBuild: true,
+      shouldCheckToolkits: true,
       shouldCloseReleasedIssues: true,
       shouldDryRun: false,
       shouldEditChangelog: true,
@@ -1685,12 +1686,14 @@ describe('parseVersionArguments', () => {
       '--no-commit-verification',
       '--no-issue-closing',
       '--no-release',
+      '--no-toolkit-check',
       '--resume'
     ]);
     expect(versionUpdateType).toBe('patch');
     expect(options).toEqual({
       changelogFilePath: 'notes.md',
       shouldBuild: false,
+      shouldCheckToolkits: false,
       shouldCloseReleasedIssues: false,
       shouldDryRun: true,
       shouldEditChangelog: false,
@@ -1737,6 +1740,7 @@ describe('VERSION_ARGUMENT_OPTIONS', () => {
       'no-commit-verification',
       'no-issue-closing',
       'no-release',
+      'no-toolkit-check',
       'resume'
     ]);
   });
@@ -1747,6 +1751,7 @@ describe('toUpdateVersionOptions', () => {
     expect(toUpdateVersionOptions({})).toEqual({
       changelogFilePath: undefined,
       shouldBuild: true,
+      shouldCheckToolkits: true,
       shouldCloseReleasedIssues: true,
       shouldDryRun: false,
       shouldEditChangelog: true,
@@ -1767,10 +1772,12 @@ describe('toUpdateVersionOptions', () => {
       'no-commit-verification': true,
       'no-issue-closing': true,
       'no-release': true,
+      'no-toolkit-check': true,
       'resume': true
     })).toEqual({
       changelogFilePath: 'notes.md',
       shouldBuild: false,
+      shouldCheckToolkits: false,
       shouldCloseReleasedIssues: false,
       shouldDryRun: true,
       shouldEditChangelog: false,
@@ -1856,15 +1863,21 @@ describe('updateVersion', () => {
     it('should run before the gate and check the remote for a release that pushes', async () => {
       setupFullMocks();
       await updateVersion('patch');
-      expect(mockAssertReleasePreflight).toHaveBeenCalledWith({ newVersion: '1.0.1', shouldCheckRemote: true });
+      expect(mockAssertReleasePreflight).toHaveBeenCalledWith({ newVersion: '1.0.1', shouldCheckRemote: true, shouldCheckToolkits: undefined });
       expect(mockAssertReleasePreflight.mock.invocationCallOrder[0]).toBeLessThan(mockNpmRun.mock.invocationCallOrder[0] ?? 0);
     });
 
     it('should check only the local tag with --no-release', async () => {
       setupFullMocks();
       await updateVersion('patch', { shouldRelease: false });
-      expect(mockAssertReleasePreflight).toHaveBeenCalledWith({ newVersion: '1.0.1', shouldCheckRemote: false });
+      expect(mockAssertReleasePreflight).toHaveBeenCalledWith({ newVersion: '1.0.1', shouldCheckRemote: false, shouldCheckToolkits: undefined });
       expect(mockAssertBranchNotBehindOrigin).not.toHaveBeenCalled();
+    });
+
+    it('should pass --no-toolkit-check on to the preflight', async () => {
+      setupFullMocks();
+      await updateVersion('patch', { shouldCheckToolkits: false });
+      expect(mockAssertReleasePreflight).toHaveBeenCalledWith({ newVersion: '1.0.1', shouldCheckRemote: true, shouldCheckToolkits: false });
     });
 
     it('should stop before the gate when the preflight refuses, even with --no-checks', async () => {
@@ -2299,7 +2312,7 @@ describe('updateVersion', () => {
       setupFullMocks();
       const chunks = captureStdout();
       await updateVersion('patch', { shouldDryRun: true, shouldRelease: false });
-      expect(mockAssertReleasePreflight).toHaveBeenCalledWith({ newVersion: '1.0.1', shouldCheckRemote: false });
+      expect(mockAssertReleasePreflight).toHaveBeenCalledWith({ newVersion: '1.0.1', shouldCheckRemote: false, shouldCheckToolkits: undefined });
       expect(chunks.at(-1)).toBe('Dry run of 1.0.1: nothing was committed, and the edited files are restored. Without --dry-run the release commits \'chore: release 1.0.1\', tags 1.0.1.\n');
     });
 
@@ -2307,7 +2320,7 @@ describe('updateVersion', () => {
       setupFullMocks();
       captureStdout();
       await updateVersion('patch', { shouldDryRun: true });
-      expect(mockAssertReleasePreflight).toHaveBeenCalledWith({ newVersion: '1.0.1', shouldCheckRemote: true });
+      expect(mockAssertReleasePreflight).toHaveBeenCalledWith({ newVersion: '1.0.1', shouldCheckRemote: true, shouldCheckToolkits: undefined });
     });
 
     it('should restore the edited files when an edit fails', async () => {

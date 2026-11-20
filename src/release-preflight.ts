@@ -13,15 +13,29 @@
  * - That branch is neither behind `origin` (the push would be refused) nor ahead of it (the release would tag commits
  *   no CI run has seen).
  * - The version's tag exists neither locally nor on `origin`.
+ * - Every `@mnaoumov/*-toolkit` package the project declares is installed at the latest published version, so the
+ *   release is not built, linted and gated with tooling the registry has already replaced. A registry that cannot be
+ *   reached is reported as such, never taken as a pass; `shouldCheckToolkits: false` (`--no-toolkit-check`) skips it.
  *
  * All problems are collected and reported together, each with its fix, so one run says everything that is wrong.
  *
  * The checks were re-implemented after the release preflight of `obsidian-plugin-dev-kit`, which ran the same set.
  */
 
-import { errorToString } from '@mnaoumov/typescript-lib/error';
+import type { PackageJson } from 'type-fest';
 
-import { execFromRoot } from './root.ts';
+import { errorToString } from '@mnaoumov/typescript-lib/error';
+import {
+  lt,
+  valid
+} from 'semver';
+
+import { readJson } from './json.ts';
+import { readPackageJson } from './npm.ts';
+import {
+  execFromRoot,
+  resolvePathFromRootSafe
+} from './root.ts';
 
 /**
  * Params for {@link assertBranchNotBehindOrigin}.
@@ -53,10 +67,18 @@ export interface AssertReleasePreflightParams {
   readonly newVersion: string;
 
   /**
-   * Whether the release will push and publish. Without it only the local tag is checked, because nothing leaves the
-   * machine.
+   * Whether the release will push and publish. Without it only the local tag and the toolkits are checked, because
+   * nothing leaves the machine.
    */
   readonly shouldCheckRemote: boolean;
+
+  /**
+   * Whether to compare every `@mnaoumov/*-toolkit` package the project declares with the latest published version.
+   * Turn it off only for an offline hotfix: the release may then ship on an outdated toolkit.
+   *
+   * @default `true`
+   */
+  readonly shouldCheckToolkits?: boolean | undefined;
 }
 
 /**
@@ -90,6 +112,7 @@ interface GhRepoView {
 }
 
 const PERMISSIONS_THAT_CAN_RELEASE = new Set(['ADMIN', 'MAINTAIN', 'WRITE']);
+const TOOLKIT_PACKAGE_NAME_REG_EXP = /^@mnaoumov\/[^/]+-toolkit$/;
 const GITHUB_REMOTE_URL_REG_EXP = /^(?:https:\/\/(?:[^@/]+@)?github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)(?<Slug>[^/]+\/[^/]+?)(?:\.git)?\/?$/;
 
 /**
@@ -140,35 +163,14 @@ export async function assertReleasePreflight(params: AssertReleasePreflightParam
  * @returns A {@link Promise} that resolves to every problem found, in the order they are reported.
  */
 export async function getReleasePreflightProblems(params: GetReleasePreflightProblemsParams): Promise<ReleasePreflightProblem[]> {
-  const { newVersion, shouldCheckRemote } = params;
-  const problems: ReleasePreflightProblem[] = [];
-
-  const localTag = await execFromRoot(['git', 'rev-parse', '--verify', '--quiet', `refs/tags/${newVersion}`], {
-    isQuiet: true,
-    shouldIgnoreExitCode: true
-  });
-  if (localTag) {
-    problems.push({
-      fix: `if it is left over from an abandoned attempt, delete it with \`git tag -d ${newVersion}\`; otherwise pick a version above the latest tag.`,
-      problem: `The tag ${newVersion} already exists locally.`
-    });
+  const { shouldCheckToolkits = true } = params;
+  const problems = await getGitPreflightProblems(params);
+  if (shouldCheckToolkits) {
+    await addToolkitProblems(problems);
+  } else {
+    console.warn('--no-toolkit-check: the installed @mnaoumov toolkits were not compared with the npm registry, so this release may ship on an outdated toolkit.');
   }
 
-  if (!shouldCheckRemote) {
-    return problems;
-  }
-
-  const originSlug = await readOriginSlug(problems);
-  if (originSlug === null) {
-    return problems;
-  }
-
-  const defaultBranch = await readGitHubRepo(originSlug, problems);
-  if (defaultBranch !== null) {
-    await addBranchProblems(defaultBranch, problems);
-  }
-
-  await addRemoteTagProblems(newVersion, problems);
   return problems;
 }
 
@@ -239,8 +241,90 @@ async function addRemoteTagProblems(newVersion: string, problems: ReleasePreflig
   }
 }
 
+async function addToolkitProblems(problems: ReleasePreflightProblem[]): Promise<void> {
+  const packageJson = await readPackageJson();
+  const declaredNames = new Set([
+    ...Object.keys(packageJson.dependencies ?? {}),
+    ...Object.keys(packageJson.devDependencies ?? {}),
+    ...Object.keys(packageJson.optionalDependencies ?? {}),
+    ...Object.keys(packageJson.peerDependencies ?? {})
+  ]);
+  // The toolkit's own repository builds itself from its sources, so it has no installed copy of itself to be behind.
+  const toolkitNames = [...declaredNames].filter((name) => TOOLKIT_PACKAGE_NAME_REG_EXP.test(name) && name !== packageJson.name).sort();
+  for (const name of toolkitNames) {
+    const problem = await getToolkitProblem(name);
+    if (problem) {
+      problems.push(problem);
+    }
+  }
+}
+
 async function fetchBranch(branch: string): Promise<void> {
   await execFromRoot(['git', 'fetch', '--no-tags', 'origin', `+refs/heads/${branch}:${toRemoteTrackingRef(branch)}`], { isQuiet: true });
+}
+
+async function getGitPreflightProblems(params: GetReleasePreflightProblemsParams): Promise<ReleasePreflightProblem[]> {
+  const { newVersion, shouldCheckRemote } = params;
+  const problems: ReleasePreflightProblem[] = [];
+
+  const localTag = await execFromRoot(['git', 'rev-parse', '--verify', '--quiet', `refs/tags/${newVersion}`], {
+    isQuiet: true,
+    shouldIgnoreExitCode: true
+  });
+  if (localTag) {
+    problems.push({
+      fix: `if it is left over from an abandoned attempt, delete it with \`git tag -d ${newVersion}\`; otherwise pick a version above the latest tag.`,
+      problem: `The tag ${newVersion} already exists locally.`
+    });
+  }
+
+  if (!shouldCheckRemote) {
+    return problems;
+  }
+
+  const originSlug = await readOriginSlug(problems);
+  if (originSlug === null) {
+    return problems;
+  }
+
+  const defaultBranch = await readGitHubRepo(originSlug, problems);
+  if (defaultBranch !== null) {
+    await addBranchProblems(defaultBranch, problems);
+  }
+
+  await addRemoteTagProblems(newVersion, problems);
+  return problems;
+}
+
+async function getToolkitProblem(name: string): Promise<null | ReleasePreflightProblem> {
+  const installedVersion = await readInstalledVersion(name);
+  if (installedVersion === null) {
+    return {
+      fix: 'run `npm install`, then release again.',
+      problem: `${name} is declared but not installed, so the release would run without the tooling it declares.`
+    };
+  }
+
+  let latestVersion: string;
+  try {
+    latestVersion = await execFromRoot(['npm', 'view', name, 'version'], { isQuiet: true });
+  } catch (error) {
+    return toUncheckedToolkitProblem(name, errorToString(error));
+  }
+
+  if (valid(latestVersion) === null) {
+    return toUncheckedToolkitProblem(name, `the registry answered '${latestVersion}', which is not a version.`);
+  }
+
+  if (!lt(installedVersion, latestVersion)) {
+    return null;
+  }
+
+  return {
+    fix: `update it with \`npm install ${name}@${latestVersion}\` (or the project's dependency update), commit and push the update, `
+      + 'then release again.',
+    problem: `${name} ${installedVersion} is installed, but ${latestVersion} is published, so the release would be built and gated with an outdated toolkit.`
+  };
 }
 
 async function readGitHubRepo(originSlug: string, problems: ReleasePreflightProblem[]): Promise<null | string> {
@@ -284,6 +368,15 @@ async function readGitHubRepo(originSlug: string, problems: ReleasePreflightProb
   return defaultBranch;
 }
 
+async function readInstalledVersion(name: string): Promise<null | string> {
+  try {
+    const packageJson = await readJson<PackageJson>(resolvePathFromRootSafe({ path: `node_modules/${name}/package.json` }));
+    return valid(packageJson.version ?? '');
+  } catch {
+    return null;
+  }
+}
+
 async function readOriginSlug(problems: ReleasePreflightProblem[]): Promise<null | string> {
   const originUrl = await execFromRoot(['git', 'config', '--get', 'remote.origin.url'], { isQuiet: true, shouldIgnoreExitCode: true });
   if (!originUrl) {
@@ -307,4 +400,12 @@ async function readOriginSlug(problems: ReleasePreflightProblem[]): Promise<null
 
 function toRemoteTrackingRef(branch: string): string {
   return `refs/remotes/origin/${branch}`;
+}
+
+function toUncheckedToolkitProblem(name: string, reason: string): ReleasePreflightProblem {
+  return {
+    fix: 'check the network and your access to the npm registry, then release again. For an offline hotfix only, pass `--no-toolkit-check`, '
+      + 'which skips this check.',
+    problem: `Could not check whether ${name} is current: asking the npm registry for its latest version failed: ${reason}`
+  };
 }
