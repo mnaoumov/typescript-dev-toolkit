@@ -240,6 +240,15 @@ export interface UpdateVersionOptions {
   readonly shouldBuild?: boolean;
 
   /**
+   * Whether the release preflight compares every `@mnaoumov/*-toolkit` package the project declares with the latest
+   * published version, refusing a release built on an outdated one, or on one the registry could not be asked about.
+   * Turn it off (`--no-toolkit-check`) only for an offline hotfix; the release then prints that it skipped the check.
+   *
+   * @default `true`
+   */
+  readonly shouldCheckToolkits?: boolean;
+
+  /**
    * Whether to close the issues the release carries once it is published. See
    * {@link PublishGitHubReleaseOptions.shouldCloseReleasedIssues}.
    *
@@ -861,6 +870,7 @@ export const VERSION_ARGUMENT_OPTIONS = {
   'no-commit-verification': { type: 'boolean' },
   'no-issue-closing': { type: 'boolean' },
   'no-release': { type: 'boolean' },
+  'no-toolkit-check': { type: 'boolean' },
   'resume': { type: 'boolean' }
 } as const satisfies NonNullable<ParseArgsConfig['options']>;
 
@@ -954,6 +964,7 @@ export function isPreRelease(version: string): boolean {
  * - `--no-commit-verification` — pass `--no-verify` to the release commit, skipping the pre-commit hook.
  * - `--no-issue-closing` — do not close the issues the release carries once it is published.
  * - `--no-release` — run all local steps but skip the push and the GitHub release.
+ * - `--no-toolkit-check` — do not compare the installed `@mnaoumov/*-toolkit` packages with the registry (offline hotfix only).
  * - `--resume` — continue a release that stopped after its local tag; the positional is then the version.
  *
  * @param $arguments - The command-line arguments to parse (typically `process.argv.slice(2)`).
@@ -1106,6 +1117,7 @@ export function toUpdateVersionOptions(values: VersionArgumentValues): UpdateVer
     changelogFilePath: values['changelog-file'],
     changelogStyle: toChangelogStyle(values['changelog-style']) ?? undefined,
     shouldBuild: !(values['no-build'] ?? false),
+    shouldCheckToolkits: !(values['no-toolkit-check'] ?? false),
     shouldCloseReleasedIssues: !(values['no-issue-closing'] ?? false),
     shouldDryRun: values['dry-run'] ?? false,
     shouldEditChangelog: !(values['no-changelog-editing'] ?? false),
@@ -1219,7 +1231,11 @@ export async function updateVersion(versionUpdateType?: string, options: UpdateV
   await assertNonInteractiveChangelogIsPublishable(versionUpdateType, { changelogFilePath, changelogStyle, shouldEditChangelog });
   // Same placement, same reason: the branch, origin, the tag and gh's access are known now, and each used to surface
   // only at the push or at `gh release create`, after the gate and sometimes after the release was already public.
-  await assertReleasePreflight({ newVersion: await getNewVersion(versionUpdateType), shouldCheckRemote: shouldRelease });
+  await assertReleasePreflight({
+    newVersion: await getNewVersion(versionUpdateType),
+    shouldCheckRemote: shouldRelease,
+    shouldCheckToolkits: options.shouldCheckToolkits
+  });
 
   if (shouldRunChecks) {
     await assertGitRepoClean();

@@ -1,3 +1,6 @@
+import type { PackageJson } from 'type-fest';
+
+import { noop } from '@mnaoumov/typescript-lib/function';
 import {
   beforeEach,
   describe,
@@ -6,6 +9,8 @@ import {
   vi
 } from 'vitest';
 
+import type { ResolvePathFromRootSafeParams } from './root.ts';
+
 import {
   assertBranchNotBehindOrigin,
   assertReleasePreflight,
@@ -13,12 +18,23 @@ import {
   parseGitHubRemoteSlug
 } from './release-preflight.ts';
 
-const { mockExecFromRoot } = vi.hoisted(() => ({
-  mockExecFromRoot: vi.fn<(command: string | string[]) => Promise<string>>()
+const { mockExecFromRoot, mockReadJson, mockReadPackageJson } = vi.hoisted(() => ({
+  mockExecFromRoot: vi.fn<(command: string | string[]) => Promise<string>>(),
+  mockReadJson: vi.fn<(path: string) => Promise<unknown>>(),
+  mockReadPackageJson: vi.fn<() => Promise<PackageJson>>()
 }));
 
 vi.mock('./root.ts', () => ({
-  execFromRoot: mockExecFromRoot
+  execFromRoot: mockExecFromRoot,
+  resolvePathFromRootSafe: ({ path }: ResolvePathFromRootSafeParams): string => `/project/${path}`
+}));
+
+vi.mock('./json.ts', () => ({
+  readJson: mockReadJson
+}));
+
+vi.mock('./npm.ts', () => ({
+  readPackageJson: mockReadPackageJson
 }));
 
 const START_SHA = 'a'.repeat(40);
@@ -29,17 +45,36 @@ interface RepoState {
   readonly fetchError?: string;
   readonly ghError?: string;
   readonly ghView?: object;
+  readonly installedVersions?: Readonly<Record<string, string>>;
   readonly localTag?: string;
   readonly lsRemoteError?: string;
   readonly originUrl?: string;
+  readonly packageJson?: PackageJson;
+  readonly publishedVersions?: Readonly<Record<string, string>>;
+  readonly registryError?: string;
   readonly remoteTag?: string;
+}
+
+function playRegistry(state: RepoState, command: string): Promise<string> {
+  return state.registryError === undefined
+    ? Promise.resolve(state.publishedVersions?.[command.split(' ', 3)[2] ?? ''] ?? '')
+    : Promise.reject(new Error(state.registryError));
 }
 
 function playRepo(state: RepoState = {}): string[] {
   const commands: string[] = [];
+  mockReadPackageJson.mockResolvedValue(state.packageJson ?? { name: 'consumer' });
+  mockReadJson.mockImplementation((path) => {
+    const name = /^\/project\/node_modules\/(?<Name>.+)\/package\.json$/.exec(path)?.groups?.['Name'] ?? '';
+    const version = state.installedVersions?.[name];
+    return version === undefined ? Promise.reject(new Error(`ENOENT: ${path}`)) : Promise.resolve({ name, version });
+  });
   mockExecFromRoot.mockImplementation((command) => {
     const text = Array.isArray(command) ? command.join(' ') : command;
     commands.push(text);
+    if (text.startsWith('npm view ')) {
+      return playRegistry(state, text);
+    }
     if (text.startsWith('git rev-parse --verify --quiet refs/tags/')) {
       return Promise.resolve(state.localTag ?? '');
     }
@@ -198,6 +233,139 @@ describe('getReleasePreflightProblems', () => {
       'main is 1 commit(s) behind origin/main, so the release push would be refused.',
       'main is 1 commit(s) ahead of origin/main: no CI run has seen them, and the release would tag them.',
       'The tag 1.0.1 already exists on origin.'
+    ]);
+  });
+});
+
+describe('getReleasePreflightProblems toolkit check', () => {
+  const TOOLKIT = '@mnaoumov/typescript-dev-toolkit';
+  const OBSIDIAN_TOOLKIT = '@mnaoumov/obsidian-dev-toolkit';
+  const CONSUMER: PackageJson = {
+    dependencies: { '@mnaoumov/typescript-lib': '^4.0.0' },
+    devDependencies: { [OBSIDIAN_TOOLKIT]: '^12.0.0', [TOOLKIT]: '^8.0.0' },
+    name: 'consumer'
+  };
+
+  async function toolkitProblemsOf(state: RepoState): Promise<string[]> {
+    const commands = playRepo({ packageJson: CONSUMER, ...state });
+    const problems = await getReleasePreflightProblems({ newVersion: '1.0.1', shouldCheckRemote: false });
+    expect(commands[0]).toBe('git rev-parse --verify --quiet refs/tags/1.0.1');
+    return problems.map((problem) => `${problem.problem} Fix: ${problem.fix}`);
+  }
+
+  it('should pass toolkits that are current, and ask only about @mnaoumov toolkits', async () => {
+    const commands = playRepo({
+      installedVersions: { [OBSIDIAN_TOOLKIT]: '12.0.0', [TOOLKIT]: '8.2.0' },
+      packageJson: CONSUMER,
+      publishedVersions: { [OBSIDIAN_TOOLKIT]: '12.0.0', [TOOLKIT]: '8.2.0' }
+    });
+    await expect(getReleasePreflightProblems({ newVersion: '1.0.1', shouldCheckRemote: false })).resolves.toEqual([]);
+    expect(commands.filter((command) => command.startsWith('npm view'))).toEqual([
+      `npm view ${OBSIDIAN_TOOLKIT} version`,
+      `npm view ${TOOLKIT} version`
+    ]);
+  });
+
+  it('should refuse a toolkit behind the published one, naming both versions and the fix', async () => {
+    await expect(toolkitProblemsOf({
+      installedVersions: { [OBSIDIAN_TOOLKIT]: '12.0.0', [TOOLKIT]: '8.1.0' },
+      publishedVersions: { [OBSIDIAN_TOOLKIT]: '12.0.0', [TOOLKIT]: '8.2.0' }
+    })).resolves.toEqual([
+      `${TOOLKIT} 8.1.0 is installed, but 8.2.0 is published, so the release would be built and gated with an outdated toolkit. `
+      + `Fix: update it with \`npm install ${TOOLKIT}@8.2.0\` (or the project's dependency update), commit and push the update, then release again.`
+    ]);
+  });
+
+  it('should treat a local prerelease of the next version as ahead, and an older prerelease as behind', async () => {
+    await expect(toolkitProblemsOf({
+      installedVersions: { [OBSIDIAN_TOOLKIT]: '12.1.0-beta.0', [TOOLKIT]: '8.2.0-beta.1' },
+      publishedVersions: { [OBSIDIAN_TOOLKIT]: '12.0.0', [TOOLKIT]: '8.2.0' }
+    })).resolves.toEqual([
+      expect.stringContaining(`${TOOLKIT} 8.2.0-beta.1 is installed, but 8.2.0 is published`)
+    ]);
+  });
+
+  it('should refuse a declared toolkit that is not installed', async () => {
+    await expect(toolkitProblemsOf({
+      installedVersions: { [TOOLKIT]: '8.2.0' },
+      publishedVersions: { [TOOLKIT]: '8.2.0' }
+    })).resolves.toEqual([
+      `${OBSIDIAN_TOOLKIT} is declared but not installed, so the release would run without the tooling it declares. Fix: run \`npm install\`, then release again.`
+    ]);
+  });
+
+  it('should refuse, as could not check, when the registry cannot be reached', async () => {
+    const problems = await toolkitProblemsOf({
+      installedVersions: { [OBSIDIAN_TOOLKIT]: '12.0.0', [TOOLKIT]: '8.2.0' },
+      registryError: 'npm error code ENOTFOUND'
+    });
+    expect(problems).toHaveLength(2);
+    expect(problems[0]).toContain(`Could not check whether ${OBSIDIAN_TOOLKIT} is current: asking the npm registry for its latest version failed: `);
+    expect(problems[0]).toContain('ENOTFOUND');
+    expect(problems[0]).toContain('pass `--no-toolkit-check`');
+  });
+
+  it('should refuse, as could not check, when the registry answers something that is not a version', async () => {
+    await expect(toolkitProblemsOf({
+      installedVersions: { [OBSIDIAN_TOOLKIT]: '12.0.0', [TOOLKIT]: '8.2.0' },
+      publishedVersions: { [TOOLKIT]: '8.2.0' }
+    })).resolves.toEqual([
+      expect.stringContaining(
+        `Could not check whether ${OBSIDIAN_TOOLKIT} is current: asking the npm registry for its latest version failed: `
+          + 'the registry answered \'\', which is not a version.'
+      )
+    ]);
+  });
+
+  it('should read an installed package.json without a version as not installed', async () => {
+    playRepo({ packageJson: { devDependencies: { [TOOLKIT]: '^8.0.0' }, name: 'consumer' } });
+    mockReadJson.mockResolvedValue({ name: TOOLKIT });
+    const problems = await getReleasePreflightProblems({ newVersion: '1.0.1', shouldCheckRemote: false });
+    expect(problems.map((problem) => problem.problem)).toEqual([`${TOOLKIT} is declared but not installed, so the release would run without the tooling it declares.`]);
+  });
+
+  it('should read toolkits from every dependency field, and a package.json without any', async () => {
+    const commands = playRepo({
+      installedVersions: { '@mnaoumov/a-toolkit': '1.0.0', '@mnaoumov/b-toolkit': '1.0.0' },
+      packageJson: { name: 'consumer', optionalDependencies: { '@mnaoumov/a-toolkit': '^1.0.0' }, peerDependencies: { '@mnaoumov/b-toolkit': '^1.0.0' } },
+      publishedVersions: { '@mnaoumov/a-toolkit': '1.0.0', '@mnaoumov/b-toolkit': '1.0.0' }
+    });
+    await expect(getReleasePreflightProblems({ newVersion: '1.0.1', shouldCheckRemote: false })).resolves.toEqual([]);
+    expect(commands.filter((command) => command.startsWith('npm view'))).toHaveLength(2);
+    const noDependencyCommands = playRepo({ packageJson: {} });
+    await expect(getReleasePreflightProblems({ newVersion: '1.0.1', shouldCheckRemote: false })).resolves.toEqual([]);
+    expect(noDependencyCommands).toEqual(['git rev-parse --verify --quiet refs/tags/1.0.1']);
+  });
+
+  it('should skip the toolkit itself in its own repository', async () => {
+    const commands = playRepo({
+      installedVersions: { '@mnaoumov/typescript-test-toolkit': '1.1.0' },
+      packageJson: { devDependencies: { '@mnaoumov/typescript-test-toolkit': '^1.1.0', [TOOLKIT]: '^8.0.0' }, name: TOOLKIT },
+      publishedVersions: { '@mnaoumov/typescript-test-toolkit': '1.1.0', [TOOLKIT]: '9.0.0' }
+    });
+    await expect(getReleasePreflightProblems({ newVersion: '1.0.1', shouldCheckRemote: false })).resolves.toEqual([]);
+    expect(commands.filter((command) => command.startsWith('npm view'))).toEqual(['npm view @mnaoumov/typescript-test-toolkit version']);
+  });
+
+  it('should skip the check when asked to, and say so', async () => {
+    const commands = playRepo({ packageJson: CONSUMER, registryError: 'offline' });
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(noop);
+    await expect(getReleasePreflightProblems({ newVersion: '1.0.1', shouldCheckRemote: false, shouldCheckToolkits: false })).resolves.toEqual([]);
+    expect(commands).toEqual(['git rev-parse --verify --quiet refs/tags/1.0.1']);
+    expect(mockReadPackageJson).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith(
+      '--no-toolkit-check: the installed @mnaoumov toolkits were not compared with the npm registry, so this release may ship on an outdated toolkit.'
+    );
+    warnSpy.mockRestore();
+  });
+
+  it('should report toolkit problems after the git ones', async () => {
+    playRepo({ installedVersions: { [OBSIDIAN_TOOLKIT]: '12.0.0', [TOOLKIT]: '8.2.0' }, localTag: START_SHA, packageJson: CONSUMER, registryError: 'offline' });
+    const problems = await getReleasePreflightProblems({ newVersion: '1.0.1', shouldCheckRemote: false });
+    expect(problems.map((problem) => problem.problem.split(':', 1)[0])).toEqual([
+      'The tag 1.0.1 already exists locally.',
+      `Could not check whether ${OBSIDIAN_TOOLKIT} is current`,
+      `Could not check whether ${TOOLKIT} is current`
     ]);
   });
 });
