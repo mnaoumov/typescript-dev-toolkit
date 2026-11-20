@@ -1320,6 +1320,21 @@ describe('updateChangelog', () => {
     expect(mockWriteFile).toHaveBeenCalledWith('/root/CHANGELOG.md', expect.stringContaining(expected), 'utf-8');
   });
 
+  // A linear `fix: re #<n>` commit, not a merge, whose body is an issue-form title holding a wikilink opener: the
+  // grouped section is written with every bracket of that title escaped, so MD052 has no reference link to report.
+  it('should escape the brackets of an issue title a linear re commit carries in its body', async () => {
+    mockExistsSync.mockReturnValue(false);
+    mockExecFromRoot
+      .mockResolvedValueOnce('fix: re #46\n\n[FR] Format links inserted by [[ autocomplete with the configured style\0')
+      .mockResolvedValueOnce('');
+    await updateChangelog('1.0.0', { changelogStyle: 'grouped', shouldEditChangelog: false });
+    expect(mockWriteFile).toHaveBeenCalledWith(
+      '/root/CHANGELOG.md',
+      expect.stringContaining('- Format links inserted by \\[\\[ autocomplete with the configured style (#46)\n'),
+      'utf-8'
+    );
+  });
+
   it('should handle existing changelog without trailing newline', async () => {
     mockExistsSync.mockReturnValue(true);
     // No trailing \n — last element after split won't be ''
