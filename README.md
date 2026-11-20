@@ -1,5 +1,7 @@
 # @mnaoumov/typescript-dev-toolkit
 
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?logo=buy-me-a-coffee&logoColor=black)](https://www.buymeacoffee.com/mnaoumov) [![npm version](https://img.shields.io/npm/v/@mnaoumov/typescript-dev-toolkit)](https://www.npmjs.com/package/@mnaoumov/typescript-dev-toolkit) [![npm downloads](https://img.shields.io/npm/dm/@mnaoumov/typescript-dev-toolkit)](https://www.npmjs.com/package/@mnaoumov/typescript-dev-toolkit) [![CI](https://img.shields.io/github/actions/workflow/status/mnaoumov/typescript-dev-toolkit/ci.yml?branch=main&label=CI)](https://github.com/mnaoumov/typescript-dev-toolkit/actions/workflows/ci.yml) [![Coverage: 100%](https://img.shields.io/badge/coverage-100%25-brightgreen)](https://github.com/mnaoumov/typescript-dev-toolkit) [![License](https://img.shields.io/github/license/mnaoumov/typescript-dev-toolkit)](https://github.com/mnaoumov/typescript-dev-toolkit/blob/main/LICENSE) [![Node.js](https://img.shields.io/node/v/@mnaoumov/typescript-dev-toolkit)](https://nodejs.org/) [![Types](https://img.shields.io/npm/types/@mnaoumov/typescript-dev-toolkit)](https://www.npmjs.com/package/@mnaoumov/typescript-dev-toolkit)
+
 Generic tooling for TypeScript projects: the build, lint, format, spellcheck, test, gate and release scripts, the shared commitlint, nano-staged and markdownlint configurations, and custom ESLint rules. Install it as a dev dependency.
 
 ## Installation
