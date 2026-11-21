@@ -105,6 +105,7 @@ interface SmokeOutcome {
 
 const ESM_OK = 'export const ok = true;\n';
 const CJS_OK = 'exports.ok = true;\n';
+const DECLARATION = 'export declare const ok: boolean;\n';
 
 let projectFolder = '';
 
@@ -205,10 +206,14 @@ describe('smokePack', () => {
         explainOutputs: new Map([['yaml', JSON.stringify([{ dependents: [{ from: { name: 'cspell-config-lib' }, type: 'prod' }, { from: {}, type: 'peerOptional' }] }])]]),
         files: new Map([
           ['bin/tool.mjs', 'process.exitCode = process.argv.includes(\'--help\') ? 0 : 3;\n'],
+          // Each runtime file carries types beside it, which TypeScript finds by swapping the extension.
           ['cjs/index.cjs', CJS_OK],
+          ['cjs/index.d.cts', DECLARATION],
           ['cjs/nested/deep.cjs', CJS_OK],
-          ['esm/index.d.mts', 'export declare const ok: boolean;\n'],
+          ['cjs/nested/deep.d.cts', DECLARATION],
+          ['esm/index.d.mts', DECLARATION],
           ['esm/index.mjs', ESM_OK],
+          ['esm/nested/deep.d.mts', DECLARATION],
           ['esm/nested/deep.mjs', ESM_OK]
         ]),
         linkedBins: ['tool'],
@@ -235,6 +240,7 @@ describe('smokePack', () => {
       // `.` and `./index` name one file, so it is loaded once.
       'pack smoke: imported 2 module(s), 0 of them peer-bound and stopped by a missing optional peer',
       'pack smoke: required 2 module(s), 0 of them peer-bound and stopped by a missing optional peer',
+      'pack smoke: type-checked the imports of 2 under node16 ESM, 2 under node16 CJS, 2 under bundler',
       'pack smoke: running tool --help',
       'pack smoke: @scope/fixture passed'
     ]);
@@ -364,6 +370,30 @@ describe('smokePack', () => {
     expect(error).toBeNull();
     expect(fake.lines).toContain('pack smoke: imported 1 module(s), 0 of them peer-bound and stopped by a missing optional peer');
     expect(fake.lines).toContain('pack smoke: required 1 module(s), 0 of them peer-bound and stopped by a missing optional peer');
+  });
+
+  it('says when the package ships no declarations, and checks no types when told not to', async () => {
+    const npm: FakeNpm = { files: new Map([['index.js', CJS_OK]]), packageJson: { name: 'fixture' } };
+    const untyped = await runSmoke(npm);
+    expect(untyped.error).toBeNull();
+    expect(untyped.fake.lines).toContain('pack smoke: the package ships no type declarations, so no types were checked');
+
+    const unchecked = await runSmoke(npm, { shouldCheckTypes: false });
+    expect(unchecked.error).toBeNull();
+    expect(unchecked.fake.lines.filter((line) => line.includes('type'))).toEqual([]);
+  });
+
+  it('reports a module whose types a consumer cannot resolve', async () => {
+    const { error } = await runSmoke({
+      files: new Map([['esm/index.d.mts', DECLARATION], ['esm/index.mjs', ESM_OK], ['esm/other.mjs', ESM_OK]]),
+      packageJson: { exports: { './*': { import: './esm/*.mjs' } }, name: 'fixture' }
+    });
+
+    expect(error?.message.split('\n')).toEqual([
+      'The pack smoke found 2 problem(s):',
+      expect.stringMatching(/^- types node16 ESM fixture\/other: TS7016 /) as unknown,
+      expect.stringMatching(/^- types bundler fixture\/other: TS7016 /) as unknown
+    ]);
   });
 
   it('runs a string bin under the unscoped package name', async () => {

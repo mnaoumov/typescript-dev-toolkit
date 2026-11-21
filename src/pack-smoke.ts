@@ -2,7 +2,8 @@
  * @file
  *
  * Packs the package, installs the tarball into an empty project and uses it the way a consumer would: every exported
- * module is imported in one ES module process and required in another CommonJS one, and every bin is run.
+ * module is imported in one ES module process and required in another CommonJS one, a consumer's TypeScript resolves
+ * the types of each (`pack-smoke-types.ts`), and every bin is run.
  *
  * It catches what the build's own checks cannot see from inside the repository: a file the `files` list leaves out of
  * the tarball, an `exports` entry naming a file that is not there, a module that needs an optional peer it was meant to
@@ -30,8 +31,11 @@ import {
 } from 'node:path';
 import process from 'node:process';
 
+import type { PackSmokeTypedModule } from './pack-smoke-types.ts';
+
 import { exec } from './exec.ts';
 import { parseNpmPackOutput } from './npm-pack.ts';
+import { typeCheckPackSmokeImports } from './pack-smoke-types.ts';
 
 /**
  * How one bin is run by {@link smokePack}.
@@ -154,6 +158,15 @@ export interface SmokePackOptions {
    * @default the current working folder
    */
   readonly projectFolder?: string;
+
+  /**
+   * Whether a consumer's TypeScript must resolve the types of every exported module through `exports`, under `node16`
+   * from an ES module file and from a CommonJS file and under `bundler`, in the module format Node loads. A package that
+   * ships no declarations at all is reported and not checked.
+   *
+   * @default `true`
+   */
+  readonly shouldCheckTypes?: boolean;
 }
 
 interface CheckBinsParams {
@@ -172,6 +185,7 @@ interface CheckModulesParams {
 // One module file, loaded once under its first subpath. Every subpath naming it is kept, because a peer-bound glob may
 // name any of them: `./docs-site` and `./*` both name `docs-site/index`.
 interface ExportedModule {
+  readonly filePath: string;
   readonly specifier: string;
   readonly subpaths: string[];
 }
@@ -184,6 +198,7 @@ interface InstalledPackageJson {
   readonly exports?: ExportsValue;
   readonly main?: string;
   readonly peerDependenciesMeta?: Readonly<Record<string, PeerDependencyMeta>>;
+  readonly type?: string;
 }
 
 interface ListExportedModulesParams {
@@ -223,6 +238,7 @@ interface PackSmokeConstructorParams {
   readonly installedOptionalPeers: readonly InstalledOptionalPeer[];
   readonly peerBoundModules: readonly string[];
   readonly projectFolder: string;
+  readonly shouldCheckTypes: boolean;
   readonly temporaryFolder: string;
 }
 
@@ -290,6 +306,7 @@ class PackSmoke {
   private readonly peerBoundModules: readonly string[];
   private readonly problems: string[] = [];
   private readonly projectFolder: string;
+  private readonly shouldCheckTypes: boolean;
   private readonly smokeFolder: string;
   private readonly temporaryFolder: string;
 
@@ -299,6 +316,7 @@ class PackSmoke {
     this.installedOptionalPeers = params.installedOptionalPeers;
     this.peerBoundModules = params.peerBoundModules;
     this.projectFolder = params.projectFolder;
+    this.shouldCheckTypes = params.shouldCheckTypes;
     this.temporaryFolder = params.temporaryFolder;
     this.smokeFolder = join(params.temporaryFolder, 'project');
   }
@@ -311,7 +329,10 @@ class PackSmoke {
     const optionalPeers = Object.entries(packageJson.peerDependenciesMeta ?? {}).filter(([, meta]) => meta.optional === true).map(([name]) => name);
 
     await this.checkOptionalPeers(optionalPeers);
-    await this.checkModules({ installedRoot, optionalPeers, packageJson, packageName });
+    const modulesByFormat = await this.checkModules({ installedRoot, optionalPeers, packageJson, packageName });
+    if (this.shouldCheckTypes) {
+      await this.checkTypes(modulesByFormat, packageJson);
+    }
     await this.checkBins({ installedRoot, packageJson, packageName });
 
     if (this.problems.length > 0) {
@@ -349,14 +370,16 @@ class PackSmoke {
     }
   }
 
-  private async checkModules(params: CheckModulesParams): Promise<void> {
+  private async checkModules(params: CheckModulesParams): Promise<Readonly<Record<ModuleFormat, readonly ExportedModule[]>>> {
     const { installedRoot, optionalPeers, packageJson, packageName } = params;
     const matchedPatterns = new Set<string>();
+    const modulesByFormat: Record<ModuleFormat, readonly ExportedModule[]> = { cjs: [], esm: [] };
     const probePath = join(this.smokeFolder, 'pack-smoke-probe.mjs');
     await writeFile(probePath, PROBE_SOURCE, 'utf-8');
 
     for (const format of ['esm', 'cjs'] as const) {
       const modules = await listExportedModules({ format, installedRoot, packageJson, packageName });
+      modulesByFormat[format] = modules;
       for (const exportedModule of modules) {
         for (const pattern of this.peerBoundModules) {
           if (isMatchedBy(exportedModule, pattern)) {
@@ -396,6 +419,8 @@ class PackSmoke {
         this.problems.push(`peerBoundModules: ${pattern} names no exported module`);
       }
     }
+
+    return modulesByFormat;
   }
 
   private async checkOptionalPeers(optionalPeers: readonly string[]): Promise<void> {
@@ -422,6 +447,26 @@ class PackSmoke {
         this.problems.push(`the optional peer ${name} was installed with the package${dependents}`);
       }
     }
+  }
+
+  private async checkTypes(modulesByFormat: Readonly<Record<ModuleFormat, readonly ExportedModule[]>>, packageJson: InstalledPackageJson): Promise<void> {
+    function toTyped(format: ModuleFormat): PackSmokeTypedModule[] {
+      return modulesByFormat[format].map((exportedModule) => ({ runtimeFile: exportedModule.filePath, specifier: exportedModule.specifier }));
+    }
+
+    const result = await typeCheckPackSmokeImports({
+      cjsModules: toTyped('cjs'),
+      esmModules: toTyped('esm'),
+      packageType: packageJson.type,
+      smokeFolder: this.smokeFolder
+    });
+    if (result.isUntyped) {
+      this.dependencies.log('pack smoke: the package ships no type declarations, so no types were checked');
+      return;
+    }
+
+    this.problems.push(...result.problems);
+    this.dependencies.log(`pack smoke: type-checked the imports of ${result.summary}`);
   }
 
   private async explain(name: string): Promise<string> {
@@ -499,8 +544,8 @@ export function createNodePackSmokeDependencies(): PackSmokeDependencies {
 
 /**
  * Packs the package, installs the tarball into an empty project, imports every exported module as an ES module and
- * requires it as CommonJS, each format in its own process, checks that no optional peer was installed, and runs every
- * bin. The package must be built first: `npm pack` packs whatever the build left.
+ * requires it as CommonJS, each format in its own process, checks that no optional peer was installed, type-checks an
+ * import of each from a consumer under `node16` ESM, `node16` CommonJS and `bundler` resolution, and runs every bin. The package must be built first: `npm pack` packs whatever the build left.
  *
  * @param options - What is accepted and how the bins are run.
  * @returns A {@link Promise} that resolves when the package passes.
@@ -512,11 +557,12 @@ export async function smokePack(options: SmokePackOptions = {}): Promise<void> {
     dependencies = createNodePackSmokeDependencies(),
     installedOptionalPeers = [],
     peerBoundModules = [],
-    projectFolder = process.cwd()
+    projectFolder = process.cwd(),
+    shouldCheckTypes = true
   } = options;
   const temporaryFolder = await mkdtemp(join(tmpdir(), 'pack-smoke-'));
   try {
-    await new PackSmoke({ bins, dependencies, installedOptionalPeers, peerBoundModules, projectFolder, temporaryFolder }).run();
+    await new PackSmoke({ bins, dependencies, installedOptionalPeers, peerBoundModules, projectFolder, shouldCheckTypes, temporaryFolder }).run();
   } finally {
     await rm(temporaryFolder, { force: true, maxRetries: TEMPORARY_FOLDER_REMOVAL_RETRIES, recursive: true });
   }
@@ -553,7 +599,7 @@ async function listExportedModules(params: ListExportedModulesParams): Promise<E
       known.subpaths.push(subpath);
       return;
     }
-    modulesByFile.set(filePath, { specifier: subpath === '.' ? packageName : `${packageName}/${subpath}`, subpaths: [subpath] });
+    modulesByFile.set(filePath, { filePath, specifier: subpath === '.' ? packageName : `${packageName}/${subpath}`, subpaths: [subpath] });
   }
 
   for (const [key, value] of Object.entries(toSubpathMap(packageJson))) {
