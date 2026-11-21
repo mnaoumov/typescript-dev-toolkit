@@ -44,11 +44,14 @@ It is one of five packages that replace [`obsidian-dev-utils`](https://github.co
 | --- | --- | --- |
 | [`@mnaoumov/obsidian-dev-toolkit`](https://github.com/mnaoumov/obsidian-dev-toolkit) (my tool) | Obsidian plugin builds; demo vaults; plugin releases; plugin-specific lint and test setup | Generic foundation of `@mnaoumov/obsidian-dev-toolkit`; usable outside Obsidian; leaves plugin packaging and demo vaults to that extension |
 | [`gts`](https://github.com/google/gts) | TypeScript style guide; ESLint and Prettier configuration; project setup and compilation | Overlaps with `gts` in shared lint and format tooling; adds ESM/CommonJS packaging, test runners, spellcheck, documentation sites and release orchestration; uses its own conventions rather than Google's style guide |
+| [`np`](https://github.com/sindresorhus/np) | Interactive npm publishing; release branch, clean tree and behind-remote checks; tests before the bump; dry-run mode; GitHub release draft | Covers part of `np`: the same pre-release checks and dry-run; adds changelog generation, lint, build and test gates; publishes to npm from CI through trusted publishing rather than from the developer's machine; no interactive version prompt |
+| [`release-it`](https://github.com/release-it/release-it) | Version bump; git commit, tag and push; GitHub and GitLab releases; changelog; npm publish; hooks and plugins | Covers part of `release-it`: version bump, tag, push, GitHub release and changelog; adds Conventional Commits bump floor and changelog checks; no plugin system or GitLab releases |
+| [`semantic-release`](https://github.com/semantic-release/semantic-release) | Next version from commit messages; release notes; publishing from CI; plugins | Covers part of `semantic-release`: Conventional Commits changelog and a bump floor from commit messages; releases from a developer machine with a reviewed changelog rather than on every CI push |
 | [`tsdown`](https://tsdown.dev/) | Rolldown-based library builds; declaration generation; Rollup and unplugin plugin support | Overlaps with `tsdown` in library builds; adds lint, format, test and release tooling; uses esbuild rather than the Rolldown plugin ecosystem |
 | [`TSDX`](https://tsdx.io/docs) | Package scaffolding; ESM and CommonJS builds; Vitest tests; oxlint and oxfmt commands | Same goal as `TSDX` for TypeScript package development; exposes composable script APIs and shared configurations; adds spellcheck and documentation-site generation; leaves project scaffolding to other tools |
-| [`tsup`](https://github.com/egoist/tsup) | esbuild-based library bundling; multiple entry points; watch mode | Overlaps with `tsup` in esbuild-based builds; adds shared lint, format, test, gate and release tooling; does not implement the tsup CLI or its configuration API |
+| [`tsup`](https://github.com/egoist/tsup) | esbuild-based library bundling; multiple entry points; watch mode; no longer actively maintained, pointing to `tsdown` | Overlaps with `tsup` in esbuild-based builds; adds shared lint, format, test, gate and release tooling; does not implement the tsup CLI or its configuration API |
 
-Last searched for similar tools on 2026-11-03.
+Last searched for similar tools on 2026-11-21.
 
 ## Changelog
 
