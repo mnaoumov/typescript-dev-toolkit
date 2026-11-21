@@ -323,8 +323,16 @@ function execString(params: ExecStringParams): Promise<ExecResult | string> {
       assertNonNullable(childStdout, 'Child process stdout is not available');
       assertNonNullable(childStderr, 'Child process stderr is not available');
 
-      childStdin.write(stdin);
-      childStdin.end();
+      // A child that exits before reading its stdin (a shell running `echo`) closes the pipe, and the pending write then fails:
+      // with `EPIPE` on POSIX, with `EOF` (errno -4095) on Windows. Without a listener that `'error'` event is unhandled and kills
+      // this process. The child not wanting its input is no failure: its exit code still decides the result. Any other stream error is.
+      childStdin.on('error', (error: NodeJS.ErrnoException) => {
+        if (error.code !== undefined && CLOSED_PIPE_ERROR_CODES.has(error.code)) {
+          return;
+        }
+        reject(new Error(`Could not write stdin of command: ${truncateCommand(command)}\n${error.message}`, { cause: error }));
+      });
+      childStdin.end(stdin);
 
       childStdout.on('data', (data: Buffer) => {
         if (!quiet) {
@@ -417,6 +425,12 @@ function execString(params: ExecStringParams): Promise<ExecResult | string> {
  * (< 22) must be left untouched.
  */
 const LOCAL_STORAGE_NODE_OPTION = '--localstorage-file=:memory:';
+
+/**
+ * The error codes a write to a child's stdin fails with once the child has closed its end of the pipe: `EPIPE` on POSIX,
+ * `EOF` on Windows (measured with `node -e ""` and a 16 MiB stdin).
+ */
+const CLOSED_PIPE_ERROR_CODES: ReadonlySet<string> = new Set(['EOF', 'EPIPE']);
 
 /**
  * The longest command a failure message quotes before truncating it. A batched command can run to several

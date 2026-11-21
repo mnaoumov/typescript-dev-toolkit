@@ -854,6 +854,33 @@ describe('exec', () => {
     expect(Buffer.concat(chunks).toString()).toBe('input data');
   });
 
+  it.each(['EPIPE', 'EOF'])('should ignore %s on stdin when the child exits before reading it', async (code) => {
+    const child = createMockChild();
+    mockSpawn.mockReturnValue(child);
+
+    const promise = exec('echo hi', { isQuiet: true, stdin: 'input data' });
+
+    child.stdin.emit('error', Object.assign(new Error(`write ${code}`), { code }));
+    child.stdout.push(null);
+    child.stderr.push(null);
+    child.emit('close', 0, null);
+
+    await expect(promise).resolves.toBe('');
+  });
+
+  it('should reject on a stdin error other than EPIPE', async () => {
+    const child = createMockChild();
+    mockSpawn.mockReturnValue(child);
+    const streamError: Error = Object.assign(new Error('write EIO'), { code: 'EIO' });
+
+    const promise = exec('cat', { isQuiet: true, stdin: 'input data' });
+
+    child.stdin.emit('error', streamError);
+
+    await expect(promise).rejects.toThrow('Could not write stdin of command: cat\nwrite EIO');
+    await expect(promise).rejects.toMatchObject({ cause: streamError });
+  });
+
   it('should write to process stdout and stderr when not quiet', async () => {
     const child = createMockChild();
     mockSpawn.mockReturnValue(child);
