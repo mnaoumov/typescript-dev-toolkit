@@ -501,3 +501,21 @@ Every npm script can be switched off by an environment variable: take the script
 ## Ignored paths follow `.gitignore`
 
 The commands that walk the whole project (`lint`, `lint:md`, `format`, `spellcheck`) skip whatever `.gitignore` skips, so a generated folder is excluded from every check the moment it is gitignored.
+
+## Audit findings in the dependency tree
+
+`npm audit` in a project that uses this package can report two advisories that no version of this package can clear. In each, a dependency pins a vulnerable version exactly or within a range that excludes the fix, and an `overrides` entry in a dependency's own `package.json` does not reach the projects that install it. Add the overrides to your project's `package.json` and run `npm install`:
+
+```json
+{
+  "overrides": {
+    "fflate": "^0.7.5",
+    "katex": "^0.19.1"
+  }
+}
+```
+
+- `katex` [GHSA-238p-pmpm-9mq7](https://github.com/advisories/GHSA-238p-pmpm-9mq7) (low), fixed in 0.18.2. It reaches every project through `markdownlint` and `markdownlint-cli2`: `markdownlint` pins `micromark-extension-math` 3.1.0, which declares `katex` `^0.16.0`. `markdownlint` imports only the math syntax extension, never the KaTeX renderer. Upstream: [micromark/micromark-extension-math#16](https://github.com/micromark/micromark-extension-math/issues/16).
+- `fflate` [GHSA-px8p-9vwx-vf98](https://github.com/advisories/GHSA-px8p-9vwx-vf98) (moderate), fixed in 0.7.5. It reaches a project that installs `satori` to build a [documentation site](#documentation-site): `satori` pins `fflate` 0.7.3 exactly. The advisory is in `unzipSync`, which `satori` never calls. Upstream: [vercel/satori#951](https://github.com/vercel/satori/issues/951).
+
+Drop an override once the upstream release that fixes it is out and `npm audit` stays clean without it.
