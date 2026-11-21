@@ -1,5 +1,24 @@
 # CHANGELOG
 
+## 8.3.0
+
+This release has 1 new feature, 1 fix and 4 documentation changes. 1 maintenance commit (tests, build, CI, refactoring, dependencies) is not listed.
+
+### New
+
+- **version:** refuse a release on an outdated @mnaoumov toolkit
+
+### Fixed
+
+- **exec:** survive a child that exits before reading its stdin
+
+### Documentation
+
+- **guides:** explain the fflate and katex audit findings and the overrides that clear them
+- **readme:** compare release tools in See also and refresh the search
+- **readme:** add the badge line
+- **agents:** a timeout on a mocked unit test is load, not a slow test
+
 ## 8.2.0
 
 This release has 6 new features, 1 fix and 1 documentation change.
