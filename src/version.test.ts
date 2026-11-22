@@ -17,6 +17,7 @@ import type {
   FixMarkdownContentParams,
   FixMarkdownContentResult
 } from './linters/markdownlint-content.ts';
+import type { GetNpmVersionLinkLineParams } from './npm-release-link.ts';
 import type {
   GuardReleaseInterruptParams,
   ReleaseInterruptGuard,
@@ -65,6 +66,7 @@ const {
   mockExecFromRoot,
   mockExistsSync,
   mockFixMarkdownContent,
+  mockGetNpmVersionLinkLine,
   mockGuardReleaseInterrupt,
   mockLintMarkdownContent,
   mockMkdtemp,
@@ -92,6 +94,7 @@ const {
   mockExecFromRoot: vi.fn(),
   mockExistsSync: vi.fn<(path: string) => boolean>(),
   mockFixMarkdownContent: vi.fn<(params: FixMarkdownContentParams) => Promise<FixMarkdownContentResult>>(),
+  mockGetNpmVersionLinkLine: vi.fn<(params: GetNpmVersionLinkLineParams) => Promise<null | string>>(),
   mockGuardReleaseInterrupt: vi.fn<(params: GuardReleaseInterruptParams) => ReleaseInterruptGuard>(),
   mockLintMarkdownContent: vi.fn<() => Promise<string[]>>(),
   mockMkdtemp: vi.fn(),
@@ -160,6 +163,11 @@ vi.mock('./linters/cspell-content.ts', () => ({
 vi.mock('./linters/markdownlint-content.ts', () => ({
   fixMarkdownContent: mockFixMarkdownContent,
   lintMarkdownContent: mockLintMarkdownContent
+}));
+
+// The registry lookup is tested in its own module.
+vi.mock('./npm-release-link.ts', () => ({
+  getNpmVersionLinkLine: mockGetNpmVersionLinkLine
 }));
 
 vi.mock('./released-issues.ts', () => ({
@@ -239,6 +247,7 @@ beforeEach(() => {
   mockReadWorkingTreeChanges.mockResolvedValue({ changedPaths: [], untrackedPaths: [] });
   mockRestoreWorkingTreeChanges.mockResolvedValue([]);
   mockGuardReleaseInterrupt.mockImplementation(() => ({ stop: vi.fn() }));
+  mockGetNpmVersionLinkLine.mockResolvedValue(null);
 });
 
 const START_SHA = 'a'.repeat(40);
@@ -778,6 +787,25 @@ describe('getReleaseNotes', () => {
       .mockResolvedValueOnce('https://github.com/user/repo');
     const notes = await getReleaseNotes('1.0.0');
     expect(notes).toBe('Initial release\n\n**Full Changelog**: https://github.com/user/repo/commits/1.0.0');
+  });
+
+  it('should put the npm version link right before the Full Changelog line when the package is published', async () => {
+    mockReadFile.mockResolvedValue('# CHANGELOG\n\n## 1.0.0\n\nInitial release\n');
+    mockReadPackageJson.mockResolvedValue({ name: '@scope/library', private: false });
+    mockGetNpmVersionLinkLine.mockResolvedValue('**npm**: https://www.npmjs.com/package/@scope/library/v/1.0.0');
+    mockExecFromRoot
+      .mockResolvedValueOnce('1.0.0')
+      .mockResolvedValueOnce('https://github.com/user/repo');
+    const notes = await getReleaseNotes('1.0.0');
+    expect(notes).toBe(
+      'Initial release\n\n**npm**: https://www.npmjs.com/package/@scope/library/v/1.0.0\n\n**Full Changelog**: https://github.com/user/repo/commits/1.0.0'
+    );
+    expect(mockGetNpmVersionLinkLine).toHaveBeenCalledWith({
+      isPrivate: false,
+      packageName: '@scope/library',
+      repoUrl: 'https://github.com/user/repo',
+      version: '1.0.0'
+    });
   });
 });
 
