@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## 9.0.0
+
+This release has 1 breaking change and 2 new features.
+
+### Breaking changes
+
+- **validate-dependencies:** report declared packages the published output never imports
+
+### New
+
+- **pack-smoke:** accept a module stopped only by a host-provided package
+- **pack-smoke:** type-check every exported subpath from a consumer
+
 ## 8.3.0
 
 This release has 1 new feature, 1 fix and 4 documentation changes. 1 maintenance commit (tests, build, CI, refactoring, dependencies) is not listed.
