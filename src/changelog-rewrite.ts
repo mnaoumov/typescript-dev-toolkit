@@ -139,6 +139,7 @@ interface MatchedBullets {
 
 const BULLET_PREFIX = '- ';
 const FULL_CHANGELOG_PREFIX = '**Full Changelog**:';
+const NPM_LINK_PREFIX = '**npm**:';
 const SECTION_HEADING_PREFIX = '## ';
 
 /**
@@ -213,9 +214,10 @@ export async function rewriteChangelog(changelog: string, source: ChangelogRewri
 /**
  * Rewrites the release notes of a GitHub release whose changelog section {@link rewriteChangelog} rewrote.
  *
- * A release body a release wrote is its changelog section, a blank line, and a `**Full Changelog**` compare link. The
- * body is rewritten only when its part above that link is still the section as it was, so a release edited by hand
- * after publishing is not overwritten unless asked. The compare link is kept as it is.
+ * A release body a release wrote is its changelog section, a blank line, an optional `**npm**:` version link, and a
+ * `**Full Changelog**` compare link. The body is rewritten only when its part above those links is still the section
+ * as it was, so a release edited by hand after publishing is not overwritten unless asked. The links are kept as they
+ * are.
  *
  * @param releaseBody - The release's current notes.
  * @param section - The section as it was and as it is to be. Passing the current body as both syncs the notes with it,
@@ -230,8 +232,8 @@ export function rewriteReleaseNotes(
   shouldOverwriteEdited = false
 ): null | string {
   const lines = releaseBody.replaceAll('\r\n', '\n').trim().split('\n');
-  const linkIndex = findLastIndex(lines, (line) => line.startsWith(FULL_CHANGELOG_PREFIX));
-  const noteLines = linkIndex === -1 ? lines : lines.slice(0, linkIndex);
+  const linkIndex = findTrailerStartIndex(lines);
+  const noteLines = linkIndex === -1 ? lines : trimTrailingEmptyLines(lines.slice(0, linkIndex));
   if (!shouldOverwriteEdited && toComparable(noteLines.join('\n')) !== toComparable(section.oldBody)) {
     return null;
   }
@@ -249,6 +251,24 @@ function findMatchingEntryIndex(entries: readonly ChangelogCommitEntry[], bullet
   const comparable = toComparable(bullet);
   const renderedIndex = entries.findIndex((entry) => toComparable(toRenderedLine(entry)) === comparable);
   return renderedIndex === -1 ? entries.findIndex((entry) => toComparable(entry.entry) === comparable) : renderedIndex;
+}
+
+/**
+ * Finds where the trailer of a release body starts: the `**Full Changelog**` line, or the `**npm**:` version-link
+ * paragraphs right above it, which belong to the trailer and not to the notes.
+ *
+ * @param lines - The body's lines.
+ * @returns The index of the trailer's first line, or `-1` when the body has no `**Full Changelog**` line.
+ */
+function findTrailerStartIndex(lines: readonly string[]): number {
+  const linkIndex = findLastIndex(lines, (line) => line.startsWith(FULL_CHANGELOG_PREFIX));
+  if (linkIndex === -1) {
+    return -1;
+  }
+  const precedingLines = lines.slice(0, linkIndex);
+  const lastNoteIndex = findLastIndex(precedingLines, (line) => line.trim() !== '' && !line.startsWith(NPM_LINK_PREFIX));
+  const firstNpmLinkIndex = precedingLines.findIndex((line, index) => index > lastNoteIndex && line.startsWith(NPM_LINK_PREFIX));
+  return firstNpmLinkIndex === -1 ? linkIndex : firstNpmLinkIndex;
 }
 
 function getKeptReason(section: ChangelogSection): null | string {
@@ -323,6 +343,14 @@ function toTag(version: string, tags: ReadonlySet<string>): null | string {
 function trimTrailingBlankLines(lines: readonly string[]): readonly string[] {
   const lastIndex = findLastIndex(lines, (line) => line.trim() !== '');
   return lines.slice(0, lastIndex + 1);
+}
+
+function trimTrailingEmptyLines(lines: readonly string[]): string[] {
+  const result = [...lines];
+  while (result.length > 0 && result.at(-1)?.trim() === '') {
+    result.pop();
+  }
+  return result;
 }
 
 /**

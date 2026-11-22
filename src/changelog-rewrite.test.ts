@@ -252,6 +252,17 @@ describe('rewriteReleaseNotes', () => {
     );
   });
 
+  it('should keep an npm version link above the compare link as part of the trailer', () => {
+    expect(
+      rewriteReleaseNotes(
+        '- fix: one\n\n**npm**: https://www.npmjs.com/package/x/v/1.0.0\n\n**Full Changelog**: https://example.com/compare/0.9.0...1.0.0',
+        section()
+      )
+    ).toBe(
+      'This release has 1 fix.\n\n### Fixed\n\n- one\n\n**npm**: https://www.npmjs.com/package/x/v/1.0.0\n\n**Full Changelog**: https://example.com/compare/0.9.0...1.0.0'
+    );
+  });
+
   it('should rewrite notes with no compare link', () => {
     expect(rewriteReleaseNotes('- fix: one\n', section())).toBe('This release has 1 fix.\n\n### Fixed\n\n- one');
   });
@@ -264,6 +275,7 @@ describe('rewriteReleaseNotes', () => {
 
   it('should refuse notes edited after publishing', () => {
     expect(rewriteReleaseNotes('- fix: one, explained\n\n**Full Changelog**: https://example.com', section())).toBeNull();
+    expect(rewriteReleaseNotes('- fix: one, explained\n\n**npm**: https://www.npmjs.com/package/x/v/1.0.0\n\n**Full Changelog**: https://example.com', section())).toBeNull();
     expect(rewriteReleaseNotes('- fix: one, explained\n\n**Full Changelog**: https://example.com', section(), true)).toBe(
       'This release has 1 fix.\n\n### Fixed\n\n- one\n\n**Full Changelog**: https://example.com'
     );

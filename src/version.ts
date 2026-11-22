@@ -59,6 +59,7 @@ import {
   lintMarkdownContent
 } from './linters/markdownlint-content.ts';
 import { parseNpmPackOutput } from './npm-pack.ts';
+import { getNpmVersionLinkLine } from './npm-release-link.ts';
 import {
   editNpmShrinkWrapJson,
   editPackageJson,
@@ -786,6 +787,9 @@ export async function getNewVersion(versionUpdateType: string): Promise<string> 
 /**
  * Retrieves the release notes for a specific version from the changelog.
  *
+ * When the package is published to npm from this repository, a `**npm**: <version page>` paragraph goes right before
+ * the `**Full Changelog**` line (see {@link getNpmVersionLinkLine}).
+ *
  * @param newVersion - The new version number for which to get the release notes.
  * @returns A {@link Promise} that resolves to the release notes for the specified version.
  */
@@ -802,6 +806,17 @@ export async function getReleaseNotes(newVersion: string): Promise<string> {
   const repoUrl = await execFromRoot('gh repo view --json url -q .url', { isQuiet: true });
 
   const changesUrl = previousVersion ? `${repoUrl}/compare/${previousVersion}...${newVersion}` : `${repoUrl}/commits/${newVersion}`;
+
+  const packageJson = await readPackageJson();
+  const npmVersionLinkLine = await getNpmVersionLinkLine({
+    isPrivate: packageJson.private,
+    packageName: packageJson.name,
+    repoUrl,
+    version: newVersion
+  });
+  if (npmVersionLinkLine) {
+    releaseNotes += `${npmVersionLinkLine}\n\n`;
+  }
 
   releaseNotes += `**Full Changelog**: ${changesUrl}`;
   return releaseNotes;
