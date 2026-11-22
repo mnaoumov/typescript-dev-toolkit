@@ -1,5 +1,21 @@
 # CHANGELOG
 
+## 10.0.0
+
+This release has 1 breaking change, 1 new feature and 1 fix.
+
+### Breaking changes
+
+- **eslint:** adopt eslint-plugin-unicorn 80 and @stylistic 6 in the shared config
+
+### New
+
+- **release:** link the version's npm page in the GitHub release notes
+
+### Fixed
+
+- **release:** hold an outdated toolkit to the version its dependents allow
+
 ## 9.0.0
 
 This release has 1 breaking change and 2 new features.
