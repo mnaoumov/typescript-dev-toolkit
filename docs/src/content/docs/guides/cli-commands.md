@@ -310,11 +310,12 @@ await wrapCliTask(() =>
 ```
 
 - `peerBoundModules` lists globs over exported subpaths: `.` for the package root, `docs-site/api-docs` for `<package>/docs-site/api-docs`. These name the modules whose whole job needs an optional peer. Such a module may fail to load only because an optional peer is missing. Any other failure, including a missing package that is not an optional peer, still fails the smoke. A glob matches every subpath that names the module, so `docs-site` and `docs-site/index` both work.
+- `hostProvidedPackages` lists globs over package names, such as `['obsidian', '@codemirror/*', '@lezer/*']`. These name the packages the host application supplies at runtime, whose npm package cannot be loaded on its own: `obsidian` ships types only. Any exported module may fail to load only because a listed package is missing, and the summary line counts those modules. Any other failure still fails the smoke. The type check is unaffected, because such a package ships its declarations.
 - `installedOptionalPeers` lists the optional peers that a dependency installs anyway, each with its reason. The smoke reports them instead of failing.
 - `bins` changes the arguments and the expected exit code of a bin. A bin left out of the list is run with `--help` and must exit `0`.
 - `shouldCheckTypes` (default `true`) checks the types a consumer gets. Inside the same project, TypeScript resolves an import of every exported module through `exports` three ways: `node16` from an ES module file, `node16` from a CommonJS file, and `bundler`. It fails on a module whose types do not resolve, on an import the compiler refuses (a CommonJS file importing ES module types), and, under `node16`, on types in a different module format from the file Node loads (types that say CommonJS for an ES module, or the reverse). A package that ships no declarations at all is reported and not checked. `node10` resolution is not checked, because it ignores `exports`, so no subpath resolves there without `typesVersions`.
 
-An entry that no longer applies is a failure: a glob that names no module, an accepted peer that is no longer installed, or a bin the package does not declare. That keeps the configuration from going stale.
+An entry that no longer applies is a failure: a glob that names no module, a host-provided glob that stopped no module from loading, an accepted peer that is no longer installed, or a bin the package does not declare. That keeps the configuration from going stale.
 
 ### Release
 

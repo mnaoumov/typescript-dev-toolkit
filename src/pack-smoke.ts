@@ -135,6 +135,17 @@ export interface SmokePackOptions {
   readonly dependencies?: PackSmokeDependencies;
 
   /**
+   * Globs over package names (`obsidian`, `@codemirror/*`) naming the packages the host application supplies at runtime,
+   * whose npm package therefore cannot be loaded outside it (types only, no `main`). Any exported module may fail to
+   * load, but only because a listed package is missing; any other failure still fails the smoke. Such modules are
+   * counted in the summary line. A glob that stopped no module from loading is a failure, so the list cannot go stale.
+   * The type check is unaffected, because such a package ships its declarations.
+   *
+   * @default `[]`
+   */
+  readonly hostProvidedPackages?: readonly string[];
+
+  /**
    * Optional peers a dependency installs anyway, which are reported instead of failing the smoke. One that is no longer
    * installed is a failure, so the list cannot go stale.
    *
@@ -192,6 +203,8 @@ interface ExportedModule {
 
 type ExportsValue = PackageJson.Exports;
 
+type FailureVerdict = 'host-provided' | 'peer-bound' | 'problem';
+
 // The part of the installed `package.json` read here.
 interface InstalledPackageJson {
   readonly bin?: Readonly<Record<string, string>> | string;
@@ -199,6 +212,14 @@ interface InstalledPackageJson {
   readonly main?: string;
   readonly peerDependenciesMeta?: Readonly<Record<string, PeerDependencyMeta>>;
   readonly type?: string;
+}
+
+interface JudgeFailureParams {
+  readonly exportedModule: ExportedModule;
+  readonly failure: LoadFailure;
+  readonly format: ModuleFormat;
+  readonly optionalPeers: readonly string[];
+  readonly usedHostPatterns: Set<string>;
 }
 
 interface ListExportedModulesParams {
@@ -235,6 +256,7 @@ interface NpmExplainNode {
 interface PackSmokeConstructorParams {
   readonly bins: readonly BinSmokeCheck[];
   readonly dependencies: PackSmokeDependencies;
+  readonly hostProvidedPackages: readonly string[];
   readonly installedOptionalPeers: readonly InstalledOptionalPeer[];
   readonly peerBoundModules: readonly string[];
   readonly projectFolder: string;
@@ -263,6 +285,8 @@ const JSON_INDENT = 2;
 const MISSING_PACKAGE_REG_EXP = /Cannot find (?:module|package) '(?<specifier>[^']+)'/;
 
 const MODULE_NOT_FOUND_CODES: ReadonlySet<string> = new Set(['ERR_MODULE_NOT_FOUND', 'MODULE_NOT_FOUND']);
+
+const NODE_MODULES_SEGMENT = '/node_modules/';
 
 // A pattern target holds one `*`, which splits it into a prefix and a suffix.
 const PATTERN_TARGET_PART_COUNT = 2;
@@ -302,6 +326,7 @@ process.exit(0);
 class PackSmoke {
   private readonly bins: readonly BinSmokeCheck[];
   private readonly dependencies: PackSmokeDependencies;
+  private readonly hostProvidedPackages: readonly string[];
   private readonly installedOptionalPeers: readonly InstalledOptionalPeer[];
   private readonly peerBoundModules: readonly string[];
   private readonly problems: string[] = [];
@@ -313,6 +338,7 @@ class PackSmoke {
   public constructor(params: PackSmokeConstructorParams) {
     this.bins = params.bins;
     this.dependencies = params.dependencies;
+    this.hostProvidedPackages = params.hostProvidedPackages;
     this.installedOptionalPeers = params.installedOptionalPeers;
     this.peerBoundModules = params.peerBoundModules;
     this.projectFolder = params.projectFolder;
@@ -373,6 +399,7 @@ class PackSmoke {
   private async checkModules(params: CheckModulesParams): Promise<Readonly<Record<ModuleFormat, readonly ExportedModule[]>>> {
     const { installedRoot, optionalPeers, packageJson, packageName } = params;
     const matchedPatterns = new Set<string>();
+    const usedHostPatterns = new Set<string>();
     const modulesByFormat: Record<ModuleFormat, readonly ExportedModule[]> = { cjs: [], esm: [] };
     const probePath = join(this.smokeFolder, 'pack-smoke-probe.mjs');
     await writeFile(probePath, PROBE_SOURCE, 'utf-8');
@@ -391,32 +418,36 @@ class PackSmoke {
       const probeFailures = await this.probe(probePath, format, modules);
       const failures = new Map(probeFailures.map((failure) => [failure.specifier, failure]));
       let allowedCount = 0;
+      let hostBoundCount = 0;
       for (const exportedModule of modules) {
         const failure = failures.get(exportedModule.specifier);
         if (!failure) {
           continue;
         }
 
-        const missingPeer = getMissingPackage(failure, optionalPeers);
-        const isPeerBound = this.peerBoundModules.some((pattern) => isMatchedBy(exportedModule, pattern));
-        if (missingPeer !== null && isPeerBound) {
+        const verdict = this.judgeFailure({ exportedModule, failure, format, optionalPeers, usedHostPatterns });
+        if (verdict === 'host-provided') {
+          hostBoundCount++;
+        } else if (verdict === 'peer-bound') {
           allowedCount++;
-          continue;
         }
-
-        const hint = missingPeer === null ? '' : ` (it needs the optional peer ${missingPeer}; list the module in peerBoundModules if that is its job)`;
-        const reason = [failure.code, firstLine(failure.message)].filter((part) => part !== '').join(' ');
-        this.problems.push(`${format === 'esm' ? 'import' : 'require'} ${failure.specifier}: ${reason}${hint}`);
       }
 
+      const hostClause = this.hostProvidedPackages.length === 0 ? '' : `, ${String(hostBoundCount)} stopped by a host-provided package`;
       this.dependencies.log(
-        `pack smoke: ${format === 'esm' ? 'imported' : 'required'} ${String(modules.length)} module(s), ${String(allowedCount)} of them peer-bound and stopped by a missing optional peer`
+        `pack smoke: ${format === 'esm' ? 'imported' : 'required'} ${String(modules.length)} module(s), ${String(allowedCount)} of them peer-bound and stopped by a missing optional peer${hostClause}`
       );
     }
 
     for (const pattern of this.peerBoundModules) {
       if (!matchedPatterns.has(pattern)) {
         this.problems.push(`peerBoundModules: ${pattern} names no exported module`);
+      }
+    }
+
+    for (const pattern of this.hostProvidedPackages) {
+      if (!usedHostPatterns.has(pattern)) {
+        this.problems.push(`hostProvidedPackages: ${pattern} stopped no module from loading; drop it from the list`);
       }
     }
 
@@ -501,6 +532,31 @@ class PackSmoke {
     return name;
   }
 
+  // Accepts a failure caused only by a missing host-provided package (recording which globs accepted it) or, in a
+  // peer-bound module, by a missing optional peer; records any other failure as a problem.
+  private judgeFailure(params: JudgeFailureParams): FailureVerdict {
+    const { exportedModule, failure, format, optionalPeers, usedHostPatterns } = params;
+    const missingPackage = getMissingPackage(failure);
+    const hostPatterns = missingPackage === null ? [] : this.hostProvidedPackages.filter((pattern) => posix.matchesGlob(missingPackage, pattern));
+    for (const pattern of hostPatterns) {
+      usedHostPatterns.add(pattern);
+    }
+    if (hostPatterns.length > 0) {
+      return 'host-provided';
+    }
+
+    const missingPeer = missingPackage !== null && optionalPeers.includes(missingPackage) ? missingPackage : null;
+    const isPeerBound = this.peerBoundModules.some((pattern) => isMatchedBy(exportedModule, pattern));
+    if (missingPeer !== null && isPeerBound) {
+      return 'peer-bound';
+    }
+
+    const hint = missingPeer === null ? '' : ` (it needs the optional peer ${missingPeer}; list the module in peerBoundModules if that is its job)`;
+    const reason = [failure.code, firstLine(failure.message)].filter((part) => part !== '').join(' ');
+    this.problems.push(`${format === 'esm' ? 'import' : 'require'} ${failure.specifier}: ${reason}${hint}`);
+    return 'problem';
+  }
+
   private async pack(): Promise<string> {
     this.dependencies.log(`pack smoke: packing ${this.projectFolder}`);
     const result = await this.dependencies.run(['npm', 'pack', '--json', '--pack-destination', this.temporaryFolder], this.projectFolder);
@@ -555,6 +611,7 @@ export async function smokePack(options: SmokePackOptions = {}): Promise<void> {
   const {
     bins = [],
     dependencies = createNodePackSmokeDependencies(),
+    hostProvidedPackages = [],
     installedOptionalPeers = [],
     peerBoundModules = [],
     projectFolder = process.cwd(),
@@ -562,7 +619,7 @@ export async function smokePack(options: SmokePackOptions = {}): Promise<void> {
   } = options;
   const temporaryFolder = await mkdtemp(join(tmpdir(), 'pack-smoke-'));
   try {
-    await new PackSmoke({ bins, dependencies, installedOptionalPeers, peerBoundModules, projectFolder, shouldCheckTypes, temporaryFolder }).run();
+    await new PackSmoke({ bins, dependencies, hostProvidedPackages, installedOptionalPeers, peerBoundModules, projectFolder, shouldCheckTypes, temporaryFolder }).run();
   } finally {
     await rm(temporaryFolder, { force: true, maxRetries: TEMPORARY_FOLDER_REMOVAL_RETRIES, recursive: true });
   }
@@ -572,15 +629,19 @@ function firstLine(text: string): string {
   return text.trim().split('\n', 1).join('').trim();
 }
 
-function getMissingPackage(failure: LoadFailure, optionalPeers: readonly string[]): null | string {
+// The name of the package a failure says is missing, or `null` for any other failure. Node's ES module loader names an
+// installed package it cannot load (types only: no `main`, no `index.js`) by its path, `.../node_modules/obsidian/index.js`,
+// and an absent one by its specifier, so a path is read from its last `node_modules` segment.
+function getMissingPackage(failure: LoadFailure): null | string {
   const match = MODULE_NOT_FOUND_CODES.has(failure.code) ? MISSING_PACKAGE_REG_EXP.exec(failure.message) : null;
   if (!match) {
     return null;
   }
 
-  const specifier = getMandatoryNamedGroup(match, 'specifier');
-  const packageName = specifier.split('/', specifier.startsWith('@') ? SCOPED_NAME_SEGMENT_COUNT : 1).join('/');
-  return optionalPeers.includes(packageName) ? packageName : null;
+  const specifier = getMandatoryNamedGroup(match, 'specifier').replaceAll('\\', '/');
+  const nodeModulesIndex = specifier.lastIndexOf(NODE_MODULES_SEGMENT);
+  const bareSpecifier = nodeModulesIndex === -1 ? specifier : specifier.slice(nodeModulesIndex + NODE_MODULES_SEGMENT.length);
+  return bareSpecifier.split('/', bareSpecifier.startsWith('@') ? SCOPED_NAME_SEGMENT_COUNT : 1).join('/');
 }
 
 function isMatchedBy(exportedModule: ExportedModule, pattern: string): boolean {
