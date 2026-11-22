@@ -16,6 +16,10 @@
  * - Every `@mnaoumov/*-toolkit` package the project declares is installed at the latest published version, so the
  *   release is not built, linted and gated with tooling the registry has already replaced. A registry that cannot be
  *   reached is reported as such, never taken as a pass; `shouldCheckToolkits: false` (`--no-toolkit-check`) skips it.
+ *   When another installed package the project declares (another toolkit) depends on that toolkit through a range the
+ *   latest version falls outside, the toolkit is held to the newest published version every such range allows: the
+ *   latest is then a release of that dependent's to take, and installing it would put a second copy beside the
+ *   dependent's own. That case is printed as a warning naming the dependent, not refused.
  *
  * All problems are collected and reported together, each with its fix, so one run says everything that is wrong.
  *
@@ -27,7 +31,10 @@ import type { PackageJson } from 'type-fest';
 import { errorToString } from '@mnaoumov/typescript-lib/error';
 import {
   lt,
-  valid
+  maxSatisfying,
+  satisfies,
+  valid,
+  validRange
 } from 'semver';
 
 import { readJson } from './json.ts';
@@ -99,6 +106,19 @@ export interface ReleasePreflightProblem {
    * What is wrong.
    */
   readonly problem: string;
+}
+
+interface DependentRange {
+  readonly name: string;
+  readonly range: string;
+  readonly version: string;
+}
+
+interface GetHeldToolkitProblemParams {
+  readonly holdingRanges: readonly DependentRange[];
+  readonly installedVersion: string;
+  readonly latestVersion: string;
+  readonly name: string;
 }
 
 interface GhBranchRef {
@@ -252,7 +272,7 @@ async function addToolkitProblems(problems: ReleasePreflightProblem[]): Promise<
   // The toolkit's own repository builds itself from its sources, so it has no installed copy of itself to be behind.
   const toolkitNames = [...declaredNames].filter((name) => TOOLKIT_PACKAGE_NAME_REG_EXP.test(name) && name !== packageJson.name).sort();
   for (const name of toolkitNames) {
-    const problem = await getToolkitProblem(name);
+    const problem = await getToolkitProblem(name, declaredNames);
     if (problem) {
       problems.push(problem);
     }
@@ -296,7 +316,45 @@ async function getGitPreflightProblems(params: GetReleasePreflightProblemsParams
   return problems;
 }
 
-async function getToolkitProblem(name: string): Promise<null | ReleasePreflightProblem> {
+/*
+ * A newer toolkit another installed package cannot take is not the consumer's to install: npm would put it at the root
+ * beside the dependent's nested copy, and the two copies' classes are distinct types (`CliTaskResult` broke a plugin
+ * build that way). So the toolkit is held to the highest published version every dependent range allows, and the
+ * newer one is named with the package whose release would admit it.
+ */
+async function getHeldToolkitProblem(params: GetHeldToolkitProblemParams): Promise<null | ReleasePreflightProblem> {
+  const { holdingRanges, installedVersion, latestVersion, name } = params;
+  const holdersText = holdingRanges.map((dependent) => `${dependent.name} ${dependent.version} declares ${name} ${dependent.range}`).join(', ');
+
+  let publishedVersions: string[];
+  try {
+    publishedVersions = parsePublishedVersions(await execFromRoot(['npm', 'view', name, 'versions', '--json'], { isQuiet: true }));
+  } catch (error) {
+    return toUncheckedToolkitProblem(name, errorToString(error));
+  }
+
+  const allowedVersion = maxSatisfying(
+    publishedVersions.filter((version) => holdingRanges.every((dependent) => satisfies(version, dependent.range))),
+    '*'
+  );
+
+  if (allowedVersion === null || !lt(installedVersion, allowedVersion)) {
+    console.warn(
+      `${name} ${latestVersion} is published, but ${holdersText}, which excludes it. ${name} stays at ${installedVersion} until a release of `
+        + `${holdingRanges.map((dependent) => dependent.name).join(' and ')} takes ${latestVersion}; installing it now would put a second copy beside that one.`
+    );
+    return null;
+  }
+
+  return {
+    fix: `update it with \`npm install ${name}@${allowedVersion}\` (or the project's dependency update), commit and push the update, then release again. `
+      + `Do not install ${latestVersion} itself: ${holdersText}, so it would be a second copy beside that one.`,
+    problem: `${name} ${installedVersion} is installed, but ${allowedVersion} is the newest version that ${holdingRanges.map((dependent) => dependent.name).join(' and ')} allow, `
+      + 'so the release would be built and gated with an outdated toolkit.'
+  };
+}
+
+async function getToolkitProblem(name: string, declaredNames: ReadonlySet<string>): Promise<null | ReleasePreflightProblem> {
   const installedVersion = await readInstalledVersion(name);
   if (installedVersion === null) {
     return {
@@ -320,11 +378,37 @@ async function getToolkitProblem(name: string): Promise<null | ReleasePreflightP
     return null;
   }
 
-  return {
-    fix: `update it with \`npm install ${name}@${latestVersion}\` (or the project's dependency update), commit and push the update, `
-      + 'then release again.',
-    problem: `${name} ${installedVersion} is installed, but ${latestVersion} is published, so the release would be built and gated with an outdated toolkit.`
-  };
+  const dependentRanges = await readDependentRanges(name, declaredNames);
+  const holdingRanges = dependentRanges.filter((dependent) => !satisfies(latestVersion, dependent.range));
+  if (holdingRanges.length === 0) {
+    return {
+      fix: `update it with \`npm install ${name}@${latestVersion}\` (or the project's dependency update), commit and push the update, `
+        + 'then release again.',
+      problem: `${name} ${installedVersion} is installed, but ${latestVersion} is published, so the release would be built and gated with an outdated toolkit.`
+    };
+  }
+
+  return getHeldToolkitProblem({ holdingRanges, installedVersion, latestVersion, name });
+}
+
+function parsePublishedVersions(json: string): string[] {
+  // `npm view <name> versions --json` prints a bare string when only one version is published.
+  const parsed: unknown = JSON.parse(json);
+  const versions: unknown[] = Array.isArray(parsed) ? parsed : [parsed];
+  return versions.filter((version): version is string => typeof version === 'string' && valid(version) !== null);
+}
+
+async function readDependentRanges(name: string, declaredNames: ReadonlySet<string>): Promise<DependentRange[]> {
+  const dependents: DependentRange[] = [];
+  for (const dependentName of [...declaredNames].filter((declaredName) => declaredName !== name).sort()) {
+    const packageJson = await readInstalledPackageJson(dependentName);
+    const range = packageJson?.dependencies?.[name] ?? packageJson?.peerDependencies?.[name] ?? packageJson?.optionalDependencies?.[name];
+    if (range !== undefined && validRange(range) !== null) {
+      dependents.push({ name: dependentName, range, version: packageJson?.version ?? 'unknown' });
+    }
+  }
+
+  return dependents;
 }
 
 async function readGitHubRepo(originSlug: string, problems: ReleasePreflightProblem[]): Promise<null | string> {
@@ -368,13 +452,17 @@ async function readGitHubRepo(originSlug: string, problems: ReleasePreflightProb
   return defaultBranch;
 }
 
-async function readInstalledVersion(name: string): Promise<null | string> {
+async function readInstalledPackageJson(name: string): Promise<null | PackageJson> {
   try {
-    const packageJson = await readJson<PackageJson>(resolvePathFromRootSafe({ path: `node_modules/${name}/package.json` }));
-    return valid(packageJson.version ?? '');
+    return await readJson<PackageJson>(resolvePathFromRootSafe({ path: `node_modules/${name}/package.json` }));
   } catch {
     return null;
   }
+}
+
+async function readInstalledVersion(name: string): Promise<null | string> {
+  const packageJson = await readInstalledPackageJson(name);
+  return packageJson === null ? null : valid(packageJson.version ?? '');
 }
 
 async function readOriginSlug(problems: ReleasePreflightProblem[]): Promise<null | string> {

@@ -45,19 +45,29 @@ interface RepoState {
   readonly fetchError?: string;
   readonly ghError?: string;
   readonly ghView?: object;
+  // `object`, not `PackageJson`: a manifest may set `version: undefined` to stand for one with no version.
+  readonly installedManifests?: Readonly<Record<string, object>>;
   readonly installedVersions?: Readonly<Record<string, string>>;
   readonly localTag?: string;
   readonly lsRemoteError?: string;
   readonly originUrl?: string;
   readonly packageJson?: PackageJson;
+  readonly publishedVersionLists?: Readonly<Record<string, string>>;
   readonly publishedVersions?: Readonly<Record<string, string>>;
   readonly registryError?: string;
   readonly remoteTag?: string;
+  readonly versionListError?: string;
 }
 
 function playRegistry(state: RepoState, command: string): Promise<string> {
+  const [, , name = '', field = ''] = command.split(' ', 4);
+  if (field === 'versions') {
+    return state.versionListError === undefined
+      ? Promise.resolve(state.publishedVersionLists?.[name] ?? '[]')
+      : Promise.reject(new Error(state.versionListError));
+  }
   return state.registryError === undefined
-    ? Promise.resolve(state.publishedVersions?.[command.split(' ', 3)[2] ?? ''] ?? '')
+    ? Promise.resolve(state.publishedVersions?.[name] ?? '')
     : Promise.reject(new Error(state.registryError));
 }
 
@@ -67,7 +77,7 @@ function playRepo(state: RepoState = {}): string[] {
   mockReadJson.mockImplementation((path) => {
     const name = /^\/project\/node_modules\/(?<Name>.+)\/package\.json$/.exec(path)?.groups?.['Name'] ?? '';
     const version = state.installedVersions?.[name];
-    return version === undefined ? Promise.reject(new Error(`ENOENT: ${path}`)) : Promise.resolve({ name, version });
+    return version === undefined ? Promise.reject(new Error(`ENOENT: ${path}`)) : Promise.resolve({ name, version, ...state.installedManifests?.[name] });
   });
   mockExecFromRoot.mockImplementation((command) => {
     const text = Array.isArray(command) ? command.join(' ') : command;
@@ -273,6 +283,76 @@ describe('getReleasePreflightProblems toolkit check', () => {
     })).resolves.toEqual([
       `${TOOLKIT} 8.1.0 is installed, but 8.2.0 is published, so the release would be built and gated with an outdated toolkit. `
       + `Fix: update it with \`npm install ${TOOLKIT}@8.2.0\` (or the project's dependency update), commit and push the update, then release again.`
+    ]);
+  });
+
+  it('should refuse as usual when another toolkit\'s range on it admits the published version', async () => {
+    await expect(toolkitProblemsOf({
+      installedManifests: { [OBSIDIAN_TOOLKIT]: { dependencies: { [TOOLKIT]: '^8.0.0' } } },
+      installedVersions: { [OBSIDIAN_TOOLKIT]: '12.0.0', [TOOLKIT]: '8.1.0' },
+      publishedVersions: { [OBSIDIAN_TOOLKIT]: '12.0.0', [TOOLKIT]: '8.2.0' }
+    })).resolves.toEqual([expect.stringContaining(`${TOOLKIT} 8.1.0 is installed, but 8.2.0 is published`)]);
+  });
+
+  it('should pass, warning and naming the other toolkit, when its range excludes the published major and the installed one is the newest it allows', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(noop);
+    const commands = playRepo({
+      installedManifests: { [OBSIDIAN_TOOLKIT]: { dependencies: { [TOOLKIT]: '^8.0.0' } } },
+      installedVersions: { [OBSIDIAN_TOOLKIT]: '12.2.0', [TOOLKIT]: '8.3.0' },
+      packageJson: CONSUMER,
+      publishedVersionLists: { [TOOLKIT]: JSON.stringify(['8.2.0', '8.3.0', '9.0.0-beta.0', '9.0.0']) },
+      publishedVersions: { [OBSIDIAN_TOOLKIT]: '12.2.0', [TOOLKIT]: '9.0.0' }
+    });
+    await expect(getReleasePreflightProblems({ newVersion: '1.0.1', shouldCheckRemote: false })).resolves.toEqual([]);
+    expect(commands).toContain(`npm view ${TOOLKIT} versions --json`);
+    expect(warn).toHaveBeenCalledWith(
+      `${TOOLKIT} 9.0.0 is published, but ${OBSIDIAN_TOOLKIT} 12.2.0 declares ${TOOLKIT} ^8.0.0, which excludes it. ${TOOLKIT} stays at 8.3.0 until a release of `
+        + `${OBSIDIAN_TOOLKIT} takes 9.0.0; installing it now would put a second copy beside that one.`
+    );
+  });
+
+  it('should refuse with the newest version every holding range allows, never the excluded major', async () => {
+    await expect(toolkitProblemsOf({
+      installedManifests: {
+        '@mnaoumov/a-toolkit': { peerDependencies: { [TOOLKIT]: '^8.1.0' } },
+        '@mnaoumov/b-toolkit': { optionalDependencies: { [TOOLKIT]: '>=8.0.0 <8.3.0' } },
+        [OBSIDIAN_TOOLKIT]: { dependencies: { [TOOLKIT]: 'workspace:*' } }
+      },
+      installedVersions: { '@mnaoumov/a-toolkit': '1.0.0', '@mnaoumov/b-toolkit': '2.0.0', [OBSIDIAN_TOOLKIT]: '12.0.0', [TOOLKIT]: '8.1.0' },
+      packageJson: {
+        devDependencies: { '@mnaoumov/a-toolkit': '^1.0.0', '@mnaoumov/b-toolkit': '^2.0.0', [OBSIDIAN_TOOLKIT]: '^12.0.0', [TOOLKIT]: '^8.0.0' },
+        name: 'consumer'
+      },
+      publishedVersionLists: { [TOOLKIT]: JSON.stringify(['8.1.0', '8.2.0', '8.3.0', '9.0.0']) },
+      publishedVersions: { '@mnaoumov/a-toolkit': '1.0.0', '@mnaoumov/b-toolkit': '2.0.0', [OBSIDIAN_TOOLKIT]: '12.0.0', [TOOLKIT]: '9.0.0' }
+    })).resolves.toEqual([
+      `${TOOLKIT} 8.1.0 is installed, but 8.2.0 is the newest version that @mnaoumov/a-toolkit and @mnaoumov/b-toolkit allow, `
+      + 'so the release would be built and gated with an outdated toolkit. '
+      + `Fix: update it with \`npm install ${TOOLKIT}@8.2.0\` (or the project's dependency update), commit and push the update, then release again. `
+      + `Do not install 9.0.0 itself: @mnaoumov/a-toolkit 1.0.0 declares ${TOOLKIT} ^8.1.0, @mnaoumov/b-toolkit 2.0.0 declares ${TOOLKIT} >=8.0.0 <8.3.0, `
+      + 'so it would be a second copy beside that one.'
+    ]);
+  });
+
+  it('should warn when no published version fits the holding range, read a one-version list, and name a dependent with no version', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(noop);
+    await expect(toolkitProblemsOf({
+      installedManifests: { [OBSIDIAN_TOOLKIT]: { dependencies: { [TOOLKIT]: '^7.0.0' }, version: undefined } },
+      installedVersions: { [OBSIDIAN_TOOLKIT]: '12.0.0', [TOOLKIT]: '8.1.0' },
+      publishedVersionLists: { [TOOLKIT]: JSON.stringify('9.0.0') },
+      publishedVersions: { [OBSIDIAN_TOOLKIT]: '12.0.0', [TOOLKIT]: '9.0.0' }
+    })).resolves.toEqual([expect.stringContaining(`${OBSIDIAN_TOOLKIT} is declared but not installed`)]);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining(`${OBSIDIAN_TOOLKIT} unknown declares ${TOOLKIT} ^7.0.0, which excludes it. ${TOOLKIT} stays at 8.1.0`));
+  });
+
+  it('should report a held toolkit whose published versions cannot be listed as unchecked', async () => {
+    await expect(toolkitProblemsOf({
+      installedManifests: { [OBSIDIAN_TOOLKIT]: { dependencies: { [TOOLKIT]: '^8.0.0' } } },
+      installedVersions: { [OBSIDIAN_TOOLKIT]: '12.0.0', [TOOLKIT]: '8.1.0' },
+      publishedVersions: { [OBSIDIAN_TOOLKIT]: '12.0.0', [TOOLKIT]: '9.0.0' },
+      versionListError: 'offline'
+    })).resolves.toEqual([
+      expect.stringContaining(`Could not check whether ${TOOLKIT} is current: asking the npm registry for its latest version failed: `)
     ]);
   });
 
