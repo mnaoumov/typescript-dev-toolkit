@@ -270,6 +270,53 @@ describe('smokePack', () => {
     expect(fake.lines).toContain('pack smoke: required 2 module(s), 2 of them peer-bound and stopped by a missing optional peer');
   });
 
+  it('lets any module fail only on a missing host-provided package, installed as types only or absent', async () => {
+    const { error, fake } = await runSmoke(
+      {
+        files: new Map([
+          ['cjs/editor.cjs', 'require(\'@codemirror/view\');\n'],
+          ['cjs/index.cjs', 'require(\'obsidian\');\n'],
+          ['cjs/plain.cjs', CJS_OK],
+          ['esm/editor.mjs', 'import \'@codemirror/view\';\n'],
+          ['esm/index.mjs', 'import \'obsidian\';\n'],
+          ['esm/plain.mjs', ESM_OK]
+        ]),
+        // `obsidian` is installed with no `main` and no `index.js`, as its npm package is; `@codemirror/view` is absent.
+        otherInstalledPackages: ['obsidian'],
+        packageJson: {
+          exports: { '.': { import: './esm/index.mjs', require: './cjs/index.cjs' }, './*': { import: './esm/*.mjs', require: './cjs/*.cjs' } },
+          name: 'fixture'
+        }
+      },
+      { hostProvidedPackages: ['obsidian', '@codemirror/*'], shouldCheckTypes: false }
+    );
+
+    expect(error).toBeNull();
+    expect(fake.lines).toContain('pack smoke: imported 3 module(s), 0 of them peer-bound and stopped by a missing optional peer, 2 stopped by a host-provided package');
+    expect(fake.lines).toContain('pack smoke: required 3 module(s), 0 of them peer-bound and stopped by a missing optional peer, 2 stopped by a host-provided package');
+  });
+
+  it('still fails any other failure of a module, and a host-provided glob that stopped nothing', async () => {
+    const { error } = await runSmoke(
+      {
+        files: new Map([
+          ['cjs/other.cjs', 'require(\'left-pad\');\n'],
+          ['esm/other.mjs', 'import \'left-pad\';\n']
+        ]),
+        packageJson: { exports: { './*': { import: './esm/*.mjs', require: './cjs/*.cjs' } }, name: 'fixture' }
+      },
+      { hostProvidedPackages: ['obsidian', '@lezer/*'], shouldCheckTypes: false }
+    );
+
+    expect(error?.message.split('\n')).toEqual([
+      'The pack smoke found 4 problem(s):',
+      expect.stringMatching(/^- import fixture\/other: ERR_MODULE_NOT_FOUND Cannot find package 'left-pad' imported from \S+other\.mjs$/) as unknown,
+      '- require fixture/other: MODULE_NOT_FOUND Cannot find module \'left-pad\'',
+      '- hostProvidedPackages: obsidian stopped no module from loading; drop it from the list',
+      '- hostProvidedPackages: @lezer/* stopped no module from loading; drop it from the list'
+    ]);
+  });
+
   it('matches a peer-bound glob against every subpath that names a module, not only the one it is loaded as', async () => {
     const { error, fake } = await runSmoke(
       {
