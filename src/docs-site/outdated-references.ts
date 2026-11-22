@@ -98,10 +98,10 @@ export async function assertNoOutdatedReferences(rootDirectory: string): Promise
 export async function findOutdatedReferences(rootDirectory: string): Promise<OutdatedReference[]> {
   const readmePath = join(rootDirectory, 'README.md');
   const files = [
-    ...existsSync(readmePath) ? [readmePath] : [],
-    ...await listFiles(join(rootDirectory, 'docs', 'src', 'content', 'docs'), (name) => /\.mdx?$/u.test(name), ['api']),
-    ...await listFiles(join(rootDirectory, 'src'), isScannedSource, []),
-    ...await listFiles(join(rootDirectory, 'scripts'), isScannedSource, [])
+    ...(existsSync(readmePath) ? [readmePath] : []),
+    ...(await listFiles(join(rootDirectory, 'docs', 'src', 'content', 'docs'), (name) => /\.mdx?$/u.test(name), ['api'])),
+    ...(await listFiles(join(rootDirectory, 'src'), isScannedSource, [])),
+    ...(await listFiles(join(rootDirectory, 'scripts'), isScannedSource, []))
   ];
   const references: OutdatedReference[] = [];
   for (const file of files) {
@@ -156,7 +156,7 @@ async function listFiles(directory: string, isIncluded: (name: string) => boolea
     const entryPath = join(directory, entry.name);
     if (entry.isDirectory()) {
       if (!excludedDirectories.includes(entry.name)) {
-        files.push(...await listFiles(entryPath, isIncluded, excludedDirectories));
+        files.push(...(await listFiles(entryPath, isIncluded, excludedDirectories)));
       }
     } else if (isIncluded(entry.name)) {
       files.push(entryPath);

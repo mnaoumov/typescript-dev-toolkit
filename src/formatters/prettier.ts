@@ -98,7 +98,7 @@ export async function format(options?: FormatOptions): Promise<void> {
     ...resolveToolCommand({ tool: 'prettier' }),
     rewrite ? '--write' : '--check',
     '--ignore-unknown',
-    ...hasPaths ? ['--no-error-on-unmatched-pattern'] : [],
+    ...(hasPaths ? ['--no-error-on-unmatched-pattern'] : []),
     ...configArguments,
     ...EXCLUDED_PATTERNS,
     { batchedArguments: hasPaths ? paths : [RepoPaths.CurrentFolder] }

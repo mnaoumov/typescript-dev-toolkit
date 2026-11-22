@@ -42,7 +42,7 @@ const { mockParseTsConfig } = vi.hoisted(() => ({
 }));
 
 vi.mock('../check-project-types.ts', async (importOriginal) => ({
-  ...await importOriginal<typeof import('../check-project-types.ts')>(),
+  ...(await importOriginal<typeof import('../check-project-types.ts')>()),
   parseTsConfig: mockParseTsConfig
 }));
 

@@ -17,7 +17,7 @@ import {
 import { generateOgImages } from './og-images.ts';
 
 vi.mock('./og-image.ts', async (importOriginal) => ({
-  ...await importOriginal<typeof import('./og-image.ts')>(),
+  ...(await importOriginal<typeof import('./og-image.ts')>()),
   renderOgImage: vi.fn(() => Promise.resolve(Buffer.from('png')))
 }));
 

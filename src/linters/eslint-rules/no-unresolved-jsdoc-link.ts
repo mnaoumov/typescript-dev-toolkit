@@ -368,7 +368,7 @@ function isResolvedName(params: IsResolvedNameParams): boolean {
   const [rootName = '', ...memberNames] = flattenName(name);
   const index = getProgramIndex(program, checker);
   const localRoots = (localDeclarationNamesByName.get(rootName) ?? []).map((declarationName) => checker.getSymbolAtLocation(declarationName));
-  const roots = [...localRoots, ...index.exportsByName.get(rootName) ?? [], findModule(program, checker, rootName, containingFileName)];
+  const roots = [...localRoots, ...(index.exportsByName.get(rootName) ?? []), findModule(program, checker, rootName, containingFileName)];
 
   return roots.some((root) => !!resolveMemberPath(checker, root, memberNames));
 }

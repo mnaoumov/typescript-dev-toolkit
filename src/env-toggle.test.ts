@@ -22,7 +22,7 @@ const { mockExistsSync, mockExit, mockLoadEnvFile, mockStdoutWrite } = vi.hoiste
 }));
 
 vi.mock('node:fs', async (importOriginal) => ({
-  ...await importOriginal<typeof import('node:fs')>(),
+  ...(await importOriginal<typeof import('node:fs')>()),
   existsSync: mockExistsSync
 }));
 

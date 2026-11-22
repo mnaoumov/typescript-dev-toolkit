@@ -24,7 +24,7 @@ const { mockExistsSync, mockExit, mockStdoutWrite } = vi.hoisted(() => ({
 // `wrapCliTask()` consults the per-script off switch, which reads `.env` through `node:fs`. Pin it to
 // absent so the suite never picks up a developer's real `.env`.
 vi.mock('node:fs', async (importOriginal) => ({
-  ...await importOriginal<typeof import('node:fs')>(),
+  ...(await importOriginal<typeof import('node:fs')>()),
   existsSync: mockExistsSync
 }));
 
