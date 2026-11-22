@@ -21,7 +21,7 @@ function createParams(attributes: SvelteBlockAttributes, content = '', ...filena
   return {
     attributes,
     content,
-    ...filename !== undefined && { filename },
+    ...(filename !== undefined && { filename }),
     markup: ''
   };
 }

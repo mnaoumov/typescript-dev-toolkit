@@ -79,10 +79,10 @@ ruleTester.run('prefer-logical-operator-over-ternary', toRuleTesterModule(prefer
       output: 'declare const a: number | undefined; declare const c: number; declare const b: boolean; const x = !!(a ?? c) && b;'
     },
     {
-      code: 'declare const a: { b: boolean } | null; const x = a ? a.b : false;',
+      code: 'declare const a: { b: number } | null; const x = a ? a.b === 1 : false;',
       errors: [{ messageId: MESSAGE_ID }],
       name: 'a coerced test still narrows the branch that reads it',
-      output: 'declare const a: { b: boolean } | null; const x = !!a && a.b;'
+      output: 'declare const a: { b: number } | null; const x = !!a && a.b === 1;'
     },
     {
       code: 'declare const a: number; declare const b: boolean; declare const c: boolean; const x = a > 1 ? false : b || c;',
@@ -187,6 +187,10 @@ ruleTester.run('prefer-logical-operator-over-ternary', toRuleTesterModule(prefer
     {
       code: 'declare const a: boolean; const x = a ? false : true;',
       name: 'two literal branches are another rule\'s concern'
+    },
+    {
+      code: 'declare const a: { b: boolean } | null; const x = a ? a.b : false;',
+      name: 'a branch unicorn cannot prove boolean without types is not reported upstream since unicorn 80'
     }
   ]
 });

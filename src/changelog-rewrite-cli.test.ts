@@ -31,7 +31,7 @@ const { mockSpawnSync } = vi.hoisted(() => ({
 }));
 
 vi.mock('node:child_process', async (importOriginal) => ({
-  ...await importOriginal<typeof import('node:child_process')>(),
+  ...(await importOriginal<typeof import('node:child_process')>()),
   spawnSync: mockSpawnSync
 }));
 
@@ -56,7 +56,7 @@ function fake(options: FakeOptions = {}): FakeDependencies {
   const lines: string[] = [];
   const written = new Map<string, string>();
   const sleeps: number[] = [];
-  const editExitCodes = [...options.editExitCodes ?? []];
+  const editExitCodes = [...(options.editExitCodes ?? [])];
   const releaseBodies = options.releaseBodies ?? {};
   return {
     exec(file, arguments_, input): RewriteChangelogCommandResult {

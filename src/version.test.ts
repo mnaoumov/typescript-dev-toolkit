@@ -152,7 +152,7 @@ vi.mock('node:readline/promises', async (importOriginal) => {
 });
 
 vi.mock('./forbidden-patterns.ts', async (importOriginal) => ({
-  ...await importOriginal<typeof import('./forbidden-patterns.ts')>(),
+  ...(await importOriginal<typeof import('./forbidden-patterns.ts')>()),
   readForbiddenPatterns: mockReadForbiddenPatterns
 }));
 

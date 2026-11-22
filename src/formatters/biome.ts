@@ -120,8 +120,8 @@ export async function format(options?: FormatOptions): Promise<void> {
   await execFromRoot([
     ...resolveToolCommand({ tool: 'biome' }),
     'format',
-    ...rewrite ? ['--write'] : [],
-    ...hasPaths ? BIOME_EXPLICIT_PATHS_ARGUMENTS : [],
+    ...(rewrite ? ['--write'] : []),
+    ...(hasPaths ? BIOME_EXPLICIT_PATHS_ARGUMENTS : []),
     { batchedArguments: hasPaths ? paths : [RepoPaths.CurrentFolder] }
   ]);
 }

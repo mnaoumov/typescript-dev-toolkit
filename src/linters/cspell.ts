@@ -51,7 +51,7 @@ export async function spellcheck(options?: SpellcheckOptions): Promise<void> {
     '--no-progress',
     '--no-must-find-files',
     '--gitignore',
-    ...rootFolder === null ? [] : ['--gitignore-root', rootFolder],
+    ...(rootFolder === null ? [] : ['--gitignore-root', rootFolder]),
     { batchedArguments: targets }
   ]);
 }

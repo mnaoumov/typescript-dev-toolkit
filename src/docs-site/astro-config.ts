@@ -12,7 +12,6 @@ import type { StarlightUserConfig } from '@astrojs/starlight/types';
 import type { AstroUserConfig } from 'astro';
 
 import { satteri } from '@astrojs/markdown-satteri';
-// eslint-disable-next-line import-x/no-rename-default -- The default export name `StarlightIntegration` is too verbose.
 import starlight from '@astrojs/starlight';
 import {
   extname,

@@ -27,12 +27,12 @@ const { mockExecFromRoot, mockSpawn } = vi.hoisted(() => ({
 }));
 
 vi.mock('node:child_process', async (importOriginal) => ({
-  ...await importOriginal<typeof import('node:child_process')>(),
+  ...(await importOriginal<typeof import('node:child_process')>()),
   spawn: mockSpawn
 }));
 
 vi.mock('./root.ts', async (importOriginal) => ({
-  ...await importOriginal<typeof import('./root.ts')>(),
+  ...(await importOriginal<typeof import('./root.ts')>()),
   execFromRoot: mockExecFromRoot
 }));
 

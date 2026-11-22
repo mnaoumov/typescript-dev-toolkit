@@ -19,7 +19,7 @@
     },
     "fflate": {
       "section": "overrides",
-      "why": "Clears GHSA-px8p-9vwx-vf98 (fflate unzipSync infinite loop on a malformed ZIP64 archive, >=0.7.0 <0.7.5). Reached only through satori, whose newest release pins fflate at the exact 0.7.3, so no bump reaches the fix. 0.7.5 is the patch release on the same minor. NEVER take the `npm audit fix --force` remedy: it downgrades satori to 0.32.0.",
+      "why": "Clears GHSA-px8p-9vwx-vf98 (fflate unzipSync infinite loop on a malformed ZIP64 archive, >=0.7.0 <0.7.5). Reached only through satori, whose newest release pins fflate at the exact 0.7.3, so no bump reaches the fix. The override admits 0.7.5 and later; satori calls only inflateSync and zlibSync, which 0.8 keeps. NEVER take the `npm audit fix --force` remedy: it downgrades satori to 0.32.0.",
       "check": "npm view satori dependencies.fflate",
       "expect": "0.7.3",
       "manualCheck": "The check reads the exact fflate pin of the newest satori. When it reads 0.7.5 or later, drop the override and this entry, and re-run `npm audit`."
@@ -43,6 +43,41 @@
       "why": "TypeScript 7 (tsgo) breaks this toolchain: @typescript-eslint's parser crashes on the native API, so type-aware ESLint cannot run on 7. @typescript-eslint peer-requires the range below, so 6.x is the last usable major. Propagates to the whole tree via overrides.typescript = $typescript.",
       "check": "node -e \"process.stdout.write(require('typescript-eslint/package.json').peerDependencies.typescript)\"",
       "expect": ">=4.8.4 <6.1.0"
+    },
+    "glob": {
+      "section": "overrides",
+      "why": "Clears GHSA-3g3m-2fjr-6pw4 (glob >=9.0.0 <=14.0.1, fixed in 14.0.2) and, with it, GHSA-g3hv-75wg-m249 on the minimatch 9 and 10 that glob 10 and 13 nest. jest 30 (@jest/reporters, jest-config, jest-runtime) declares glob ^13 and test-exclude 7 declares glob ^10, and each calls only the named glob / globSync exports, which glob 14 keeps. Replace glob itself rather than the minimatch under it: glob 10 and 13 read Minimatch.set, which minimatch 11 changes. Caret because it is an advisory floor.",
+      "check": "node -e \"process.stdout.write(JSON.parse(require('node:fs').readFileSync('node_modules/jest-config/package.json','utf8')).dependencies['glob'])\"",
+      "expect": "^13.0.6",
+      "manualCheck": "Remove the override when jest-config and test-exclude admit glob >=14.0.2, then reinstall and rerun npm audit and the jest integration test (src/jest-runner.integration.test.ts)."
+    },
+    "eslint-plugin-tsdoc": {
+      "section": "overrides",
+      "why": "A nested override, { \"minimatch\": \"^11.0.5\" }, clearing GHSA-g3hv-75wg-m249 (minimatch <11.0.1) for the copy under eslint-plugin-tsdoc alone. eslint-plugin-tsdoc 0.5.4 pins @typescript-eslint/utils ~8.56.0, whose typescript-estree 8.56.1 keeps minimatch 10 and calls only minimatch(filePath, pattern, { dot: true }), which minimatch 11 keeps. Scoped rather than global because typedoc 0.28.20 calls Minimatch#set with matchOne, which minimatch 11 removed.",
+      "check": "node -e \"process.stdout.write(JSON.parse(require('node:fs').readFileSync('node_modules/eslint-plugin-tsdoc/package.json','utf8')).dependencies['@typescript-eslint/utils'])\"",
+      "expect": "~8.56.0",
+      "manualCheck": "Remove the override when eslint-plugin-tsdoc moves to a typescript-eslint that takes minimatch 11, then reinstall and rerun npm audit and npm run lint."
+    },
+    "@stryker-mutator/core": {
+      "section": "overrides",
+      "why": "A nested override, { \"minimatch\": \"^11.0.5\" }, clearing GHSA-g3hv-75wg-m249 for @stryker-mutator/core alone, which declares minimatch ~10.2.4 and calls only minimatch() and new Minimatch().match(), which minimatch 11 keeps. Scoped for typedoc's reason (see eslint-plugin-tsdoc).",
+      "check": "node -e \"process.stdout.write(JSON.parse(require('node:fs').readFileSync('node_modules/@stryker-mutator/core/package.json','utf8')).dependencies['minimatch'])\"",
+      "expect": "~10.2.4",
+      "manualCheck": "Remove the override when @stryker-mutator/core admits minimatch >=11.0.1, then reinstall and rerun npm audit and npm run test:mutation on one module."
+    },
+    "test-exclude": {
+      "section": "overrides",
+      "why": "A nested override, { \"minimatch\": \"^11.0.5\" }, clearing GHSA-g3hv-75wg-m249 for test-exclude 7 (through jest's babel-plugin-istanbul), which declares minimatch ^10.2.2 and calls only minimatch(), which minimatch 11 keeps. Scoped for typedoc's reason (see eslint-plugin-tsdoc).",
+      "check": "node -e \"process.stdout.write(JSON.parse(require('node:fs').readFileSync('node_modules/test-exclude/package.json','utf8')).dependencies['minimatch'])\"",
+      "expect": "^10.2.2",
+      "manualCheck": "Remove the override when test-exclude admits minimatch >=11.0.1, then reinstall and rerun npm audit and the jest integration test."
+    },
+    "eslint-plugin-import-x": {
+      "section": "overrides",
+      "why": "A nested override, { \"minimatch\": \"^11.0.5\" }, so eslint-plugin-import-x, whose range ^9.0.3 || ^10.1.2 || ^11.0.1 otherwise dedupes onto the root minimatch 10 typedoc holds, takes a patched copy for GHSA-g3hv-75wg-m249. It calls only the named minimatch(), which minimatch 11 keeps.",
+      "check": "node -e \"process.stdout.write(String(require('node:fs').existsSync('node_modules/typedoc')))\"",
+      "expect": "true",
+      "manualCheck": "Remove the override once typedoc takes minimatch 11 (T6738 upstream) and the root minimatch is 11, then reinstall and rerun npm audit and npm run lint."
     }
   }
 }

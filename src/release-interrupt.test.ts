@@ -37,7 +37,7 @@ vi.mock('./root.ts', () => ({
 }));
 
 vi.mock('node:fs/promises', async (importOriginal) => ({
-  ...await importOriginal<typeof import('node:fs/promises')>(),
+  ...(await importOriginal<typeof import('node:fs/promises')>()),
   readFile: mockReadFile,
   rm: mockRm
 }));

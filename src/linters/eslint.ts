@@ -181,7 +181,7 @@ export function describeFailureToLint(result: ExecResult): string {
     'This is NOT a lint finding: the source code has not been judged, so do not go looking for a defect in it.',
     'Re-run the command. Only if it reproduces is there something to fix, and the thing to fix is the linter.',
     `  exit code: ${formatExitCode(result.exitCode)}`,
-    ...result.exitSignal === null ? [] : [`  terminated by signal: ${result.exitSignal}`],
+    ...(result.exitSignal === null ? [] : [`  terminated by signal: ${result.exitSignal}`]),
     details.length > 0 ? '  ESLint said:' : '  ESLint printed no diagnostic at all.',
     ...details.map((detail) => `    ${detail}`)
   ].join('\n');

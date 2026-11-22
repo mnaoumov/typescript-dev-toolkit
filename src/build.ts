@@ -81,7 +81,7 @@ export async function buildCompileSvelte(): Promise<void> {
   const tsConfig = await readJson<TsConfigJson>(tsConfigPath);
   const svelteFiles = await toArray(glob(SVELTE_FILE_PATTERNS, {
     cwd: resolvePathFromRootSafe({ path: RepoPaths.CurrentFolder }),
-    exclude: [...SVELTE_FILE_EXCLUDE_PATTERNS, ...tsConfig.exclude ?? []]
+    exclude: [...SVELTE_FILE_EXCLUDE_PATTERNS, ...(tsConfig.exclude ?? [])]
   }));
 
   const [firstSvelteFile] = svelteFiles;

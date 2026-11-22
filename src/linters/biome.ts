@@ -53,8 +53,8 @@ export async function lint(options?: LintOptions): Promise<void> {
     ...resolveToolCommand({ tool: 'biome' }),
     'lint',
     '--error-on-warnings',
-    ...shouldFix ? ['--write'] : [],
-    ...hasPaths ? BIOME_EXPLICIT_PATHS_ARGUMENTS : [],
+    ...(shouldFix ? ['--write'] : []),
+    ...(hasPaths ? BIOME_EXPLICIT_PATHS_ARGUMENTS : []),
     { batchedArguments: hasPaths ? paths : [RepoPaths.CurrentFolder] }
   ]);
 }

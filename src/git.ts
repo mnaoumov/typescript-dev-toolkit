@@ -61,7 +61,7 @@ export async function getNonIgnoredFiles(options?: GetNonIgnoredFilesOptions): P
     '--others',
     '--exclude-standard',
     '-z',
-    ...patterns.length > 0 ? ['--', ...patterns] : []
+    ...(patterns.length > 0 ? ['--', ...patterns] : [])
   ];
 
   let stdout: string;

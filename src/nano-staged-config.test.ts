@@ -67,7 +67,7 @@ function mockScripts(scriptNames: readonly string[]): void {
 }
 
 vi.mock('node:fs', async (importOriginal) => ({
-  ...await importOriginal<typeof import('node:fs')>(),
+  ...(await importOriginal<typeof import('node:fs')>()),
   existsSync: mockExistsSync
 }));
 

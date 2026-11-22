@@ -800,7 +800,7 @@ export function findOverExposure(params: FindOverExposureParams): OverExposureFi
     writeFile: (path, content) => {
       sys.writeFile(path, content);
     },
-    ...params.onProgress && { onProgress: params.onProgress }
+    ...(params.onProgress && { onProgress: params.onProgress })
   });
 }
 

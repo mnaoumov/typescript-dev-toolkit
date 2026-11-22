@@ -83,7 +83,7 @@ export async function format(options?: FormatOptions): Promise<void> {
     '--config',
     dprintJsonPath,
     ...DPRINT_ADDITIONAL_EXCLUDES.map((pattern) => `--excludes=${pattern}`),
-    ...hasPaths ? ['--allow-no-files'] : [],
+    ...(hasPaths ? ['--allow-no-files'] : []),
     { batchedArguments: hasPaths ? paths : ['**/*'] }
   ]);
 }
