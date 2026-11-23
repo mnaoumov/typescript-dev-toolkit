@@ -1253,6 +1253,50 @@ describe('updateChangelog', () => {
     expect(mockWriteFile).not.toHaveBeenCalled();
   });
 
+  it.each([
+    'Merge branch \'a-branch\'',
+    'Merge branches \'a\' and \'b\'',
+    'Merge remote-tracking branch \'origin/a-branch\'',
+    'Merge pull request #1 from user/a-branch',
+    'Merge tag \'v1.0.0\'',
+    'Merge tags \'v1\' and \'v2\'',
+    'Merge commit \'0123abc\'',
+    'Merge \'refs/notes/a\'',
+    'Merge https://github.com/owner/repo',
+    'Merge git@github.com:owner/repo'
+  ])('should refuse the git-written merge subject %s', async (subject) => {
+    mockExistsSync.mockReturnValue(false);
+    mockReadFile.mockResolvedValue(`- ${subject}\n`);
+    await expect(updateChangelog('1.0.0', { changelogFilePath: '/notes.md' })).rejects.toThrow('carries a merge subject git wrote itself');
+    expect(mockWriteFile).not.toHaveBeenCalled();
+  });
+
+  // An issue title that starts with the verb "Merge" is not a merge subject: the grouped section renders an
+  // issue-closing merge as its issue's title, so the earlier `Merge\b` pattern refused a release with nothing wrong.
+  it('should write prepared release notes whose entry merely starts with the word Merge', async () => {
+    mockExistsSync.mockReturnValue(false);
+    mockReadFile.mockResolvedValue('- Merge all linked notes back into the active note at once (#315)\n');
+    await updateChangelog('1.0.0', { changelogFilePath: '/notes.md' });
+    expect(mockWriteFile).toHaveBeenCalledWith(
+      '/root/CHANGELOG.md',
+      '# CHANGELOG\n\n## 1.0.0\n\n- Merge all linked notes back into the active note at once (#315)\n',
+      'utf-8'
+    );
+  });
+
+  it('should release a grouped issue-closing commit whose issue title starts with the word Merge', async () => {
+    mockExistsSync.mockReturnValue(false);
+    mockExecFromRoot
+      .mockResolvedValueOnce('feat: re #315\n\n[FR] Merge all linked notes back into the active note at once\0')
+      .mockResolvedValueOnce('');
+    await updateChangelog('1.0.0', { changelogStyle: 'grouped', shouldEditChangelog: false });
+    expect(mockWriteFile).toHaveBeenCalledWith(
+      '/root/CHANGELOG.md',
+      expect.stringContaining('- Merge all linked notes back into the active note at once (#315)\n'),
+      'utf-8'
+    );
+  });
+
   // Only the section being published is scanned. An entry that already shipped is part of the published record,
   // and scanning the whole file would leave such a repository unable to release anything ever again.
   it('should not refuse a merge subject that was already published under an older version', async () => {
