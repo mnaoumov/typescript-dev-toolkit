@@ -544,17 +544,18 @@ const SPELLCHECK_SCRIPT_NAME = 'spellcheck';
 /**
  * The shape of a merge subject git wrote itself, rather than one an author chose.
  *
- * Every default git produces opens with `Merge` and a word boundary — `Merge branch 'x'`,
- * `Merge branches 'x' and 'y'`, `Merge remote-tracking branch 'x'`, `Merge pull request #1 from y`,
- * `Merge tag 'x'`, `Merge commit 'abc'` — which is what the optional alternation and the trailing `\b` cover
- * between them. Being that broad costs nothing here: every changelog entry in this workspace is a
- * Conventional-Commits subject, and those open with a type (`feat`, `fix`, `chore`, …), never with `Merge`.
+ * It matches only the shapes git (and GitHub's merge button) write: `Merge branch 'x'`, `Merge branches 'x' and 'y'`,
+ * `Merge remote-tracking branch 'x'`, `Merge pull request #1 from y`, `Merge tag 'x'`, `Merge commit 'abc'` (each
+ * with its plural), `Merge 'x'` for any other ref, and `Merge <url>` for a pull of a remote's `HEAD`. A bare
+ * `Merge` followed by a word is NOT one: the grouped changelog renders an issue-closing merge (`feat: re #315`) as
+ * the issue's title, and a title such as `Merge all linked notes back into the active note` starts with the verb.
+ * An earlier, broader pattern (`Merge` plus a word boundary) refused every release carrying such an issue.
  *
  * ONE pattern drives both halves of the guard, so they cannot drift apart: {@link toChangelogEntry} rewrites
  * a commit whose subject matches it, and {@link assertChangelogHasNoMergeSubjects} refuses a changelog line
  * that still does. The refusal is therefore reachable only for a merge the rewrite had nothing to work with.
  */
-const MERGE_SUBJECT_REG_EXP = /^Merge(?: branch| remote-tracking| pull request)?\b/;
+const MERGE_SUBJECT_REG_EXP = /^Merge (?:(?:remote-tracking )?branch(?:es)? '|tags? '|commits? '|pull request #\d|'|[a-z][\w+.-]*:\/\/|[\w.-]+@[\w.-]+:)/;
 
 /**
  * Enum representing different types of version updates.
