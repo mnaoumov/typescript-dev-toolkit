@@ -108,7 +108,7 @@ When using dprint with the shared ESLint configuration, add these options to the
 
 `useBraces` keeps single-line control-flow bodies compatible with ESLint's required braces. Preserving named-import order lets ESLint sort by local aliases; dprint would otherwise sort by imported names and undo the lint fix. The formatter reads your configuration as given, so updating the toolkit alone does not change these project options.
 
-Prettier and Biome are optional peers, so install the one you use (`npm install --save-dev prettier` or `npm install --save-dev @biomejs/biome`). The package ships a shared configuration for each, written to match the dprint style as closely as the tool allows: single quotes, no trailing commas, semicolons, two-space indentation, parentheses around every arrow parameter, and a 120-column line, because both re-wrap every statement to their line width.
+Prettier and Biome are optional peers, so install the one you use (`npm install --save-dev prettier` or `npm install --save-dev @biomejs/biome`; the shared Biome configuration needs Biome 2.5.0 or later). The package ships a shared configuration for each, written to match the dprint style as closely as the tool allows: single quotes, no trailing commas, semicolons, two-space indentation, parentheses around every arrow parameter, and a 120-column line, because both re-wrap every statement to their line width.
 
 For Prettier, `prettier.config.mjs`:
 

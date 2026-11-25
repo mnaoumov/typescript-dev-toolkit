@@ -248,3 +248,20 @@ import type { Zebra as AlphaType, Alpha as ZebraType, MiddleType } from 'types';
     expect(runFormatter([DPRINT_BIN_PATH, 'fmt', '--config', DPRINT_JSON_PATH, '--stdin', 'fixture.ts'], REPOSITORY_ROOT, formatted)).toBe(formatted);
   });
 });
+
+describe('the shared Biome configuration', () => {
+  // Biome 2.5 deprecated `linter.rules.recommended` in favour of `preset` and will drop it in its next major, where
+  // a deprecated field in the shared configuration would stop every consumer's `biome.json` from loading. Until then
+  // Biome only prints a `deserialize DEPRECATED` notice, which nothing else here would notice.
+  it('should load with no deprecation notice and lint with the recommended rules', () => {
+    // A file on disk, not stdin: with `--stdin-file-path` Biome echoes the content and prints no diagnostics.
+    writeFileSync(join(BIOME_PROJECT_FOLDER, 'lint-fixture.ts'), 'export function stop(): void {\n  debugger;\n}\n');
+    const result = spawnSync(process.execPath, [BIOME_BIN_PATH, 'lint', 'lint-fixture.ts'], {
+      cwd: BIOME_PROJECT_FOLDER,
+      encoding: 'utf-8'
+    });
+    const output = `${result.stdout}\n${result.stderr}`;
+    expect(output).not.toMatch(/deprecated/i);
+    expect(output).toContain('noDebugger');
+  });
+});
