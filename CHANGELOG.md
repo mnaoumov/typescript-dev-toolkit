@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 11.0.0
+
+This release has 1 breaking change and 1 fix.
+
+### Breaking changes
+
+- **biome:** turn on the recommended rules with preset in the shared biome.json
+
+### Fixed
+
+- **release:** refuse only the merge subjects git writes, not an entry starting with the word Merge
+
 ## 10.0.0
 
 This release has 1 breaking change, 1 new feature and 1 fix.
