@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## 11.1.0
+
+This release has 1 new feature.
+
+### New
+
+- **docs-site:** follow nested re-exports from the public API barrel
+
 ## 11.0.0
 
 This release has 1 breaking change and 1 fix.
