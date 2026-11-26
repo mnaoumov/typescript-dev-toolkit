@@ -573,6 +573,76 @@ describe('generateApiDocs', () => {
     expect(existsSync(join(settings.outputDirectory, 'alpha/add/index.mdx'))).toBe(true);
   });
 
+  it('follows a barrel of barrels to the modules that declare each name', async () => {
+    const other = createFixture();
+    const files: Record<string, string> = {
+      'src/entries/again.ts': 'export * from \'./core.ts\';',
+      'src/entries/core.ts': dedent`
+        import * as everything from '../alpha.ts';
+        import add from '../alpha.ts';
+        import { Worker } from '../gamma.ts';
+        import { outside } from 'pkg';
+        void everything;
+        void add;
+        export * from '../nested/beta.ts';
+        export { Derived } from '../alpha.ts';
+        export { outside, Worker };
+        export const { destructured } = { destructured: 1 };
+        export default function () {}
+        export namespace Space {}
+        /** Parses. */
+        export function parse(): void {}
+      `,
+      'src/entries/loop.ts': 'export * from \'./more.ts\';',
+      'src/entries/more.ts': dedent`
+        export * from '../gamma.ts';
+        export * from './core.ts';
+        export * from './loop.ts';
+        /** Shadows the one in gamma. */
+        export interface Documented { a: string; }
+      `,
+      'src/public.ts': dedent`
+        export * from './entries/core.ts';
+        export * from './entries/again.ts';
+        export { generic, Documented, generic } from './entries/more.ts';
+      `
+    };
+    for (const [path, content] of Object.entries(files)) {
+      mkdirSync(dirname(join(other.root, path)), { recursive: true });
+      writeFileSync(join(other.root, path), content);
+    }
+    const settings: ApiDocSettings = { ...other.settings, publicApiEntry: join(other.root, 'src/public.ts') };
+    await generateApiDocs({ rootDirectory: other.root, settings, sourceDirectory: join(other.root, 'src') });
+
+    function isDocumented(path: string): boolean {
+      return existsSync(join(settings.outputDirectory, path, 'index.mdx'));
+    }
+    expect(isDocumented('nested/beta/base')).toBe(true);
+    expect(isDocumented('alpha/derived')).toBe(true);
+    expect(isDocumented('alpha/base')).toBe(false);
+    expect(isDocumented('gamma/worker')).toBe(true);
+    expect(isDocumented('entries/core/parse')).toBe(true);
+    expect(isDocumented('gamma/generic')).toBe(true);
+    expect(isDocumented('entries/more/documented')).toBe(true);
+    expect(isDocumented('gamma/documented')).toBe(false);
+    expect(isDocumented('gamma/box')).toBe(false);
+  });
+
+  it.each([
+    ['import { add as plus } from \'./alpha.ts\'; export { plus };', 'renames \'add\' to \'plus\''],
+    ['export * from \'./nested-rename.ts\';', 'nested-rename.ts renames \'add\' to \'plus\'']
+  ])('refuses a barrel whose re-exports rename a name: %s', async (barrel, message) => {
+    const other = createFixture();
+    writeFileSync(join(other.root, 'src/nested-rename.ts'), 'export { add as plus } from \'./alpha.ts\';');
+    const barrelPath = join(other.root, 'src/public.ts');
+    writeFileSync(barrelPath, barrel);
+    await expect(generateApiDocs({
+      rootDirectory: other.root,
+      settings: { ...other.settings, publicApiEntry: barrelPath },
+      sourceDirectory: join(other.root, 'src')
+    })).rejects.toThrow(message);
+  });
+
   it.each([
     ['export { x } from \'pkg\';', 'which is not a module of this package'],
     ['export { x } from \'./absent.ts\';', 'which does not exist'],
