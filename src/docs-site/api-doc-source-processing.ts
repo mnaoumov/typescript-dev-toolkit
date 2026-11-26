@@ -430,7 +430,7 @@ export function readPublicApiBarrel(entryFile: string, sourceDirectory: string):
     visitedNames.add(visitKey);
     files.add(filePath);
     const barrelModule = readModule(filePath);
-    const namedReExport = barrelModule.reExports.find((reExport) => reExport.names?.includes(name));
+    const namedReExport = barrelModule.reExports.find((reExport) => reExport.names?.includes(name) === true);
     if (namedReExport !== undefined) {
       visitName(namedReExport.targetPath, name);
       return;
