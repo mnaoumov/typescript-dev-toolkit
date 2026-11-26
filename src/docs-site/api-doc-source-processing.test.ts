@@ -28,6 +28,7 @@ import {
   computeNamespace,
   findEntryFiles,
   processSourceFile,
+  readPublicApiBarrel,
   registerGenericTypeParams
 } from './api-doc-source-processing.ts';
 
@@ -102,6 +103,31 @@ describe('api-doc source processing', () => {
 
       expect(findEntryFiles(root).map((path) => relative(root, path).replaceAll('\\', '/')).sort()).toEqual(['internal/alpha.ts', 'jest/alpha.ts', 'public/alpha.ts']);
       expect(findEntryFiles(root, ['internal', 'jest']).map((path) => relative(root, path).replaceAll('\\', '/'))).toEqual(['public/alpha.ts']);
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  });
+
+  it('follows a name re-exported by name through a nested barrel, past statements that export nothing it can document', () => {
+    const root = mkdtempSync(join(tmpdir(), 'api-doc-public-barrel-'));
+    try {
+      writeFileSync(join(root, 'public.ts'), 'export { Box } from \'./named.ts\';');
+      writeFileSync(
+        join(root, 'named.ts'),
+        dedent`
+          export { Box } from './box.ts';
+          export import Alias = Other.Thing;
+          export declare module 'ambient' {}
+          export { a } from x;
+        `
+      );
+      writeFileSync(join(root, 'box.ts'), 'export class Box {}');
+
+      const barrel = readPublicApiBarrel(join(root, 'public.ts'), root);
+
+      expect(barrel.files.map((path) => relative(root, path))).toEqual(['named.ts', 'box.ts']);
+      expect([...barrel.publicKeys]).toEqual([`${computeNamespace(root, join(root, 'box.ts'))}#Box`]);
+      expect(barrel.wholeNamespaces.size).toBe(0);
     } finally {
       rmSync(root, { force: true, recursive: true });
     }

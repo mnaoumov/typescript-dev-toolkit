@@ -6,6 +6,7 @@
  */
 
 import type { SourceFile } from 'ts-morph';
+import type { Statement } from 'typescript';
 
 import { createHash } from 'node:crypto';
 import {
@@ -21,11 +22,25 @@ import {
 } from 'node:path';
 import { Node } from 'ts-morph';
 import {
+  canHaveModifiers,
   createSourceFile,
+  getModifiers,
+  isClassDeclaration,
+  isEnumDeclaration,
   isExportDeclaration,
+  isFunctionDeclaration,
+  isIdentifier,
+  isImportDeclaration,
+  isInterfaceDeclaration,
+  isModuleDeclaration,
+  isNamedExports,
+  isNamedImports,
   isNamespaceExport,
   isStringLiteral,
-  ScriptTarget
+  isTypeAliasDeclaration,
+  isVariableStatement,
+  ScriptTarget,
+  SyntaxKind
 } from 'typescript';
 
 import type { TypeInfo } from './api-doc-types.ts';
@@ -56,7 +71,8 @@ import { simplifyType } from './api-doc-text-utils.ts';
  */
 export interface PublicApiBarrel {
   /**
-   * The modules the barrel re-exports from, in barrel order: the entry files of the API reference.
+   * The modules the barrel re-exports from, directly or through other barrels, in the order they are reached: the
+   * entry files of the API reference.
    */
   readonly files: readonly string[];
 
@@ -69,6 +85,23 @@ export interface PublicApiBarrel {
    * The namespaces of the modules the barrel re-exports whole (`export * from`).
    */
   readonly wholeNamespaces: ReadonlySet<string>;
+}
+
+interface BarrelModule {
+  // The names the module declares and exports itself.
+  readonly localExports: ReadonlySet<string>;
+  readonly reExports: readonly BarrelReExport[];
+}
+
+interface BarrelNamedImport {
+  readonly importedName: string;
+  readonly moduleSpecifier: string;
+}
+
+interface BarrelReExport {
+  // The names re-exported, or `null` for `export * from`.
+  readonly names: null | readonly string[];
+  readonly targetPath: string;
 }
 
 /**
@@ -339,6 +372,10 @@ export function processSourceFile(src: SourceFile, types: Map<string, TypeInfo>,
 /**
  * Reads a package's public API barrel: the modules it re-exports from and the names it forwards.
  *
+ * Re-exports are followed down to the module that declares each name, through `export * from`,
+ * `export { a } from` and `import { a } from` + `export { a }`, so a barrel of barrels documents its whole API.
+ * A local declaration shadows a name an `export *` would bring in, as in TypeScript.
+ *
  * It is parsed on its own rather than through the ts-morph project, because the cache check needs the entry files
  * before that project exists, and a cache hit must not pay for loading it.
  *
@@ -349,39 +386,75 @@ export function processSourceFile(src: SourceFile, types: Map<string, TypeInfo>,
  * or re-exports a module as a namespace: none of these can be documented under the name a consumer imports.
  */
 export function readPublicApiBarrel(entryFile: string, sourceDirectory: string): PublicApiBarrel {
-  const sourceFile = createSourceFile(entryFile, readFileSync(entryFile, 'utf-8'), ScriptTarget.Latest);
   const files = new Set<string>();
   const publicKeys = new Set<string>();
   const wholeNamespaces = new Set<string>();
+  const modules = new Map<string, BarrelModule>();
+  const visitedWhole = new Set<string>();
+  const visitedNames = new Set<string>();
 
-  for (const statement of sourceFile.statements) {
-    if (!isExportDeclaration(statement) || statement.moduleSpecifier === undefined || !isStringLiteral(statement.moduleSpecifier)) {
-      continue;
+  function readModule(filePath: string): BarrelModule {
+    let barrelModule = modules.get(filePath);
+    if (barrelModule === undefined) {
+      barrelModule = parseBarrelModule(filePath);
+      modules.set(filePath, barrelModule);
     }
-    const moduleSpecifier = statement.moduleSpecifier.text;
-    if (!moduleSpecifier.startsWith('.')) {
-      throw new Error(`${entryFile} re-exports '${moduleSpecifier}', which is not a module of this package.`);
+    return barrelModule;
+  }
+
+  // Everything a module exports: its own declarations, and every module it re-exports, followed down.
+  function visitWhole(filePath: string): void {
+    if (visitedWhole.has(filePath)) {
+      return;
     }
-    const filePath = resolve(dirname(entryFile), moduleSpecifier);
-    if (!existsSync(filePath)) {
-      throw new Error(`${entryFile} re-exports '${moduleSpecifier}', which does not exist.`);
-    }
+    visitedWhole.add(filePath);
     files.add(filePath);
-    const namespace = computeNamespace(sourceDirectory, filePath);
-
-    const { exportClause } = statement;
-    if (exportClause === undefined) {
-      wholeNamespaces.add(namespace);
-      continue;
-    }
-    if (isNamespaceExport(exportClause)) {
-      throw new Error(`${entryFile} re-exports '${moduleSpecifier}' as a namespace, which the API reference cannot document.`);
-    }
-    for (const element of exportClause.elements) {
-      if (element.propertyName !== undefined) {
-        throw new Error(`${entryFile} renames '${element.propertyName.text}' to '${element.name.text}', which the API reference cannot document.`);
+    wholeNamespaces.add(computeNamespace(sourceDirectory, filePath));
+    for (const reExport of readModule(filePath).reExports) {
+      if (reExport.names === null) {
+        visitWhole(reExport.targetPath);
+      } else {
+        for (const name of reExport.names) {
+          visitName(reExport.targetPath, name);
+        }
       }
-      publicKeys.add(qualifiedKey(namespace, element.name.text));
+    }
+  }
+
+  // One name a module exports, followed to the module that declares it.
+  function visitName(filePath: string, name: string): void {
+    const visitKey = qualifiedKey(filePath, name);
+    if (visitedNames.has(visitKey)) {
+      return;
+    }
+    visitedNames.add(visitKey);
+    files.add(filePath);
+    const barrelModule = readModule(filePath);
+    const namedReExport = barrelModule.reExports.find((reExport) => reExport.names?.includes(name) === true);
+    if (namedReExport !== undefined) {
+      visitName(namedReExport.targetPath, name);
+      return;
+    }
+    if (barrelModule.localExports.has(name)) {
+      publicKeys.add(qualifiedKey(computeNamespace(sourceDirectory, filePath), name));
+      return;
+    }
+    // A local declaration shadows an `export *`, so the stars are searched only when the module declares no such name.
+    for (const reExport of barrelModule.reExports) {
+      if (reExport.names === null) {
+        visitName(reExport.targetPath, name);
+      }
+    }
+  }
+
+  // The barrel itself is not documented: only what it forwards is.
+  for (const reExport of parseBarrelModule(entryFile).reExports) {
+    if (reExport.names === null) {
+      visitWhole(reExport.targetPath);
+    } else {
+      for (const name of reExport.names) {
+        visitName(reExport.targetPath, name);
+      }
     }
   }
 
@@ -413,8 +486,130 @@ export function registerGenericTypeParams(types: Map<string, TypeInfo>): void {
   }
 }
 
+// The names a module imports by name (`import { a as b } from`), keyed by their local name.
+function collectNamedImports(statements: readonly Statement[]): Map<string, BarrelNamedImport> {
+  const namedImports = new Map<string, BarrelNamedImport>();
+  for (const statement of statements) {
+    if (
+      isImportDeclaration(statement) && isStringLiteral(statement.moduleSpecifier) && statement.importClause?.namedBindings !== undefined
+      && isNamedImports(statement.importClause.namedBindings)
+    ) {
+      for (const element of statement.importClause.namedBindings.elements) {
+        namedImports.set(element.name.text, {
+          importedName: (element.propertyName ?? element.name).text,
+          moduleSpecifier: statement.moduleSpecifier.text
+        });
+      }
+    }
+  }
+  return namedImports;
+}
+
+function getDeclaredExportNames(statement: Statement): readonly string[] {
+  const modifiers = canHaveModifiers(statement) ? getModifiers(statement) ?? [] : [];
+  if (modifiers.every((modifier) => modifier.kind !== SyntaxKind.ExportKeyword) || modifiers.some((modifier) => modifier.kind === SyntaxKind.DefaultKeyword)) {
+    return [];
+  }
+  if (isVariableStatement(statement)) {
+    return statement.declarationList.declarations.flatMap((declaration) => (isIdentifier(declaration.name) ? [declaration.name.text] : []));
+  }
+  if (
+    (isFunctionDeclaration(statement) || isClassDeclaration(statement) || isInterfaceDeclaration(statement) || isTypeAliasDeclaration(statement)
+      || isEnumDeclaration(statement) || isModuleDeclaration(statement))
+    && statement.name !== undefined && isIdentifier(statement.name)
+  ) {
+    return [statement.name.text];
+  }
+  return [];
+}
+
 function isTypeDeclaration(declaration: Node): boolean {
   return Node.isClassDeclaration(declaration) || Node.isInterfaceDeclaration(declaration) || Node.isTypeAliasDeclaration(declaration) || Node.isEnumDeclaration(declaration);
+}
+
+/**
+ * Parses one module of the public API barrel's re-export graph: the names it declares itself and the modules it
+ * re-exports.
+ *
+ * @param filePath - The module.
+ * @returns The module.
+ * @throws If it re-exports a module that does not exist or belongs to another package, renames a re-export, or
+ * re-exports a module as a namespace.
+ */
+function parseBarrelModule(filePath: string): BarrelModule {
+  const sourceFile = createSourceFile(filePath, readFileSync(filePath, 'utf-8'), ScriptTarget.Latest);
+  const localExports = new Set<string>();
+  const reExports: BarrelReExport[] = [];
+  const namedImports = collectNamedImports(sourceFile.statements);
+
+  function resolveTarget(moduleSpecifier: string): string {
+    if (!moduleSpecifier.startsWith('.')) {
+      throw new Error(`${filePath} re-exports '${moduleSpecifier}', which is not a module of this package.`);
+    }
+    const targetPath = resolve(dirname(filePath), moduleSpecifier);
+    if (!existsSync(targetPath)) {
+      throw new Error(`${filePath} re-exports '${moduleSpecifier}', which does not exist.`);
+    }
+    return targetPath;
+  }
+
+  function assertNotRenamed(propertyName: string, name: string): void {
+    if (propertyName !== name) {
+      throw new Error(`${filePath} renames '${propertyName}' to '${name}', which the API reference cannot document.`);
+    }
+  }
+
+  for (const statement of sourceFile.statements) {
+    for (const name of getDeclaredExportNames(statement)) {
+      localExports.add(name);
+    }
+    if (!isExportDeclaration(statement)) {
+      continue;
+    }
+    const { exportClause, moduleSpecifier } = statement;
+
+    if (moduleSpecifier === undefined) {
+      // `export { a };`: a name this module declares, or one it imports, which is then a re-export.
+      /* v8 ignore start -- Without a module specifier the grammar allows only named exports; the parser gives even `export *;` one. */
+      if (exportClause === undefined || !isNamedExports(exportClause)) {
+        continue;
+      }
+      /* v8 ignore stop */
+      for (const element of exportClause.elements) {
+        const localName = (element.propertyName ?? element.name).text;
+        const namedImport = namedImports.get(localName);
+        if (!namedImport?.moduleSpecifier.startsWith('.')) {
+          localExports.add(element.name.text);
+          continue;
+        }
+        assertNotRenamed(namedImport.importedName, element.name.text);
+        reExports.push({ names: [element.name.text], targetPath: resolveTarget(namedImport.moduleSpecifier) });
+      }
+      continue;
+    }
+
+    // A specifier that is not a string literal is a syntax error (`export { a } from x;`) the parser recovered from.
+    if (!isStringLiteral(moduleSpecifier)) {
+      continue;
+    }
+    const targetPath = resolveTarget(moduleSpecifier.text);
+    if (exportClause === undefined) {
+      reExports.push({ names: null, targetPath });
+      continue;
+    }
+    if (isNamespaceExport(exportClause)) {
+      throw new Error(`${filePath} re-exports '${moduleSpecifier.text}' as a namespace, which the API reference cannot document.`);
+    }
+    reExports.push({
+      names: exportClause.elements.map((element) => {
+        assertNotRenamed((element.propertyName ?? element.name).text, element.name.text);
+        return element.name.text;
+      }),
+      targetPath
+    });
+  }
+
+  return { localExports, reExports };
 }
 
 function qualifiedKey(namespace: string, name: string): string {
