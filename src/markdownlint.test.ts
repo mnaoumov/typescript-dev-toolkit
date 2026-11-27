@@ -45,6 +45,9 @@ const {
   mockWriteFile: vi.fn<(path: string, content: string) => Promise<void>>()
 }));
 
+const LINKINATOR_OPTIONS = { shouldIgnoreExitCode: true, shouldIncludeDetails: true };
+const PASSED_RESULT = { exitCode: 0, exitSignal: null, stderr: '', stdout: '' };
+
 vi.mock('./env-toggle.ts', () => ({
   loadEnvFileIfExists: vi.fn()
 }));
@@ -92,7 +95,7 @@ beforeEach(() => {
   vi.stubEnv('BULK_CORES', undefined);
   vi.stubEnv('LINK_CHECK_SKIP', undefined);
   vi.resetAllMocks();
-  mockExecFromRoot.mockResolvedValue('');
+  mockExecFromRoot.mockResolvedValue(PASSED_RESULT);
   mockCp.mockResolvedValue(undefined);
   // Default to "git cannot answer" so the existing cases keep exercising the glob fallback they assert on.
   mockGetNonIgnoredFiles.mockResolvedValue(null);
@@ -117,7 +120,8 @@ describe('lint', () => {
       expect.arrayContaining(['markdownlint-cli2', { batchedArguments: ['.'] }])
     );
     expect(mockExecFromRoot).toHaveBeenCalledWith(
-      expect.arrayContaining(['linkinator', { batchedArguments: ['README.md'] }])
+      expect.arrayContaining(['linkinator', { batchedArguments: ['README.md'] }]),
+      LINKINATOR_OPTIONS
     );
   });
 
@@ -126,7 +130,8 @@ describe('lint', () => {
     mockExistsSync.mockReturnValue(true);
     await lint();
     expect(mockExecFromRoot).toHaveBeenCalledWith(
-      expect.arrayContaining(['linkinator', '--retry-errors', '--retry-errors-count', '3', '--retry-errors-jitter', '5000', '--status-code', '429:warn', '--status-code', '408:warn', '--timeout', '30000'])
+      expect.arrayContaining(['linkinator', '--retry-errors', '--retry-errors-count', '3', '--retry-errors-jitter', '5000', '--status-code', '429:warn', '--status-code', '408:warn', '--timeout', '30000']),
+      LINKINATOR_OPTIONS
     );
     expect(mockExecFromRoot.mock.calls[1]?.[0]).not.toContain('--retry');
   });
@@ -136,9 +141,60 @@ describe('lint', () => {
     mockExistsSync.mockReturnValue(true);
     await lint();
     expect(mockExecFromRoot).toHaveBeenCalledWith(
-      expect.arrayContaining(['linkinator', '--status-code', '502:warn', '--status-code', '503:warn', '--status-code', '504:warn'])
+      expect.arrayContaining(['linkinator', '--status-code', '502:warn', '--status-code', '503:warn', '--status-code', '504:warn']),
+      LINKINATOR_OPTIONS
     );
     expect(mockExecFromRoot.mock.calls[1]?.[0]).not.toContain('500:warn');
+  });
+
+  // While shields.io was down it answered 520, and that failed a pre-commit hook in typescript-lib.
+  it('should only warn on the Cloudflare origin failures 520 to 524', async () => {
+    mockExistsSync.mockReturnValue(true);
+    await lint();
+    expect(mockExecFromRoot.mock.calls[1]?.[0]).toEqual(expect.arrayContaining(['--status-code', '520:warn', '--status-code', '524:warn']));
+    expect(mockExecFromRoot.mock.calls[1]?.[1]).toEqual(LINKINATOR_OPTIONS);
+  });
+
+  describe('a failed linkinator run', () => {
+    function failWith(stderr: string, exitCode: null | number = 1, exitSignal: null | string = null): void {
+      mockExistsSync.mockReturnValue(true);
+      mockExecFromRoot.mockResolvedValueOnce(PASSED_RESULT).mockResolvedValueOnce({ exitCode, exitSignal, stderr, stdout: '' });
+    }
+
+    // While shields.io was down, its badges got no answer at all and a 634 s scan failed on them alone.
+    it('only warns when every broken link is a badge that got no answer', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(vi.fn());
+      // The real stderr shape of linkinator 8.1.0, the summary line colored as it is when color is forced.
+      const stderrLines = [
+        '→ crawling README.md',
+        '[0] https://img.shields.io/npm/v/@mnaoumov/typescript-lib',
+        'README.md',
+        '  [\u{1B}[31m0\u{1B}[39m] \u{1B}[90mhttps://img.shields.io/npm/v/@mnaoumov/typescript-lib\u{1B}[39m',
+        'ERROR: Detected 1 broken links. Scanned 9 links in 634 seconds.'
+      ];
+      failWith(stderrLines.join('\n'));
+      await lint();
+      expect(warn).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('https://img.shields.io/npm/v/@mnaoumov/typescript-lib (status 0)'));
+    });
+
+    it.each([
+      ['a badge with a real 404', '[404] https://img.shields.io/npm/v/nope'],
+      ['another host that got no answer', '[0] https://dead.example/'],
+      ['a badge beside another broken link', '[0] https://img.shields.io/x\n[404] https://example.com/'],
+      ['no broken link printed', 'Error: something crashed'],
+      ['a status 0 line that is no URL', '[0] not-a-url']
+    ])('fails on %s', async (_name, stderr) => {
+      failWith(stderr);
+      await expect(lint()).rejects.toThrow('linkinator failed with exit code 1');
+    });
+
+    it.each([
+      [2, null, 'exit code 2'],
+      [null, 'SIGTERM', 'signal SIGTERM']
+    ])('fails on exit code %s or signal %s', async (exitCode, exitSignal, expected) => {
+      failWith('[0] https://img.shields.io/x', exitCode, exitSignal);
+      await expect(lint()).rejects.toThrow(expected);
+    });
   });
 
   it.each([[undefined, '100'], ['2', '2'], ['bad', '100'], ['200', '100']])('caps linkinator concurrency for budget %s', async (budget, expected) => {
@@ -190,7 +246,8 @@ describe('lint', () => {
     await lint();
     expect(mockGetNonIgnoredFiles).toHaveBeenCalledWith({ patterns: ['*.md'] });
     expect(mockExecFromRoot).toHaveBeenCalledWith(
-      expect.arrayContaining(['linkinator', { batchedArguments: ['README.md', 'docs/guide.md'] }])
+      expect.arrayContaining(['linkinator', { batchedArguments: ['README.md', 'docs/guide.md'] }]),
+      LINKINATOR_OPTIONS
     );
   });
 
@@ -207,7 +264,8 @@ describe('lint', () => {
     ]);
     await lint();
     expect(mockExecFromRoot).toHaveBeenCalledWith(
-      expect.arrayContaining(['linkinator', { batchedArguments: ['README.md', 'docs/guide.md'] }])
+      expect.arrayContaining(['linkinator', { batchedArguments: ['README.md', 'docs/guide.md'] }]),
+      LINKINATOR_OPTIONS
     );
   });
 
@@ -216,7 +274,8 @@ describe('lint', () => {
     mockGetNonIgnoredFiles.mockResolvedValue(['docs/node_modules-migration.md']);
     await lint();
     expect(mockExecFromRoot).toHaveBeenCalledWith(
-      expect.arrayContaining(['linkinator', { batchedArguments: ['docs/node_modules-migration.md'] }])
+      expect.arrayContaining(['linkinator', { batchedArguments: ['docs/node_modules-migration.md'] }]),
+      LINKINATOR_OPTIONS
     );
   });
 
@@ -233,7 +292,8 @@ describe('lint', () => {
     await lint();
     expect(mockGlob).toHaveBeenCalledOnce();
     expect(mockExecFromRoot).toHaveBeenCalledWith(
-      expect.arrayContaining(['linkinator', { batchedArguments: ['README.md'] }])
+      expect.arrayContaining(['linkinator', { batchedArguments: ['README.md'] }]),
+      LINKINATOR_OPTIONS
     );
   });
 
@@ -247,7 +307,8 @@ describe('lint', () => {
       expect.arrayContaining(['markdownlint-cli2', { batchedArguments: ['.'] }])
     );
     expect(mockExecFromRoot).toHaveBeenCalledWith(
-      expect.arrayContaining(['linkinator', { batchedArguments: ['README.md', 'docs.md'] }])
+      expect.arrayContaining(['linkinator', { batchedArguments: ['README.md', 'docs.md'] }]),
+      LINKINATOR_OPTIONS
     );
   });
 
@@ -260,7 +321,8 @@ describe('lint', () => {
     })());
     await lint({ linkCheckExcludeGlobs: ['CHANGELOG.md', 'site/**'] });
     expect(mockExecFromRoot).toHaveBeenCalledWith(
-      expect.arrayContaining(['linkinator', { batchedArguments: ['README.md'] }])
+      expect.arrayContaining(['linkinator', { batchedArguments: ['README.md'] }]),
+      LINKINATOR_OPTIONS
     );
   });
 
@@ -272,7 +334,8 @@ describe('lint', () => {
       expect.arrayContaining(['markdownlint-cli2', { batchedArguments: ['/root/README.md', '/root/docs/guide.md'] }])
     );
     expect(mockExecFromRoot).toHaveBeenCalledWith(
-      expect.arrayContaining(['linkinator', { batchedArguments: ['README.md'] }])
+      expect.arrayContaining(['linkinator', { batchedArguments: ['README.md'] }]),
+      LINKINATOR_OPTIONS
     );
   });
 
@@ -370,7 +433,8 @@ describe('lint', () => {
     })());
     await lint();
     expect(mockExecFromRoot).toHaveBeenCalledWith(
-      expect.arrayContaining(['linkinator', { batchedArguments: ['README.md', 'CHANGELOG.md', 'docs/guide.md'] }])
+      expect.arrayContaining(['linkinator', { batchedArguments: ['README.md', 'CHANGELOG.md', 'docs/guide.md'] }]),
+      LINKINATOR_OPTIONS
     );
   });
 });
