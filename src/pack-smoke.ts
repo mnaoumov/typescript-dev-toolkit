@@ -396,6 +396,28 @@ class PackSmoke {
     }
   }
 
+  // An exported `.json` file is data (a tsconfig preset a consumer names in `extends`, a schema), not a module: Node
+  // refuses to import it without `with { type: 'json' }`, and TypeScript resolves it only under `resolveJsonModule`.
+  // So it must be in the tarball and parse as JSON, and is neither loaded nor type-checked.
+  private async checkJsonData(dataFiles: readonly ExportedModule[]): Promise<void> {
+    for (const dataFile of dataFiles) {
+      if (!existsSync(dataFile.filePath)) {
+        this.problems.push(`data ${dataFile.specifier}: the tarball has no ${dataFile.filePath}`);
+        continue;
+      }
+
+      try {
+        JSON.parse(await readFile(dataFile.filePath, 'utf-8'));
+      } catch (error) {
+        this.problems.push(`data ${dataFile.specifier}: not valid JSON: ${firstLine((error as Error).message)}`);
+      }
+    }
+
+    if (dataFiles.length > 0) {
+      this.dependencies.log(`pack smoke: checked ${String(dataFiles.length)} exported JSON data file(s), which are not loaded as modules`);
+    }
+  }
+
   private async checkModules(params: CheckModulesParams): Promise<Readonly<Record<ModuleFormat, readonly ExportedModule[]>>> {
     const { installedRoot, optionalPeers, packageJson, packageName } = params;
     const matchedPatterns = new Set<string>();
@@ -404,8 +426,18 @@ class PackSmoke {
     const probePath = join(this.smokeFolder, 'pack-smoke-probe.mjs');
     await writeFile(probePath, PROBE_SOURCE, 'utf-8');
 
+    const dataFiles = new Map<string, ExportedModule>();
     for (const format of ['esm', 'cjs'] as const) {
-      const modules = await listExportedModules({ format, installedRoot, packageJson, packageName });
+      const exported = await listExportedModules({ format, installedRoot, packageJson, packageName });
+      const modules: ExportedModule[] = [];
+      for (const exportedModule of exported) {
+        if (isJsonData(exportedModule)) {
+          // Both formats usually resolve a data subpath to one file, which is checked once.
+          dataFiles.set(exportedModule.filePath, exportedModule);
+        } else {
+          modules.push(exportedModule);
+        }
+      }
       modulesByFormat[format] = modules;
       for (const exportedModule of modules) {
         for (const pattern of this.peerBoundModules) {
@@ -438,6 +470,8 @@ class PackSmoke {
         `pack smoke: ${format === 'esm' ? 'imported' : 'required'} ${String(modules.length)} module(s), ${String(allowedCount)} of them peer-bound and stopped by a missing optional peer${hostClause}`
       );
     }
+
+    await this.checkJsonData([...dataFiles.values()]);
 
     for (const pattern of this.peerBoundModules) {
       if (!matchedPatterns.has(pattern)) {
@@ -642,6 +676,10 @@ function getMissingPackage(failure: LoadFailure): null | string {
   const nodeModulesIndex = specifier.lastIndexOf(NODE_MODULES_SEGMENT);
   const bareSpecifier = nodeModulesIndex === -1 ? specifier : specifier.slice(nodeModulesIndex + NODE_MODULES_SEGMENT.length);
   return bareSpecifier.split('/', bareSpecifier.startsWith('@') ? SCOPED_NAME_SEGMENT_COUNT : 1).join('/');
+}
+
+function isJsonData(exportedModule: ExportedModule): boolean {
+  return exportedModule.filePath.toLowerCase().endsWith('.json');
 }
 
 function isMatchedBy(exportedModule: ExportedModule, pattern: string): boolean {

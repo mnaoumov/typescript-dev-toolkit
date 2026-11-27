@@ -317,6 +317,43 @@ describe('smokePack', () => {
     ]);
   });
 
+  it('checks an exported JSON file as data, never loading or type-checking it as a module', async () => {
+    const { error, fake } = await runSmoke({
+      files: new Map([
+        ['esm/index.d.mts', DECLARATION],
+        ['esm/index.mjs', ESM_OK],
+        ['tsconfig/react.json', '{ "compilerOptions": { "jsx": "react-jsx" } }\n'],
+        ['tsconfig/vue.json', '{}\n']
+      ]),
+      packageJson: {
+        exports: { '.': { import: './esm/index.mjs' }, './tsconfig/*': './tsconfig/*', './vue.json': { default: './tsconfig/vue.json' } },
+        name: 'fixture'
+      }
+    });
+
+    expect(error).toBeNull();
+    expect(fake.lines).toContain('pack smoke: imported 1 module(s), 0 of them peer-bound and stopped by a missing optional peer');
+    expect(fake.lines).toContain('pack smoke: required 0 module(s), 0 of them peer-bound and stopped by a missing optional peer');
+    expect(fake.lines).toContain('pack smoke: checked 2 exported JSON data file(s), which are not loaded as modules');
+    expect(fake.lines).toContain('pack smoke: type-checked the imports of 1 under node16 ESM, 0 under node16 CJS, 1 under bundler');
+  });
+
+  it('reports an exported JSON file that is missing from the tarball or does not parse', async () => {
+    const { error } = await runSmoke(
+      {
+        files: new Map([['tsconfig/broken.json', '{ "compilerOptions": \n']]),
+        packageJson: { exports: { './broken.json': './tsconfig/broken.json', './missing.json': './tsconfig/missing.json' }, name: 'fixture' }
+      },
+      { shouldCheckTypes: false }
+    );
+
+    expect(error?.message.split('\n')).toEqual([
+      'The pack smoke found 2 problem(s):',
+      expect.stringMatching(/^- data fixture\/broken\.json: not valid JSON: .+$/) as unknown,
+      expect.stringMatching(/^- data fixture\/missing\.json: the tarball has no \S+missing\.json$/) as unknown
+    ]);
+  });
+
   it('matches a peer-bound glob against every subpath that names a module, not only the one it is loaded as', async () => {
     const { error, fake } = await runSmoke(
       {
