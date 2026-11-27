@@ -105,6 +105,14 @@ describe('api-doc page generation', () => {
     expect(parsed['title']).toBe(String.raw`a\b "c"`);
   });
 
+  it('escapes a constant signature whose printed string literal already carries backslash escapes', () => {
+    // The type checker prints a string constant's literal type with its quotes escaped, so the signature holds `\"`.
+    const signature = String.raw`const SELECTOR: "button, input:not([type=\"hidden\"]), a[href=\"C:\\x\"]"`;
+    const lines = renderFrontMatter({ sidebarLabel: 'SELECTOR', signature, slug: 'api/alpha/SELECTOR', title: 'SELECTOR' });
+    const parsed = parseYaml(lines.slice(1, -2).join('\n')) as Record<string, unknown>;
+    expect(parsed['signature']).toBe(signature);
+  });
+
   it('omits description and signature when the page has neither', () => {
     expect(renderFrontMatter({ sidebarLabel: 'Alpha', slug: 'api/alpha/Alpha', title: 'Alpha' })).toEqual([
       '---',
