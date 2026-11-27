@@ -40,6 +40,7 @@ import {
   getRootFolder,
   resolvePathFromRootSafe
 } from '../root.ts';
+import { getUnansweredBadgeLinksOnlyFailure } from './linkinator-result.ts';
 import {
   checkIsInNodeModules,
   NODE_MODULES_IGNORE_GLOB
@@ -144,6 +145,11 @@ const MARKDOWN_PATHSPEC = '*.md';
 const LINK_CHECK_CONCURRENCY = 100;
 const LINK_CHECK_TIMEOUT_IN_MILLISECONDS = 30_000;
 const LINKINATOR_CONFIG_FILE_NAME = 'linkinator.config.json';
+/**
+ * Cloudflare's own answers when it cannot get one from the origin: unknown error, origin down, connection timed out,
+ * origin unreachable, and a timeout. Like a 502, none says anything about the link.
+ */
+const CLOUDFLARE_ORIGIN_FAILURE_STATUS_CODES = ['520', '521', '522', '523', '524'] as const;
 
 /**
  * Lists the markdown files to hand to `linkinator`.
@@ -184,8 +190,11 @@ async function runLinkinator(linkCheckFiles: string[], skipConfigFolder: null | 
   // it, so it is a warning like a 429 rather than a gate failure that says nothing about whether the link exists.
   // A 502, 503 or 504 is a gateway failing, not the link: --retry-errors retries it first, and only one that outlasts
   // the retries warns, because GitHub answering 504 for every repository failed releases with nothing wrong in them.
-  // A 500 stays an error, since it is the target's own application failing and can be permanent.
-  await execFromRoot([
+  // A 500 stays an error, since it is the target's own application failing and can be permanent. 520 to 524 are
+  // Cloudflare failing to reach the origin (shields.io answered 520 while it was down), so they warn like a 502.
+  // A status 0 (no answer at all) stays an error, because a dead domain answers nothing either, except on a badge
+  // host: `linkinator` cannot scope a status code to a host, so a run whose only broken links are those is read here.
+  const result = await execFromRoot([
     ...resolveToolCommand({ tool: 'linkinator' }),
     '--server-root',
     resolve(rootFolder),
@@ -208,13 +217,28 @@ async function runLinkinator(linkCheckFiles: string[], skipConfigFolder: null | 
     '503:warn',
     '--status-code',
     '504:warn',
+    ...CLOUDFLARE_ORIGIN_FAILURE_STATUS_CODES.flatMap((statusCode) => ['--status-code', `${statusCode}:warn`]),
     '--url-rewrite-search',
     String.raw`https://www\.npmjs\.com/package/`,
     '--url-rewrite-replace',
     'https://registry.npmjs.org/',
     ...(skipConfigFolder === null ? [] : ['--config', join(skipConfigFolder, LINKINATOR_CONFIG_FILE_NAME)]),
     { batchedArguments: linkCheckFiles }
-  ]);
+  ], {
+    shouldIgnoreExitCode: true,
+    shouldIncludeDetails: true
+  });
+  if (result.exitCode === 0) {
+    return;
+  }
+  const unansweredBadgeLinks = getUnansweredBadgeLinksOnlyFailure(result);
+  if (unansweredBadgeLinks === null) {
+    const exitDescription = result.exitSignal === null ? `exit code ${String(result.exitCode)}` : `signal ${result.exitSignal}`;
+    throw new Error(`linkinator failed with ${exitDescription}; its output above names the broken links.`);
+  }
+  for (const link of unansweredBadgeLinks) {
+    console.warn(`WARNING: the badge host did not answer for ${link.url} (status 0); not counted as a broken link.`);
+  }
 }
 
 /**
