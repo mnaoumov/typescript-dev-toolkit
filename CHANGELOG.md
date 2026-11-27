@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## 11.1.1
+
+This release has 2 fixes. 2 maintenance commits (tests, build, CI, refactoring, dependencies) are not listed.
+
+### Fixed
+
+- **pack-smoke:** check an exported JSON file as data, not as a module
+- **markdownlint:** warn on Cloudflare 520-524 and on an unanswered badge host
+
 ## 11.1.0
 
 This release has 1 new feature.
