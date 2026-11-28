@@ -63,6 +63,14 @@ Open issues through the [issue forms](https://github.com/mnaoumov/typescript-dev
 
 Filing from the CLI or the API (`gh issue create --body`, or an AI agent filing for you) skips the form, and `gh issue create --template` cannot load an issue form. In that case, open the matching form in [`.github/ISSUE_TEMPLATE/`](https://github.com/mnaoumov/typescript-dev-toolkit/tree/HEAD/.github/ISSUE_TEMPLATE), copy every field as a `### <label>` heading in the form's order, and fill in each one. Always state the version you used and your operating system.
 
+## Support
+
+<!-- markdownlint-disable MD033 -->
+
+<a href="https://www.buymeacoffee.com/mnaoumov" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="60" width="217"></a>
+
+<!-- markdownlint-enable MD033 -->
+
 ## License
 
 © [Michael Naumov](https://github.com/mnaoumov/)
